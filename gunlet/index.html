@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>豆鉄砲 — gunlet</title>
+  <meta name="description" content="豆鉄砲 (gunlet) — 7×7の交点盤で射撃を主体に戦う2人用盤上ゲーム">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="head">
+      <h1 class="title">豆鉄砲<span class="latin">gunlet</span></h1>
+      <div class="controls">
+        <select id="mode" aria-label="対局モード">
+          <option value="pvp">二人対局</option>
+          <option value="cpu1">CPU（後手）</option>
+          <option value="cpu0">CPU（先手）</option>
+        </select>
+        <button id="undo" type="button">戻す</button>
+        <button id="restart" type="button">新規</button>
+        <button id="rules-btn" type="button">ルール</button>
+      </div>
+    </header>
+
+    <section class="stage">
+      <aside class="side side-top" id="side-1"></aside>
+      <div class="board-wrap">
+        <svg id="board" viewBox="0 0 800 800" role="img" aria-label="盤面"></svg>
+      </div>
+      <aside class="side side-bottom" id="side-0"></aside>
+    </section>
+
+    <footer class="bar">
+      <p id="status" class="status" aria-live="polite"></p>
+      <div id="actions" class="actions"></div>
+    </footer>
+
+    <section class="log-wrap">
+      <ol id="log" class="log"></ol>
+    </section>
+  </main>
+
+  <dialog id="rules">
+    <form method="dialog" class="rules">
+      <h2>豆鉄砲 <span class="latin">gunlet</span></h2>
+      <p>相手の<b>将</b>に2回攻撃を当てた側の勝ち。手番では次のどれか1つだけを行う。</p>
+      <ol>
+        <li>自分の駒を1つ移動する</li>
+        <li>弓兵か銃兵で1回射撃する</li>
+        <li>撃ち終えた銃兵を装填する</li>
+        <li>持ち駒の壁か塔を空いている点に置く</li>
+      </ol>
+      <table>
+        <thead><tr><th></th><th>駒</th><th>移動</th><th>攻撃</th><th>耐久</th></tr></thead>
+        <tbody>
+          <tr><td><svg viewBox="-20 -20 40 40" class="glyph" data-type="general"></svg></td><td>将</td><td>1</td><td>隣へ近接</td><td>2</td></tr>
+          <tr><td><svg viewBox="-20 -20 40 40" class="glyph" data-type="archer"></svg></td><td>弓兵</td><td>1</td><td>射程2〜3・1つ越え</td><td>1</td></tr>
+          <tr><td><svg viewBox="-20 -20 40 40" class="glyph" data-type="gunner"></svg></td><td>銃兵</td><td>1</td><td>射程1〜3・直線・要装填</td><td>1</td></tr>
+          <tr><td><svg viewBox="-20 -20 40 40" class="glyph" data-type="shield"></svg></td><td>盾兵</td><td>直線2</td><td>なし</td><td>2</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>移動も射撃も線に沿った8方向。移動は空いた点へのみ。</li>
+        <li><b>壁</b>：通れず射線を遮る。銃で2回当てると壊れる（弓では壊せない）。</li>
+        <li><b>塔</b>：1駒まで乗れる。乗った駒の射程上限+1。空の塔は射線を遮らない。</li>
+        <li>将の近接攻撃：倒せば相手の点へ進み、倒せなければ元の点に留まる。</li>
+        <li>試作ルールの補足：将も塔に乗れる。塔の上の銃兵も壁は越えられない。200手で引き分け。</li>
+      </ul>
+      <p class="hint">操作：駒を選ぶと、動ける点（小さな点）と攻撃できる対象（枠）が表示されます。持ち駒は盤の脇から選んで置きます。</p>
+      <button value="close">閉じる</button>
+    </form>
+  </dialog>
+
+  <script src="engine.js"></script>
+  <script src="ai.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
