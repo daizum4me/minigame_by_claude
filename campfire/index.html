@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>焚き火の夜</title>
+<meta name="description" content="焚き火の夜 — 真冬の夜、ひとつの焚き火を囲んで夜明けを待つ対戦型ボードゲーム（CPU対戦）">
+<style>
+/* 焚き火の夜 — 夜の紺・火の橙・寒さの青だけで組み立てる */
+:root {
+  --bg: #0f1626;
+  --panel: #161f33;
+  --panel-2: #1c2740;
+  --line: #2c3a5a;
+  --text: #f2efe6;
+  --muted: #8f99b0;
+  --dim: #5d6782;
+  --fire: #ff7a1a;
+  --fire-2: #ffb347;
+  --cold: #7fb8ff;
+  --ash: #5b6478;
+  --radius: 4px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+[hidden] { display: none !important; }
+button, select {
+  font: inherit; font-size: 14px; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 8px 12px; cursor: pointer;
+  transition: border-color .15s, background .15s, opacity .15s;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .35; cursor: default; }
+button.primary { background: var(--fire); border-color: var(--fire); color: #1a1006; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--fire-2); border-color: var(--fire-2); }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--fire-2); outline-offset: 2px; }
+
+/* ---------- 開始画面 ---------- */
+.start {
+  max-width: 520px; margin: 0 auto; padding: 48px 16px 40px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.logo { display: block; width: 72px; height: 72px; margin: 0 auto; }
+.start h1 { margin: 0; text-align: center; font-size: 30px; font-weight: 600; letter-spacing: .2em; }
+.start .lead { margin: -8px 0 8px; text-align: center; color: var(--muted); font-size: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 13px; color: var(--muted); }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.seg button[aria-pressed="true"] { border-color: var(--fire); color: var(--fire-2); background: var(--panel-2); }
+#btn-start { padding: 12px; font-size: 16px; }
+details.rules { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+details.rules summary { cursor: pointer; padding: 10px 14px; color: var(--muted); font-size: 14px; }
+details.rules[open] summary { border-bottom: 1px solid var(--line); }
+.rules-body { padding: 4px 16px 12px; font-size: 13px; }
+.rules-body h3 { margin: 14px 0 4px; font-size: 13px; color: var(--fire-2); font-weight: 600; }
+.rules-body ul { margin: 0; padding-left: 18px; }
+.rules-body li { margin: 2px 0; }
+.rules-body p { margin: 4px 0; }
+
+/* ---------- ゲーム画面 ---------- */
+.game { max-width: 980px; margin: 0 auto; padding: 12px 16px 32px; }
+.infobar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel); font-size: 13px;
+}
+.infobar .k { color: var(--muted); margin-right: 4px; }
+.infobar .v { font-weight: 600; }
+.infobar .chill-left i { display: inline-block; width: 8px; height: 8px; margin-right: 2px; vertical-align: 0; background: var(--cold); }
+.infobar .chill-left i.c2 { opacity: .75; } .infobar .chill-left i.c1 { opacity: .45; }
+.infobar .chill-left span { margin-right: 8px; white-space: nowrap; }
+.infobar .spacer { flex: 1; }
+.infobar select, .infobar button { font-size: 12px; padding: 4px 8px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; margin-top: 12px; align-items: start; }
+@media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.table {
+  position: relative; width: 100%; max-width: 600px; margin: 0 auto;
+  aspect-ratio: 1 / 0.92;
+}
+.table::before {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 64%; aspect-ratio: 1;
+  transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 50%;
+}
+.hearth { position: absolute; left: 50%; top: 50%; width: 38%; transform: translate(-50%, -50%); }
+.hearth svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.seat {
+  position: absolute; width: 27%; transform: translate(-50%, -50%);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 6px 8px; font-size: 12px;
+}
+.seat.active { border-color: var(--fire); box-shadow: 0 0 0 1px var(--fire); }
+.seat .head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.seat .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; }
+.seat .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seat .badge {
+  flex: none; font-size: 10px; line-height: 1; padding: 2px 4px;
+  border: 1px solid var(--fire-2); color: var(--fire-2); border-radius: 2px;
+}
+.seat .temp { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.tbar { flex: 1; display: grid; grid-template-columns: repeat(15, 1fr); gap: 1px; height: 10px; }
+.tbar i { background: var(--panel-2); border: 1px solid var(--line); }
+.tbar i.on { background: var(--text); border-color: var(--text); }
+.seat.cold .tbar i.on { background: var(--cold); border-color: var(--cold); }
+.tnum { flex: none; min-width: 2ch; text-align: right; font-weight: 600; font-size: 14px; }
+.seat.cold .tnum { color: var(--cold); }
+.seat .sub { margin-top: 3px; color: var(--muted); font-size: 11px; display: flex; justify-content: space-between; align-items: center; gap: 4px; white-space: nowrap; }
+.seat.dead { opacity: .45; filter: grayscale(1); }
+.seat.dead::before, .seat.dead::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 46%; height: 2px; background: var(--text);
+  transform: translate(-50%, -50%) rotate(30deg);
+}
+.seat.dead::after { transform: translate(-50%, -50%) rotate(-30deg); }
+.seat.hit-cold { animation: hitCold .6s ease-out; }
+.seat.hit-warm { animation: hitWarm .6s ease-out; }
+.seat.flash { animation: freezeFlash 1s ease-out; }
+@keyframes hitCold { from { box-shadow: 0 0 0 3px var(--cold); } to { box-shadow: 0 0 0 0 transparent; } }
+@keyframes hitWarm { from { box-shadow: 0 0 0 3px var(--fire-2); } to { box-shadow: 0 0 0 0 transparent; } }
+@keyframes freezeFlash {
+  0% { background: #ffffff; filter: none; opacity: 1; }
+  35% { background: #ffffff; filter: none; opacity: 1; }
+  100% { background: var(--panel); }
+}
+
+.flames { transform-box: fill-box; transform-origin: 50% 100%; }
+.flames.up { animation: flameUp .45s ease-out; }
+.flames.down { animation: flameDown .45s ease-out; }
+.flames.burst { animation: flameBurst .9s ease-out; }
+@keyframes flameUp { 0% { transform: scale(.88, .8); } 60% { transform: scale(1.04, 1.1); } 100% { transform: none; } }
+@keyframes flameDown { 0% { transform: scale(1.06, 1.15); } 100% { transform: none; } }
+@keyframes flameBurst { 0% { transform: scale(.7, .5); } 40% { transform: scale(1.12, 1.3); } 100% { transform: none; } }
+
+.chill-card {
+  position: absolute; left: 50%; top: 50%; width: 36%; min-width: 128px;
+  transform: translate(-50%, -50%); z-index: 3; perspective: 600px;
+}
+.chill-card .face {
+  background: var(--bg); border: 2px solid var(--cold); border-radius: var(--radius);
+  padding: 12px 10px; text-align: center; color: var(--cold);
+  animation: flipIn .5s ease-out;
+}
+.chill-card .lbl { font-size: 11px; color: var(--muted); letter-spacing: .2em; }
+.chill-card .name { font-size: 18px; font-weight: 600; color: var(--text); margin: 2px 0; }
+.chill-card .val { font-size: 22px; font-weight: 700; }
+.chill-card .val s { color: var(--dim); font-size: 15px; margin-right: 6px; }
+.chill-card .note { font-size: 11px; color: var(--fire-2); margin-top: 2px; }
+@keyframes flipIn { from { transform: rotateY(90deg); } to { transform: rotateY(0); } }
+
+.status { min-height: 1.5em; margin: 10px 0 6px; font-size: 14px; text-align: center; }
+.status .you { color: var(--fire-2); font-weight: 600; }
+
+.hand-wrap { border-top: 1px solid var(--line); padding-top: 10px; }
+.hand-title { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: 80px; }
+.hand .empty { color: var(--muted); font-size: 13px; align-self: center; }
+.card {
+  width: 74px; height: 74px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center;
+  justify-content: space-between; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); font-size: 11px; line-height: 1.2; position: relative;
+}
+.card svg { width: 28px; height: 28px; flex: none; }
+.card .cn { font-weight: 600; }
+.card .ce { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.card.unplayable { opacity: .38; }
+.card.selected { border-color: var(--fire-2); box-shadow: 0 0 0 1px var(--fire-2); background: var(--panel-2); }
+.card.pickable { border-color: var(--fire); }
+button.card:disabled { opacity: 1; cursor: default; }
+button.card.unplayable:disabled { opacity: .38; }
+
+.actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+.actions button { padding: 10px 4px; font-size: 14px; }
+.actions button .n { font-weight: 700; margin-left: 4px; }
+.actions button.suggest { border-color: var(--fire-2); color: var(--fire-2); }
+.actions button.warm .n, .actions button.drink .n { color: var(--fire-2); }
+.actions button.gather .n { color: var(--cold); }
+.actions button:disabled .n { color: inherit; }
+.hint { font-size: 12px; color: var(--muted); text-align: center; margin: 8px 0 0; min-height: 1.5em; }
+
+.logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); display: flex; flex-direction: column; }
+.logpanel h2 { margin: 0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); letter-spacing: .1em; }
+.log { list-style: none; margin: 0; padding: 6px 12px 10px; overflow-y: auto; height: 560px; font-size: 12px; }
+@media (max-width: 760px) { .log { height: 220px; } }
+.log li { padding: 2px 0; }
+.log li.dim { color: var(--dim); }
+.log li.round { margin-top: 8px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 6px; }
+.log li.chill { color: var(--cold); font-weight: 600; }
+.log li.cold { color: var(--cold); }
+.log li.death { color: #ffffff; font-weight: 700; background: rgba(127, 184, 255, .14); padding-left: 4px; border-left: 2px solid var(--cold); }
+.log li.pot { color: var(--fire-2); font-weight: 600; }
+.log li.dawn { color: var(--fire-2); font-weight: 700; margin-top: 6px; }
+
+/* ---------- 結果画面 ---------- */
+.result { max-width: 560px; margin: 0 auto; padding: 40px 16px; display: flex; flex-direction: column; gap: 18px; }
+.result h1 { margin: 0; text-align: center; font-size: 26px; font-weight: 600; letter-spacing: .1em; }
+.result .lead { margin: -8px 0 0; text-align: center; color: var(--muted); font-size: 14px; }
+.rank { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rank th { font-weight: 400; font-size: 12px; color: var(--muted); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.rank td { padding: 10px 8px; border-bottom: 1px solid var(--line); }
+.rank td.r { font-weight: 700; width: 3em; }
+.rank tr.win td { color: var(--fire-2); }
+.rank tr.win td.r::after { content: ""; display: inline-block; width: 0; height: 0; margin-left: 6px; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid var(--fire); }
+.rank .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.rank .frozen { color: var(--cold); }
+.result .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.result .btns button { padding: 12px; }
+
+@media (max-width: 420px) {
+  .seat { padding: 4px 5px; font-size: 11px; }
+  .tbar { height: 8px; }
+  .tnum { font-size: 12px; }
+  .seat .badge { font-size: 9px; padding: 2px 3px; }
+  .card { width: 64px; height: 76px; }
+  .result h1 { font-size: 21px; }
+  .actions button { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- 開始画面 -->
+<section id="screen-start" class="start">
+  <svg class="logo" viewBox="0 0 72 72" aria-hidden="true">
+    <polygon points="22,58 36,14 50,58" fill="#ff7a1a"/>
+    <polygon points="29,58 38,30 47,58" fill="#ffb347"/>
+    <line x1="14" y1="62" x2="58" y2="56" stroke="#5b6478" stroke-width="4"/>
+    <line x1="14" y1="56" x2="58" y2="62" stroke="#5b6478" stroke-width="4"/>
+  </svg>
+  <h1>焚き火の夜</h1>
+  <p class="lead">真冬の夜。ひとつの焚き火を囲んで、夜明けを待つ。</p>
+  <div class="field">
+    <span>人数（あなた＋CPU）</span>
+    <div class="seg" id="opt-players" role="group" aria-label="人数">
+      <button type="button" data-v="3">3人</button>
+      <button type="button" data-v="4">4人</button>
+      <button type="button" data-v="5">5人</button>
+    </div>
+  </div>
+  <div class="field">
+    <span>CPUの速さ</span>
+    <div class="seg" id="opt-speed" role="group" aria-label="CPUの速さ">
+      <button type="button" data-v="fast">速い</button>
+      <button type="button" data-v="normal">普通</button>
+      <button type="button" data-v="slow">遅い</button>
+    </div>
+  </div>
+  <button type="button" id="btn-start" class="primary">はじめる</button>
+  <details class="rules">
+    <summary>ルール説明</summary>
+    <div class="rules-body" id="rules-body"></div>
+  </details>
+</section>
+
+<!-- ゲーム画面 -->
+<section id="screen-game" class="game" hidden>
+  <header class="infobar">
+    <span><span class="k">ラウンド</span><span class="v" id="info-round"></span></span>
+    <span class="chill-left"><span class="k">残りの冷え込み</span><span id="info-chill"></span></span>
+    <span><span class="k">山札</span><span class="v" id="info-deck"></span><span class="k" id="info-discard" style="margin-left:6px"></span></span>
+    <span class="spacer"></span>
+    <select id="speed-in-game" aria-label="CPUの速さ">
+      <option value="fast">速い</option>
+      <option value="normal">普通</option>
+      <option value="slow">遅い</option>
+    </select>
+    <button type="button" id="btn-quit">やめる</button>
+  </header>
+  <div class="layout">
+    <div class="main">
+      <div class="table" id="table">
+        <div class="hearth" id="hearth"></div>
+        <div class="chill-card" id="chill-card" hidden></div>
+      </div>
+      <p class="status" id="status" aria-live="polite"></p>
+      <div class="hand-wrap">
+        <div class="hand-title"><span>あなたの手札</span><span id="hand-count"></span></div>
+        <div class="hand" id="hand"></div>
+        <div class="actions" id="actions"></div>
+        <p class="hint" id="hint"></p>
+      </div>
+    </div>
+    <aside class="logpanel">
+      <h2>ログ</h2>
+      <ol class="log" id="log"></ol>
+    </aside>
+  </div>
+</section>
+
+<!-- 結果画面 -->
+<section id="screen-result" class="result" hidden>
+  <h1 id="result-title"></h1>
+  <p class="lead" id="result-lead"></p>
+  <table class="rank">
+    <thead><tr><th>順位</th><th>プレイヤー</th><th>性格</th><th>最終体温</th></tr></thead>
+    <tbody id="result-body"></tbody>
+  </table>
+  <div class="btns">
+    <button type="button" id="btn-again" class="primary">もう一度</button>
+    <button type="button" id="btn-title">タイトルへ</button>
+  </div>
+</section>
+
+<script>
+'use strict';
+
+/* ================================================================
+ * ルールの数値（調整はここだけで行う）
+ * ================================================================ */
+const CONFIG = {
+  temp: { min: 0, max: 15, init: 10 },
+  fire: { min: 0, max: 10, init: 5 },
+  roundsByPlayers: { 3: 8, 4: 7, 5: 6 },
+  handInit: 4,
+  // 山札（50枚）。fuel: power=火力上昇, minFire=くべられる最低火力, smolder=くすぶり加算
+  cards: {
+    leaf: { name: '落ち葉', kind: 'fuel', count: 10, power: 1, minFire: 0 },
+    twig: { name: '小枝', kind: 'fuel', count: 14, power: 2, minFire: 1 },
+    log:  { name: '太い薪', kind: 'fuel', count: 8, power: 4, minFire: 2 },
+    wet:  { name: '湿った木', kind: 'fuel', count: 6, power: 1, minFire: 1, smolder: 1 },
+    snow: { name: '雪', kind: 'food', count: 4 },
+    food: { name: '具材', kind: 'food', count: 8, names: ['じゃがいも', '干し肉', 'きのこ', 'にんじん'] },
+    soup: { name: 'スープ', kind: 'soup', count: 0 },
+  },
+  handOrder: ['leaf', 'twig', 'log', 'wet', 'snow', 'food', 'soup'],
+  chill: [
+    { id: 'c1', name: '普通の夜', count: 6, value: 1 },
+    { id: 'c2', name: '冷える夜', count: 2, value: 2 },
+    { id: 'c3', name: '吹雪', count: 1, value: 3 },
+  ],
+  radiant: { minFire: 4, reduce: 1 },     // 輻射熱
+  stokeWarmth: 1,                          // くべた本人の体温
+  warm: [                                  // 暖まる：火力→回復量
+    { min: 1, max: 3, gain: 1 },
+    { min: 4, max: 7, gain: 2 },
+    { min: 8, max: 10, gain: 3 },
+  ],
+  gather: { draw: 2, cost: 1 },            // 薪拾い
+  decay: 1,                                // 手番終了時の火の減衰
+  outPenalty: 3,                           // 火消しペナルティ
+  stew: { upMinFire: 3, downAtFire: 0, doneStage: 2 },
+  soupHeal: 3,
+  relicFire: 3,                            // 遺品を燃やす
+  personalities: [
+    { id: 'coop', name: '協力型', coop: 0.8 },
+    { id: 'selfish', name: '自己中型', coop: 0.3 },
+  ],
+  ai: {
+    potChance: 0.7,
+    soupTemp: 6,         // これ以下ならスープを飲む
+    dangerTemp: 4,       // これ以下なら暖まる
+    potFireWatch: 3,     // 自分のマーカーが鍋にあるとき気にする火力
+    gatherFuelMax: 1,    // 燃料がこの枚数以下なら薪拾い
+    gatherMinTemp: 5,
+    idleSoupTemp: 12,
+    idleSoupFire: 3,
+    targetFire: 7,       // くべた後に目指す火力
+  },
+  speeds: { fast: 350, normal: 800, slow: 1400 },
+  colors: ['#f2efe6', '#7fd6c2', '#c3a6ff', '#f28fb1', '#e8d36b'],
+};
+
+/* ================================================================
+ * 乱数（シード指定可。?seed=123 で再現）
+ * ================================================================ */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffle(arr, rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/* ================================================================
+ * ルールエンジン（DOMに依存しない）
+ * ================================================================ */
+const isFuel = c => CONFIG.cards[c.type].kind === 'fuel';
+const cardName = c => c.name || CONFIG.cards[c.type].name;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function warmGain(fire) {
+  for (const w of CONFIG.warm) if (fire >= w.min && fire <= w.max) return w.gain;
+  return 0;
+}
+function canStoke(s, c) {
+  const d = CONFIG.cards[c.type];
+  return d.kind === 'fuel' && s.fire >= d.minFire;
+}
+function aliveSeats(s) { return s.players.filter(p => p.alive).map(p => p.seat); }
+function nextAliveSeat(s, from) {
+  for (let k = 1; k <= s.n; k++) {
+    const seat = (from + k) % s.n;
+    if (s.players[seat].alive) return seat;
+  }
+  return -1;
+}
+function log(s, text, cls = '') { s.log.push({ text, cls }); }
+
+function createGame(numPlayers, seed) {
+  const rng = mulberry32(seed);
+  const s = {
+    seed, rng, n: numPlayers,
+    rounds: CONFIG.roundsByPlayers[numPlayers],
+    round: 1, startSeat: 0, turnSeat: -1,
+    fire: CONFIG.fire.init, smolder: 0,
+    deck: [], discard: [], chillDeck: [], pot: null,
+    deaths: 0, over: false, endReason: null,
+    nextId: 1, log: [], players: [],
+  };
+  for (const [type, d] of Object.entries(CONFIG.cards)) {
+    for (let i = 0; i < d.count; i++) {
+      const c = { id: s.nextId++, type };
+      if (d.names) c.name = d.names[i % d.names.length];
+      s.deck.push(c);
+    }
+  }
+  shuffle(s.deck, rng);
+  for (const ch of CONFIG.chill) for (let i = 0; i < ch.count; i++) s.chillDeck.push(ch);
+  shuffle(s.chillDeck, rng);
+
+  for (let seat = 0; seat < numPlayers; seat++) {
+    const human = seat === 0;
+    const pers = human ? null : CONFIG.personalities[Math.floor(rng() * CONFIG.personalities.length)];
+    s.players.push({
+      seat, isHuman: human, name: human ? 'あなた' : `CPU${seat}`,
+      color: CONFIG.colors[seat], personality: pers, coop: pers ? pers.coop : 0,
+      temp: CONFIG.temp.init, hand: [], alive: true, deathOrder: 0, deathRound: 0,
+    });
+  }
+  for (let k = 0; k < CONFIG.handInit; k++) for (const p of s.players) p.hand.push(drawCard(s));
+  s.startSeat = Math.floor(rng() * numPlayers);
+  log(s, `ラウンド 1 / ${s.rounds}（スタート：${s.players[s.startSeat].name}）`, 'round');
+  return s;
+}
+
+function drawCard(s) {
+  if (!s.deck.length) {
+    if (!s.discard.length) return null;
+    s.deck = shuffle(s.discard, s.rng);
+    s.discard = [];
+    log(s, '捨て札をシャッフルして新しい山札にした', 'dim');
+  }
+  return s.deck.pop();
+}
+
+/** 体温を変える。0になったら凍死処理。 */
+function changeTemp(s, seat, delta) {
+  const p = s.players[seat];
+  if (!p.alive) return;
+  p.temp = clamp(p.temp + delta, CONFIG.temp.min, CONFIG.temp.max);
+  if (p.temp <= CONFIG.temp.min) freeze(s, seat);
+}
+
+function freeze(s, seat) {
+  const p = s.players[seat];
+  p.alive = false;
+  p.temp = 0;
+  p.deathOrder = ++s.deaths;
+  p.deathRound = s.round;
+  log(s, `${p.name} が凍死した`, 'death');
+
+  // 遺品を燃やす
+  const f0 = s.fire;
+  s.fire = clamp(s.fire + CONFIG.relicFire, CONFIG.fire.min, CONFIG.fire.max);
+  log(s, `${p.name} の遺品を燃やした（火力 ${f0}→${s.fire}）`, 'death');
+
+  // 遺品を分ける：次の席から時計回りに1枚ずつ
+  const heirs = [];
+  for (let k = 1; k < s.n; k++) {
+    const q = s.players[(seat + k) % s.n];
+    if (q.alive) heirs.push(q);
+  }
+  if (p.hand.length) {
+    if (heirs.length) {
+      const got = new Map();
+      let i = 0;
+      while (p.hand.length) {
+        const q = heirs[i++ % heirs.length];
+        q.hand.push(p.hand.shift());
+        got.set(q, (got.get(q) || 0) + 1);
+      }
+      log(s, '手札を分けた：' + [...got].map(([q, k]) => `${q.name} ${k}枚`).join('、'), 'dim');
+    } else {
+      s.discard.push(...p.hand.splice(0));
+    }
+  }
+
+  // 鍋の取り分マーカーを取り除く
+  if (s.pot) {
+    const mine = s.pot.markers.filter(m => m.seat === seat);
+    if (mine.length) {
+      s.pot.markers = s.pot.markers.filter(m => m.seat !== seat);
+      for (const m of mine) s.discard.push(m.card);
+      log(s, `鍋から ${p.name} の取り分 ${mine.length} つを取り除いた`, 'dim');
+    }
+  }
+
+  if (!heirs.length) {
+    s.over = true;
+    s.endReason = 'allDead';
+    log(s, '焚き火のまわりに、生きている者はいなくなった', 'dawn');
+  }
+}
+
+function legalActions(s, seat) {
+  const p = s.players[seat];
+  return {
+    stoke: p.hand.filter(c => canStoke(s, c)),
+    warm: warmGain(s.fire),
+    gather: true,
+    startPot: !s.pot ? p.hand.find(c => c.type === 'snow') || null : null,
+    addPot: s.pot ? p.hand.find(c => c.type === 'food') || null : null,
+    drink: p.hand.find(c => c.type === 'soup') || null,
+  };
+}
+
+function takeCard(p, id) {
+  const i = p.hand.findIndex(c => c.id === id);
+  if (i < 0) throw new Error('card not in hand: ' + id);
+  return p.hand.splice(i, 1)[0];
+}
+
+/** 手番の行動。action = { type, cardId? } */
+function doAction(s, seat, a) {
+  const p = s.players[seat];
+  const t0 = p.temp;
+  switch (a.type) {
+    case 'stoke': {
+      const c = p.hand.find(x => x.id === a.cardId);
+      if (!c || !canStoke(s, c)) throw new Error('illegal stoke');
+      takeCard(p, c.id);
+      const d = CONFIG.cards[c.type];
+      const f0 = s.fire;
+      s.fire = clamp(s.fire + d.power, CONFIG.fire.min, CONFIG.fire.max);
+      if (d.smolder) s.smolder += d.smolder;
+      s.discard.push(c);
+      changeTemp(s, seat, CONFIG.stokeWarmth);
+      log(s, `${p.name} が ${d.name} をくべた（火力 ${f0}→${s.fire}${d.smolder ? '、くすぶり +' + d.smolder : ''}／体温 ${t0}→${p.temp}）`);
+      break;
+    }
+    case 'warm': {
+      const g = warmGain(s.fire);
+      if (!g) throw new Error('illegal warm');
+      changeTemp(s, seat, g);
+      log(s, `${p.name} が暖まった（体温 ${t0}→${p.temp}）`);
+      break;
+    }
+    case 'gather': {
+      const drawn = [];
+      for (let i = 0; i < CONFIG.gather.draw; i++) {
+        const c = drawCard(s);
+        if (c) { drawn.push(c); p.hand.push(c); }
+      }
+      const what = p.isHuman && drawn.length ? '：' + drawn.map(cardName).join('・') : '';
+      log(s, `${p.name} が薪拾いに出た（${drawn.length}枚${what}／体温 ${t0}→${Math.max(0, t0 - CONFIG.gather.cost)}）`, 'cold');
+      changeTemp(s, seat, -CONFIG.gather.cost);
+      break;
+    }
+    case 'startPot': {
+      const c = p.hand.find(x => x.type === 'snow');
+      if (!c || s.pot) throw new Error('illegal startPot');
+      takeCard(p, c.id);
+      s.discard.push(c);
+      s.pot = { stage: 0, markers: [] };
+      log(s, `${p.name} が雪を溶かして鍋を始めた`);
+      break;
+    }
+    case 'addPot': {
+      const c = p.hand.find(x => x.id === a.cardId) || p.hand.find(x => x.type === 'food');
+      if (!c || c.type !== 'food' || !s.pot) throw new Error('illegal addPot');
+      takeCard(p, c.id);
+      s.pot.markers.push({ seat, card: c });
+      log(s, `${p.name} が ${cardName(c)} を鍋に入れた`);
+      break;
+    }
+    case 'drink': {
+      const c = p.hand.find(x => x.type === 'soup');
+      if (!c) throw new Error('illegal drink');
+      takeCard(p, c.id); // スープは山札に戻さない（ゲームから取り除く）
+      changeTemp(s, seat, CONFIG.soupHeal);
+      log(s, `${p.name} が スープ を飲んだ（体温 ${t0}→${p.temp}）`);
+      break;
+    }
+    default:
+      throw new Error('unknown action ' + a.type);
+  }
+}
+
+/** 手番終了処理：火の減衰と火消しペナルティ。 */
+function endTurn(s, seat) {
+  const p = s.players[seat];
+  if (!p.alive) return;
+  if (s.fire > 0) {
+    if (s.smolder > 0) {
+      s.smolder--;
+      log(s, `くすぶりが火を保った（くすぶり 残り${s.smolder}）`, 'dim');
+    } else {
+      const f0 = s.fire;
+      s.fire = clamp(s.fire - CONFIG.decay, CONFIG.fire.min, CONFIG.fire.max);
+      log(s, `火が弱まった（火力 ${f0}→${s.fire}）`, 'dim');
+    }
+  }
+  if (s.fire === 0) {
+    log(s, `${p.name} が火を消してしまった（体温 ${p.temp}→${Math.max(0, p.temp - CONFIG.outPenalty)}）`, 'cold');
+    changeTemp(s, seat, -CONFIG.outPenalty);
+  }
+}
+
+/** ラウンド終了：冷え込みカードをめくる（まだ適用しない）。 */
+function revealChill(s) {
+  const card = s.chillDeck.pop();
+  const radiant = s.fire >= CONFIG.radiant.minFire;
+  const value = Math.max(0, card.value - (radiant ? CONFIG.radiant.reduce : 0));
+  return { card, radiant, value };
+}
+function applyChill(s, info) {
+  const { card, radiant, value } = info;
+  log(s, `冷え込み：${card.name}（体温 −${card.value}${radiant ? `、輻射熱で −${value}` : ''}）`, 'chill');
+  if (value > 0) {
+    for (let seat = 0; seat < s.n; seat++) changeTemp(s, seat, -value);
+  }
+}
+
+/** 煮込み。鍋があれば true。 */
+function stew(s) {
+  if (!s.pot) return false;
+  const st0 = s.pot.stage;
+  const C = CONFIG.stew;
+  if (s.fire >= C.upMinFire) s.pot.stage++;
+  else if (s.fire <= C.downAtFire) s.pot.stage = Math.max(0, s.pot.stage - 1);
+  if (s.pot.stage !== st0) log(s, `鍋を煮込んだ（煮込み ${st0}→${s.pot.stage} / ${C.doneStage}）`, 'dim');
+  else log(s, `火が弱く、鍋は煮えなかった（煮込み ${st0} / ${C.doneStage}）`, 'dim');
+
+  if (s.pot.stage >= C.doneStage) {
+    const got = new Map();
+    for (const m of s.pot.markers) {
+      const p = s.players[m.seat];
+      s.discard.push(m.card);
+      if (!p.alive) continue;
+      p.hand.push({ id: s.nextId++, type: 'soup' });
+      got.set(p, (got.get(p) || 0) + 1);
+    }
+    if (got.size) log(s, '鍋が完成した！ ' + [...got].map(([p, k]) => `${p.name} にスープ ${k}杯`).join('、'), 'pot');
+    else log(s, '鍋が完成したが、具材が入っておらず何も得られなかった', 'pot');
+    s.pot = null;
+  }
+  return true;
+}
+
+/** 次のラウンドへ。夜明けなら false。 */
+function nextRound(s) {
+  if (s.round >= s.rounds) {
+    s.over = true;
+    s.endReason = 'dawn';
+    log(s, '夜が明けた', 'dawn');
+    return false;
+  }
+  s.round++;
+  s.startSeat = nextAliveSeat(s, s.startSeat);
+  log(s, `ラウンド ${s.round} / ${s.rounds}（スタート：${s.players[s.startSeat].name}）`, 'round');
+  return true;
+}
+
+/** 順位（生存者は体温順・同点は同順位、凍死者は凍死が遅い順に下位）。 */
+function ranking(s) {
+  const alive = s.players.filter(p => p.alive).sort((a, b) => b.temp - a.temp || a.seat - b.seat);
+  const dead = s.players.filter(p => !p.alive).sort((a, b) => b.deathOrder - a.deathOrder);
+  const rows = [];
+  alive.forEach((p, i) => {
+    const rank = i > 0 && alive[i - 1].temp === p.temp ? rows[i - 1].rank : i + 1;
+    rows.push({ p, rank });
+  });
+  dead.forEach((p, i) => rows.push({ p, rank: alive.length + i + 1 }));
+  for (const r of rows) r.win = r.rank === 1;
+  return rows;
+}
+
+/* ================================================================
+ * CPU の思考
+ * ================================================================ */
+function chooseFuel(s, fuels) {
+  if (s.fire === 0) return fuels.find(c => c.type === 'leaf') || fuels[0];
+  const T = CONFIG.ai.targetFire;
+  const score = c => {
+    const d = CONFIG.cards[c.type];
+    return [Math.abs(Math.min(CONFIG.fire.max, s.fire + d.power) - T), d.power, d.smolder ? 0 : 1];
+  };
+  return fuels.slice().sort((a, b) => {
+    const x = score(a), y = score(b);
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  })[0];
+}
+
+function cpuChoose(s, seat) {
+  const p = s.players[seat];
+  const A = CONFIG.ai;
+  const la = legalActions(s, seat);
+  const stoke = () => ({ type: 'stoke', cardId: chooseFuel(s, la.stoke).id });
+  const canFuel = la.stoke.length > 0;
+
+  // 1. このままだと火が消える
+  if (s.smolder === 0 && s.fire <= CONFIG.decay && canFuel) return stoke();
+  // 2. 体温が低ければスープ
+  if (la.drink && p.temp <= A.soupTemp) return { type: 'drink' };
+  // 3. 体温が危険なら暖まる
+  if (p.temp <= A.dangerTemp && s.fire >= 1) return { type: 'warm' };
+  // 4. 鍋を始める
+  if (la.startPot && s.rng() < A.potChance) return { type: 'startPot' };
+  // 5. 鍋に入れる
+  if (la.addPot && s.rng() < A.potChance) return { type: 'addPot', cardId: la.addPot.id };
+  // 6. 火の番（協力度の確率で）
+  const mine = s.pot && s.pot.markers.some(m => m.seat === seat);
+  if ((s.fire <= aliveSeats(s).length || (mine && s.fire <= A.potFireWatch)) && canFuel && s.rng() < p.coop) return stoke();
+  // 7. 燃料が乏しければ薪拾い
+  if (p.hand.filter(isFuel).length <= A.gatherFuelMax && p.temp >= A.gatherMinTemp) return { type: 'gather' };
+  // 8. それ以外
+  if (la.drink && p.temp <= A.idleSoupTemp && s.fire <= A.idleSoupFire) return { type: 'drink' };
+  if (p.temp < CONFIG.temp.max && s.fire >= 1) return { type: 'warm' };
+  if (canFuel) return stoke();
+  return { type: 'gather' };
+}
+
+/* ================================================================
+ * 画面
+ * ================================================================ */
+const $ = id => document.getElementById(id);
+const ABORT = Symbol('abort');
+
+const ui = {
+  players: 4,
+  speed: 'normal',
+  seedParam: (() => {
+    const v = new URLSearchParams(location.search).get('seed');
+    return v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) >>> 0 : null;
+  })(),
+  gen: 0,
+  ff: false,           // 早送り（あなたが凍死した後）
+  human: null,         // { resolve, reject }
+  selected: null,      // 選択中のカードID
+  pickStoke: false,    // くべる燃料を選ぶモード
+  hint: '',
+  prev: null,          // 直前の描画（演出の差分検出用）
+  logShown: 0,
+  seatEls: [],
+};
+let S = null;
+
+function speedMs() { return CONFIG.speeds[ui.speed]; }
+function wait(ms) {
+  const g = ui.gen;
+  return new Promise((res, rej) => setTimeout(() => (g === ui.gen ? res() : rej(ABORT)), ui.ff ? 0 : ms));
+}
+function showScreen(name) {
+  for (const k of ['start', 'game', 'result']) $('screen-' + k).hidden = k !== name;
+  window.scrollTo(0, 0);
+}
+
+/* ---------- カードの図形 ---------- */
+function cardIcon(type) {
+  const F = '#ff7a1a', F2 = '#ffb347', C = '#7fb8ff', T = '#f2efe6', A = '#a08a74';
+  const body = {
+    leaf: `<polygon points="20,9 31,29 9,29" fill="${F2}"/>`,
+    twig: `<line x1="9" y1="30" x2="25" y2="8" stroke="${A}" stroke-width="2.5"/><line x1="16" y1="32" x2="32" y2="10" stroke="${A}" stroke-width="2.5"/>`,
+    log: `<rect x="5" y="14" width="30" height="12" fill="${A}"/>`,
+    wet: `<rect x="5" y="16" width="30" height="12" fill="${A}" opacity=".7"/><circle cx="29" cy="9" r="4" fill="${C}"/>`,
+    snow: `<polygon points="20,7 31.3,13.5 31.3,26.5 20,33 8.7,26.5 8.7,13.5" fill="none" stroke="${C}" stroke-width="2.5"/>`,
+    food: `<circle cx="20" cy="20" r="10" fill="${T}"/>`,
+    soup: `<path d="M6,20 A14,14 0 0 0 34,20 Z" fill="${F2}"/><line x1="14" y1="7" x2="14" y2="15" stroke="${T}" stroke-width="2"/><line x1="20" y1="5" x2="20" y2="15" stroke="${T}" stroke-width="2"/><line x1="26" y1="7" x2="26" y2="15" stroke="${T}" stroke-width="2"/>`,
+  }[type];
+  return `<svg viewBox="0 0 40 40" aria-hidden="true">${body}</svg>`;
+}
+function cardEffect(type) {
+  const d = CONFIG.cards[type];
+  if (d.kind === 'fuel') {
+    const cond = d.minFire === 0 ? 'いつでも' : `火力${d.minFire}以上`;
+    return `+${d.power}${d.smolder ? ' くすぶり' : ''}<br>${cond}`;
+  }
+  if (type === 'snow') return '鍋を始める';
+  if (type === 'food') return '鍋に入れる';
+  return `体温+${CONFIG.soupHeal}`;
+}
+
+/* ---------- 焚き火と鍋（SVG） ---------- */
+function hearthSVG(anim) {
+  const f = S.fire;
+  const cx = 78, base = 104;
+  let flames = '';
+  if (f === 0) {
+    flames = `<circle cx="${cx}" cy="${base - 6}" r="6" fill="#5b6478"/>`;
+  } else {
+    const H = 18 + f * 7;
+    const spread = Math.min(8, 48 / f);
+    const back = [], front = [];
+    for (let j = 0; j < f; j++) {
+      const off = (j - (f - 1) / 2) * spread;
+      const h = H * (1 - 0.5 * Math.abs(off) / 40);
+      const w = 16 + f * 1.4;
+      back.push(`<polygon points="${cx + off - w / 2},${base} ${cx + off},${base - h} ${cx + off + w / 2},${base}" fill="#ff7a1a" opacity=".55"/>`);
+    }
+    const k = Math.ceil(f / 2);
+    for (let j = 0; j < k; j++) {
+      const off = (j - (k - 1) / 2) * spread * 1.1;
+      const h = H * 0.58 * (1 - 0.5 * Math.abs(off) / 40);
+      const w = 10 + f;
+      front.push(`<polygon points="${cx + off - w / 2},${base} ${cx + off},${base - h} ${cx + off + w / 2},${base}" fill="#ffb347" opacity=".95"/>`);
+    }
+    flames = back.join('') + front.join('');
+  }
+  const flameCls = anim ? `flames ${anim}` : 'flames';
+  const logs = `<line x1="${cx - 30}" y1="${base + 6}" x2="${cx + 30}" y2="${base}" stroke="#5b6478" stroke-width="5"/>
+    <line x1="${cx - 30}" y1="${base}" x2="${cx + 30}" y2="${base + 6}" stroke="#5b6478" stroke-width="5"/>`;
+  let smolder = '';
+  for (let i = 0; i < S.smolder; i++) {
+    smolder += `<circle cx="${cx + 34 + i * 8}" cy="${base - 4}" r="3" fill="none" stroke="#7fb8ff" stroke-width="1.5"/>`;
+  }
+  const fireText = `<text x="${cx}" y="${base + 30}" text-anchor="middle" fill="#f2efe6" font-size="15" font-weight="700">火力 ${f}</text>` +
+    (S.smolder ? `<text x="${cx}" y="${base + 45}" text-anchor="middle" fill="#7fb8ff" font-size="10">くすぶり ${S.smolder}</text>` : '');
+
+  // 鍋
+  const px = 162, py = 82, r = 28;
+  let pot;
+  if (S.pot) {
+    const C = CONFIG.stew.doneStage;
+    let marks = '';
+    const ms = S.pot.markers;
+    ms.forEach((m, i) => {
+      const row = Math.floor(i / 5), col = i % 5, inRow = Math.min(5, ms.length - row * 5);
+      const mx = px + (col - (inRow - 1) / 2) * 10;
+      const my = py + 7 + row * 9;
+      marks += `<circle cx="${mx}" cy="${my}" r="4" fill="${S.players[m.seat].color}" stroke="#0f1626" stroke-width="1"/>`;
+    });
+    let prog = '';
+    for (let i = 0; i < C; i++) {
+      prog += `<rect x="${px - (C * 12 - 4) / 2 + i * 12}" y="${py + r + 8}" width="8" height="8" fill="${i < S.pot.stage ? '#ffb347' : 'none'}" stroke="#ffb347" stroke-width="1"/>`;
+    }
+    pot = `<path d="M${px - r},${py} A${r},${r} 0 0 0 ${px + r},${py} Z" fill="#1c2740" stroke="#f2efe6" stroke-width="1.5"/>
+      <line x1="${px - r - 5}" y1="${py}" x2="${px + r + 5}" y2="${py}" stroke="#f2efe6" stroke-width="1.5"/>
+      ${marks}${prog}
+      <text x="${px}" y="${py + r + 30}" text-anchor="middle" fill="#f2efe6" font-size="10">煮込み ${S.pot.stage}/${C}</text>`;
+  } else {
+    pot = `<path d="M${px - r},${py} A${r},${r} 0 0 0 ${px + r},${py} Z" fill="none" stroke="#5d6782" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="${px}" y="${py + r + 18}" text-anchor="middle" fill="#5d6782" font-size="10">鍋なし</text>`;
+  }
+  return `<svg viewBox="28 6 170 154" role="img" aria-label="焚き火 火力${f}${S.pot ? '、鍋 煮込み' + S.pot.stage : ''}">
+    ${logs}<g class="${flameCls}">${flames}</g>${smolder}${fireText}${pot}</svg>`;
+}
+
+/* ---------- 席 ---------- */
+function buildSeats() {
+  const table = $('table');
+  ui.seatEls.forEach(el => el.remove());
+  ui.seatEls = [];
+  for (let seat = 0; seat < S.n; seat++) {
+    const el = document.createElement('div');
+    el.className = 'seat';
+    const ang = (90 + seat * 360 / S.n) * Math.PI / 180;
+    el.style.left = (50 + 36 * Math.cos(ang)) + '%';
+    el.style.top = (50 + 39 * Math.sin(ang)) + '%';
+    table.appendChild(el);
+    ui.seatEls.push(el);
+  }
+}
+function retrigger(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+/* ---------- 描画 ---------- */
+function render() {
+  if (!S) return;
+  const prev = ui.prev;
+
+  // 情報バー
+  $('info-round').textContent = `${S.round} / ${S.rounds}`;
+  $('info-chill').innerHTML = CONFIG.chill.map(ch => {
+    const k = S.chillDeck.filter(x => x === ch).length;
+    return `<span><i class="${ch.id}"></i>${ch.name} ${k}</span>`;
+  }).join('');
+  $('info-deck').textContent = S.deck.length;
+  $('info-discard').textContent = `捨て札 ${S.discard.length}`;
+
+  // 焚き火
+  const newlyDead = prev ? S.players.filter(p => !p.alive && prev.alive[p.seat]) : [];
+  let anim = '';
+  if (prev && S.fire !== prev.fire) anim = newlyDead.length && S.fire > prev.fire ? 'burst' : S.fire > prev.fire ? 'up' : 'down';
+  $('hearth').innerHTML = hearthSVG(anim);
+
+  // 席
+  for (const p of S.players) {
+    const el = ui.seatEls[p.seat];
+    let bar = '';
+    for (let i = 1; i <= CONFIG.temp.max; i++) bar += `<i class="${i <= p.temp ? 'on' : ''}"></i>`;
+    el.innerHTML = `
+      <div class="head"><i class="dot" style="background:${p.color}"></i><span class="nm">${p.name}</span></div>
+      <div class="temp"><div class="tbar" aria-hidden="true">${bar}</div><span class="tnum" aria-label="体温">${p.temp}</span></div>
+      <div class="sub"><span>手札 ${p.hand.length}</span>${!p.alive ? '<span>凍死</span>' : S.startSeat === p.seat && !S.over ? '<span class="badge">スタート</span>' : ''}</div>`;
+    el.classList.toggle('active', S.turnSeat === p.seat && p.alive);
+    el.classList.toggle('dead', !p.alive);
+    el.classList.toggle('cold', p.alive && p.temp <= CONFIG.ai.dangerTemp);
+    if (prev) {
+      if (!p.alive && prev.alive[p.seat]) retrigger(el, 'flash');
+      else if (p.temp < prev.temps[p.seat]) retrigger(el, 'hit-cold');
+      else if (p.temp > prev.temps[p.seat]) retrigger(el, 'hit-warm');
+    }
+  }
+
+  renderStatus();
+  renderHand();
+  renderLog();
+
+  ui.prev = { fire: S.fire, temps: S.players.map(p => p.temp), alive: S.players.map(p => p.alive) };
+}
+
+function renderStatus() {
+  const me = S.players[0];
+  const st = $('status');
+  if (S.over) { st.textContent = S.endReason === 'dawn' ? '夜が明けた。' : '焚き火は静かに燃えている…'; return; }
+  if (S.turnSeat < 0) { st.textContent = 'ラウンド終了'; return; }
+  const p = S.players[S.turnSeat];
+  if (p.isHuman) {
+    st.innerHTML = ui.pickStoke ? '<span class="you">くべる燃料を選んでください</span>' : '<span class="you">あなたの番です。</span>行動を1つ選んでください。';
+  } else {
+    st.textContent = `${p.name} が考えている…`;
+  }
+  if (!me.alive && !ui.ff) {
+    st.innerHTML += ' <button type="button" id="btn-ff" style="margin-left:8px;padding:4px 10px;font-size:12px">結果まで早送り</button>';
+    $('btn-ff').onclick = () => { ui.ff = true; render(); };
+  }
+}
+
+function renderHand() {
+  const me = S.players[0];
+  const myTurn = !!ui.human && S.turnSeat === 0 && me.alive;
+  const la = legalActions(S, 0);
+  const hand = $('hand');
+  $('hand-count').textContent = me.alive ? `${me.hand.length}枚` : '';
+
+  if (!me.alive) {
+    hand.innerHTML = '<span class="empty">あなたは凍死した。夜明けまで見届けよう。</span>';
+  } else if (!me.hand.length) {
+    hand.innerHTML = '<span class="empty">手札はありません</span>';
+  } else {
+    const order = t => CONFIG.handOrder.indexOf(t);
+    const cards = me.hand.slice().sort((a, b) => order(a.type) - order(b.type) || a.id - b.id);
+    hand.innerHTML = '';
+    for (const c of cards) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'card';
+      const fuel = isFuel(c);
+      if (fuel && !canStoke(S, c)) b.classList.add('unplayable');
+      if (ui.selected === c.id) b.classList.add('selected');
+      if (myTurn && ui.pickStoke && fuel && canStoke(S, c)) b.classList.add('pickable');
+      b.disabled = !myTurn;
+      b.innerHTML = `${cardIcon(c.type)}<span class="cn">${cardName(c)}</span><span class="ce">${cardEffect(c.type)}</span>`;
+      b.title = `${cardName(c)}：${cardEffect(c.type).replace('<br>', '／')}`;
+      b.onclick = () => onCardClick(c);
+      hand.appendChild(b);
+    }
+  }
+
+  // 行動ボタン
+  const sel = ui.selected != null ? me.hand.find(c => c.id === ui.selected) : null;
+  const selAct = sel ? actionForCard(sel) : null;
+  const defs = [
+    { id: 'stoke', label: 'くべる', ok: la.stoke.length > 0 },
+    { id: 'warm', label: '暖まる', n: la.warm ? `+${la.warm}` : '', ok: la.warm > 0 },
+    { id: 'gather', label: '薪拾い', n: `−${CONFIG.gather.cost}`, ok: true },
+    { id: 'startPot', label: '鍋を始める', ok: !!la.startPot },
+    { id: 'addPot', label: '鍋に入れる', ok: !!la.addPot },
+    { id: 'drink', label: 'スープを飲む', n: `+${CONFIG.soupHeal}`, ok: !!la.drink },
+  ];
+  const box = $('actions');
+  box.innerHTML = '';
+  for (const d of defs) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = d.id === 'warm' ? 'warm' : d.id === 'drink' ? 'drink' : d.id === 'gather' ? 'gather' : '';
+    if (selAct === d.id && d.ok) b.classList.add('suggest');
+    b.innerHTML = d.label + (d.n ? `<span class="n">${d.n}</span>` : '');
+    b.disabled = !myTurn || !d.ok;
+    b.onclick = () => onActionClick(d.id);
+    box.appendChild(b);
+  }
+  $('hint').textContent = myTurn ? (ui.hint || 'カードを選ぶとできる行動が光ります（もう一度押すと実行）') : '';
+}
+
+function renderLog() {
+  const ol = $('log');
+  if (ui.logShown > S.log.length) { ol.innerHTML = ''; ui.logShown = 0; }
+  for (; ui.logShown < S.log.length; ui.logShown++) {
+    const e = S.log[ui.logShown];
+    const li = document.createElement('li');
+    li.textContent = e.text;
+    if (e.cls) li.className = e.cls;
+    ol.appendChild(li);
+  }
+  ol.scrollTop = ol.scrollHeight;
+}
+
+/* ---------- あなたの操作 ---------- */
+function actionForCard(c) {
+  if (isFuel(c)) return 'stoke';
+  return { snow: 'startPot', food: 'addPot', soup: 'drink' }[c.type];
+}
+function cardActionLegal(c) {
+  const la = legalActions(S, 0);
+  switch (actionForCard(c)) {
+    case 'stoke': return canStoke(S, c) ? '' : `火力${CONFIG.cards[c.type].minFire}以上でないとくべられません`;
+    case 'startPot': return la.startPot ? '' : 'すでに鍋が置かれています';
+    case 'addPot': return la.addPot ? '' : '鍋が置かれていません';
+    case 'drink': return '';
+  }
+  return '';
+}
+function submitHuman(action) {
+  if (!ui.human) return;
+  const h = ui.human;
+  ui.human = null;
+  ui.selected = null;
+  ui.pickStoke = false;
+  ui.hint = '';
+  h.resolve(action);
+}
+function cardToAction(c) {
+  const t = actionForCard(c);
+  return t === 'stoke' || t === 'addPot' ? { type: t, cardId: c.id } : { type: t };
+}
+function onCardClick(c) {
+  if (!ui.human) return;
+  const why = cardActionLegal(c);
+  if (ui.pickStoke) {
+    if (isFuel(c) && !why) return submitHuman(cardToAction(c));
+    ui.hint = 'くべられる燃料を選んでください';
+    return render();
+  }
+  if (ui.selected === c.id) {
+    if (!why) return submitHuman(cardToAction(c));
+    ui.hint = why;
+    return render();
+  }
+  ui.selected = c.id;
+  ui.hint = why || `${cardName(c)}：もう一度押すか、光っているボタンで実行`;
+  render();
+}
+function onActionClick(id) {
+  if (!ui.human) return;
+  const me = S.players[0];
+  const la = legalActions(S, 0);
+  if (id === 'stoke') {
+    const sel = me.hand.find(c => c.id === ui.selected);
+    if (sel && isFuel(sel) && canStoke(S, sel)) return submitHuman({ type: 'stoke', cardId: sel.id });
+    const types = [...new Set(la.stoke.map(c => c.type))];
+    if (types.length === 1) return submitHuman({ type: 'stoke', cardId: la.stoke[0].id });
+    ui.pickStoke = true;
+    ui.selected = null;
+    ui.hint = '';
+    return render();
+  }
+  if (id === 'addPot') {
+    const sel = me.hand.find(c => c.id === ui.selected && c.type === 'food');
+    return submitHuman({ type: 'addPot', cardId: (sel || la.addPot).id });
+  }
+  submitHuman({ type: id });
+}
+function awaitHuman() {
+  return new Promise((resolve, reject) => {
+    ui.human = { resolve, reject };
+    ui.selected = null;
+    ui.pickStoke = false;
+    ui.hint = '';
+    render();
+  });
+}
+
+/* ---------- 冷え込みの演出 ---------- */
+async function showChill(info) {
+  const el = $('chill-card');
+  const { card, radiant, value } = info;
+  el.innerHTML = `<div class="face">
+    <div class="lbl">冷え込み</div>
+    <div class="name">${card.name}</div>
+    <div class="val">${radiant ? `<s>−${card.value}</s>` : ''}体温 −${value}</div>
+    ${radiant ? `<div class="note">輻射熱で ${CONFIG.radiant.reduce} 軽減</div>` : ''}
+  </div>`;
+  el.hidden = false;
+  try {
+    await wait(Math.max(1000, speedMs() * 1.8));
+  } finally {
+    el.hidden = true;
+  }
+}
+
+/* ---------- 進行 ---------- */
+async function playGame() {
+  render();
+  await wait(500);
+  for (;;) {
+    for (let i = 0; i < S.n && !S.over; i++) {
+      const seat = (S.startSeat + i) % S.n;
+      const p = S.players[seat];
+      if (!p.alive) continue;
+      S.turnSeat = seat;
+      render();
+      let action;
+      if (p.isHuman) {
+        action = await awaitHuman();
+      } else {
+        await wait(speedMs());
+        action = cpuChoose(S, seat);
+      }
+      doAction(S, seat, action);
+      render();
+      if (S.over) break;
+      if (p.alive) {
+        await wait(Math.max(250, speedMs() * 0.5));
+        endTurn(S, seat);
+        render();
+      }
+      if (!S.over) await wait(p.isHuman ? 300 : speedMs() * 0.3);
+    }
+    S.turnSeat = -1;
+    if (S.over) break;
+
+    // ラウンド終了処理
+    render();
+    const info = revealChill(S);
+    await showChill(info);
+    applyChill(S, info);
+    render();
+    await wait(900);
+    if (S.over) break;
+    if (stew(S)) { render(); await wait(600); }
+    if (!nextRound(S)) break;
+    render();
+    await wait(500);
+  }
+  render();
+  await wait(1200);
+  showResult();
+}
+
+function startGame() {
+  ui.gen++;
+  if (ui.human) { ui.human.reject(ABORT); ui.human = null; }
+  const seed = ui.seedParam != null ? ui.seedParam : (Math.random() * 2 ** 32) >>> 0;
+  ui.seedParam = null; // URL指定のシードは最初の1回だけ
+  S = createGame(ui.players, seed);
+  console.info('[焚き火の夜] seed =', seed);
+  ui.ff = false;
+  ui.prev = null;
+  ui.logShown = 0;
+  $('log').innerHTML = '';
+  $('chill-card').hidden = true;
+  $('speed-in-game').value = ui.speed;
+  buildSeats();
+  showScreen('game');
+  playGame().catch(e => { if (e !== ABORT) throw e; });
+}
+
+function quitGame() {
+  ui.gen++;
+  if (ui.human) { ui.human.reject(ABORT); ui.human = null; }
+  S = null;
+  showScreen('start');
+}
+
+/* ---------- 結果 ---------- */
+function showResult() {
+  const rows = ranking(S);
+  const winners = rows.filter(r => r.win).map(r => r.p);
+  const youWin = winners.some(p => p.isHuman);
+  $('result-title').textContent = youWin
+    ? (winners.length > 1 ? 'あなたも勝利（同時勝利）' : 'あなたの勝ち')
+    : winners.map(p => p.name).join('・') + (winners.length > 1 ? ' の同時勝利' : ' の勝ち');
+  $('result-lead').textContent = S.endReason === 'dawn'
+    ? (aliveSeats(S).length ? '夜が明けた。いちばん暖かく朝を迎えた者が勝つ。' : '')
+    : '夜明けを待たず、全員が凍えてしまった。最後まで耐えた者の勝ち。';
+  $('result-body').innerHTML = rows.map(({ p, rank, win }) => `
+    <tr class="${win ? 'win' : ''}">
+      <td class="r">${rank}</td>
+      <td><i class="dot" style="background:${p.color}"></i>${p.name}</td>
+      <td>${p.personality ? p.personality.name : '—'}</td>
+      <td>${p.alive ? p.temp : `<span class="frozen">凍死（R${p.deathRound}）</span>`}</td>
+    </tr>`).join('');
+  showScreen('result');
+}
+
+/* ---------- 開始画面 ---------- */
+function setupSeg(id, key) {
+  const box = $(id);
+  const sync = () => box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === String(ui[key]))));
+  box.querySelectorAll('button').forEach(b => {
+    b.onclick = () => { ui[key] = key === 'players' ? Number(b.dataset.v) : b.dataset.v; sync(); };
+  });
+  sync();
+}
+function rulesHTML() {
+  const C = CONFIG;
+  const fuels = ['leaf', 'twig', 'log', 'wet'].map(t => {
+    const d = C.cards[t];
+    return `<li>${d.name}（${d.count}枚）：火力+${d.power}${d.minFire ? `、火力${d.minFire}以上のとき` : '、火力0でもくべられる'}${d.smolder ? '。次の火力減少を1回防ぐ（くすぶり）' : ''}</li>`;
+  }).join('');
+  return `
+    <h3>目的</h3>
+    <p>${Object.entries(C.roundsByPlayers).map(([n, r]) => `${n}人なら${r}`).join('・')}ラウンド後の夜明けに、生き残った中で<strong>体温がいちばん高い人</strong>の勝ち。体温（0〜${C.temp.max}、初期${C.temp.init}）が0になると凍死して脱落。全員が凍死したら最後に凍死した人の勝ち。</p>
+    <h3>手番：次から1つだけ</h3>
+    <ul>
+      <li><b>くべる</b>：燃料を1枚くべて火力を上げる。くべた人は体温+${C.stokeWarmth}</li>
+      <li><b>暖まる</b>：火力1〜3で体温+1、4〜7で+2、8〜10で+3</li>
+      <li><b>薪拾い</b>：山札から${C.gather.draw}枚引く。体温−${C.gather.cost}</li>
+      <li><b>鍋を始める</b>：雪を使って鍋を置く</li>
+      <li><b>鍋に入れる</b>：具材を鍋に入れ、取り分を1つ得る</li>
+      <li><b>スープを飲む</b>：体温+${C.soupHeal}</li>
+    </ul>
+    <p>手番の終わりに<strong>火力−${C.decay}</strong>。そのとき火力が0なら、手番の人は「火を消した」として<strong>体温−${C.outPenalty}</strong>。</p>
+    <h3>ラウンドの終わり</h3>
+    <ul>
+      <li><b>冷え込み</b>：カードをめくり全員の体温が下がる（普通の夜−1／冷える夜−2／吹雪−3）。火力${C.radiant.minFire}以上なら輻射熱で1軽減</li>
+      <li><b>煮込み</b>：鍋があれば、火力${C.stew.upMinFire}以上で+1、火力0で−1。${C.stew.doneStage}に達すると完成し、入れた具材1つにつきスープ1枚が手札に入る</li>
+    </ul>
+    <h3>燃料</h3>
+    <ul>${fuels}</ul>
+    <h3>凍死したら</h3>
+    <p>遺品を燃やして火力+${C.relicFire}。手札は次の席から時計回りに生存者へ1枚ずつ配られ、鍋の取り分は取り除かれる。</p>
+    <h3>CPU</h3>
+    <p>CPUは「協力型」か「自己中型」のどちらか。性格は結果画面で明かされる。</p>`;
+}
+
+setupSeg('opt-players', 'players');
+setupSeg('opt-speed', 'speed');
+$('rules-body').innerHTML = rulesHTML();
+$('btn-start').onclick = startGame;
+$('btn-again').onclick = startGame;
+$('btn-title').onclick = () => showScreen('start');
+$('btn-quit').onclick = () => { if (!S || S.over || confirm('このゲームをやめてタイトルに戻りますか？')) quitGame(); };
+$('speed-in-game').onchange = e => { ui.speed = e.target.value; setupSeg('opt-speed', 'speed'); };
+
+// デバッグ・シミュレーション用
+window.campfire = { CONFIG, createGame, legalActions, doAction, endTurn, revealChill, applyChill, stew, nextRound, ranking, cpuChoose, state: () => S };
+</script>
+</body>
+</html>
