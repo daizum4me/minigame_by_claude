@@ -219,14 +219,47 @@ button.card.unplayable:disabled { opacity: .38; }
 .seat .pts { margin-left: auto; flex: none; color: var(--muted); font-size: 11px; font-weight: 400; }
 .log li.night { color: var(--fire-2); font-weight: 700; letter-spacing: .1em; }
 .rank th.n, .rank td.n { text-align: right; }
+.rank th { white-space: nowrap; }
+.rank td.pl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9em; }
+.rank small { display: block; font-size: 10px; color: var(--muted); }
 .rank td.total { font-weight: 700; }
 .result .note { margin: -6px 0 0; font-size: 12px; color: var(--muted); text-align: center; min-height: 1em; }
 .chill-card .ico { display: block; width: 48px; height: 48px; margin: 2px auto 0; }
 .sound-btn[aria-pressed="false"] { color: var(--muted); }
 
+/* ---------- オンライン ---------- */
+input {
+  font: inherit; font-size: 15px; color: var(--text); width: 100%;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 12px;
+}
+input:focus-visible { outline: 2px solid var(--fire-2); outline-offset: 1px; }
+.online { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.online h2 { margin: 0; font-size: 14px; color: var(--fire-2); letter-spacing: .1em; }
+.online-lead { margin: -6px 0 0; font-size: 12px; color: var(--muted); }
+.join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+#join-code { text-transform: uppercase; letter-spacing: .3em; font-weight: 700; }
+.online-msg { margin: 0; min-height: 1.2em; font-size: 13px; color: var(--cold); }
+.lobby-title { font-size: 22px !important; }
+.codebox { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; border: 1px solid var(--fire); border-radius: var(--radius); background: var(--panel); }
+.codebox .k { font-size: 12px; color: var(--muted); }
+.codebox .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 36px; font-weight: 700; letter-spacing: .25em; color: var(--fire-2); padding-left: .25em; }
+.codebox .copy { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.codebox .copy button { font-size: 12px; padding: 5px 10px; }
+.members { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.members li { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.members li:last-child { border-bottom: 0; }
+.members li.cpu { color: var(--muted); }
+.members .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.members .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); padding: 1px 6px; border-radius: 2px; }
+.members .tag:first-of-type { margin-left: auto; }
+.members .tag.you { color: var(--fire-2); border-color: var(--fire-2); }
+.lobby-settings { display: flex; flex-direction: column; gap: 14px; }
+.seat .away { color: var(--cold); }
+
 @media (max-width: 420px) {
   .rank { font-size: 13px; }
   .rank th, .rank td { padding-left: 4px; padding-right: 4px; }
+  .rank td.pl { max-width: 6.5em; }
   .seat { padding: 4px 5px; font-size: 11px; }
   .tbar { height: 8px; }
   .tnum { font-size: 12px; }
@@ -285,11 +318,68 @@ button.card.unplayable:disabled { opacity: .38; }
     <span>効果音</span>
     <button type="button" class="sound-btn" id="sound-start"></button>
   </div>
-  <button type="button" id="btn-start" class="primary">はじめる</button>
+  <button type="button" id="btn-start" class="primary">CPUと遊ぶ</button>
+  <div class="online">
+    <h2>オンライン対戦</h2>
+    <p class="online-lead">部屋を作ってコードを伝えるか、教えてもらったコードで入る。人数・夜の数は部屋で決める。</p>
+    <div class="field">
+      <span>あなたの名前</span>
+      <input id="online-name" maxlength="8" autocomplete="nickname" placeholder="旅人">
+    </div>
+    <button type="button" id="btn-create">部屋を作る</button>
+    <div class="join">
+      <input id="join-code" maxlength="5" placeholder="部屋コード" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="部屋コード">
+      <button type="button" id="btn-join">コードで入る</button>
+    </div>
+    <p class="online-msg" id="online-msg" aria-live="polite"></p>
+  </div>
   <details class="rules">
     <summary>ルール説明</summary>
     <div class="rules-body" id="rules-body"></div>
   </details>
+</section>
+
+<!-- 部屋（ロビー） -->
+<section id="screen-lobby" class="start" hidden>
+  <h1 class="lobby-title">部屋</h1>
+  <div class="codebox">
+    <span class="k">部屋コード</span>
+    <span class="code" id="room-code"></span>
+    <div class="copy">
+      <button type="button" id="btn-copy-code">コードをコピー</button>
+      <button type="button" id="btn-copy-link">招待リンクをコピー</button>
+    </div>
+  </div>
+  <p class="lead" id="lobby-msg" aria-live="polite"></p>
+  <ul class="members" id="lobby-members"></ul>
+  <div id="lobby-settings" class="lobby-settings">
+    <div class="field">
+      <span>人数（空いた席はCPU）</span>
+      <div class="seg" id="lobby-players" role="group" aria-label="人数">
+        <button type="button" data-v="3">3人</button>
+        <button type="button" data-v="4">4人</button>
+        <button type="button" data-v="5">5人</button>
+      </div>
+    </div>
+    <div class="field">
+      <span>夜の数</span>
+      <div class="seg" id="lobby-nights" role="group" aria-label="夜の数">
+        <button type="button" data-v="1">1夜</button>
+        <button type="button" data-v="3">3夜</button>
+      </div>
+    </div>
+    <div class="field">
+      <span>CPUの速さ</span>
+      <div class="seg" id="lobby-speed" role="group" aria-label="CPUの速さ">
+        <button type="button" data-v="fast">速い</button>
+        <button type="button" data-v="normal">普通</button>
+        <button type="button" data-v="slow">遅い</button>
+      </div>
+    </div>
+  </div>
+  <p class="lead" id="lobby-summary"></p>
+  <button type="button" id="btn-lobby-start" class="primary">はじめる</button>
+  <button type="button" id="btn-lobby-leave">退出</button>
 </section>
 
 <!-- ゲーム画面 -->
@@ -447,9 +537,13 @@ function nextAliveSeat(s, from) {
   }
   return -1;
 }
-function log(s, text, cls = '') { s.log.push({ text, cls }); }
+/** to を指定すると、その席の人にだけ見えるログになる */
+function log(s, text, cls = '', to) { s.log.push(to === undefined ? { text, cls } : { text, cls, to }); }
 
-/** opts.personalities: 席ごとの性格（3夜制で夜をまたいで固定するため）。省略時はランダム。 */
+/**
+ * opts.seats: 席ごとの人間プレイヤー { name, away? }（null はCPU）。省略時は席0だけが「あなた」。
+ * opts.personalities: 席ごとの性格（3夜制で夜をまたいで固定するため）。省略時はランダム。
+ */
 function createGame(numPlayers, seed, opts = {}) {
   const rng = mulberry32(seed);
   const s = {
@@ -473,12 +567,14 @@ function createGame(numPlayers, seed, opts = {}) {
   shuffle(s.chillDeck, rng);
 
   for (let seat = 0; seat < numPlayers; seat++) {
-    const human = seat === 0;
-    const pers = human ? null
+    const def = opts.seats ? opts.seats[seat] : seat === 0 ? { name: 'あなた' } : null;
+    const human = !!def;
+    const away = !!(def && def.away); // 切断した人の席（CPUが代わりに行動する）
+    const pers = human && !away ? null
       : opts.personalities ? opts.personalities[seat]
       : CONFIG.personalities[Math.floor(rng() * CONFIG.personalities.length)];
     s.players.push({
-      seat, isHuman: human, name: human ? 'あなた' : `CPU${seat}`,
+      seat, isHuman: human, away, name: human ? def.name : `CPU${seat}`,
       color: CONFIG.colors[seat], personality: pers, coop: pers ? pers.coop : 0,
       temp: CONFIG.temp.init, hand: [], alive: true, deathOrder: 0, deathRound: 0,
     });
@@ -607,8 +703,8 @@ function doAction(s, seat, a) {
         const c = drawCard(s);
         if (c) { drawn.push(c); p.hand.push(c); }
       }
-      const what = p.isHuman && drawn.length ? '：' + drawn.map(cardName).join('・') : '';
-      log(s, `${p.name} が薪拾いに出た（${drawn.length}枚${what}／体温 ${t0}→${Math.max(0, t0 - CONFIG.gather.cost)}）`, 'cold');
+      log(s, `${p.name} が薪拾いに出た（${drawn.length}枚／体温 ${t0}→${Math.max(0, t0 - CONFIG.gather.cost)}）`, 'cold');
+      if (p.isHuman && drawn.length) log(s, `引いたカード：${drawn.map(cardName).join('・')}`, 'dim', seat);
       changeTemp(s, seat, -CONFIG.gather.cost);
       break;
     }
@@ -792,7 +888,11 @@ const ui = {
   })(),
   gen: 0,
   ff: false,           // 早送り（あなたが凍死した後）
-  human: null,         // { resolve, reject }
+  mySeat: 0,           // 自分の席（オンラインでは席ごとに違う）
+  human: null,         // { resolve, reject } 自分の入力待ち
+  remoteWait: null,    // { seat, resolve, reject } ホストが参加者の入力を待っている
+  sent: false,         // 参加者：行動を送信して結果待ち
+  chillTimer: 0,
   selected: null,      // 選択中のカードID
   pickStoke: false,    // くべる燃料を選ぶモード
   hint: '',
@@ -800,7 +900,9 @@ const ui = {
   logShown: 0,
   seatEls: [],
 };
-let S = null;
+let S = null;   // ルールエンジンの状態（ひとり用とホストだけが持つ）
+let V = null;   // 画面に描く状態（自分から見える情報だけ）
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function speedMs() { return CONFIG.speeds[ui.speed]; }
 function wait(ms) {
@@ -808,7 +910,7 @@ function wait(ms) {
   return new Promise((res, rej) => setTimeout(() => (g === ui.gen ? res() : rej(ABORT)), ui.ff ? 0 : ms));
 }
 function showScreen(name) {
-  for (const k of ['start', 'game', 'result']) $('screen-' + k).hidden = k !== name;
+  for (const k of ['start', 'lobby', 'game', 'result']) $('screen-' + k).hidden = k !== name;
   window.scrollTo(0, 0);
 }
 
@@ -1013,7 +1115,7 @@ function cardEffect(type) {
 
 /* ---------- 焚き火と鍋（SVG） ---------- */
 function hearthSVG(anim) {
-  const f = S.fire;
+  const f = V.fire;
   const cx = 78, base = 104;
   let flames = '';
   if (f === 0) {
@@ -1043,52 +1145,53 @@ function hearthSVG(anim) {
     <circle cx="${cx + 29}" cy="${base + 7}" r="3.5" fill="#dcae74"/><circle cx="${cx - 29}" cy="${base + 7}" r="3.5" fill="#dcae74"/>
     ${[-20, -8, 6, 18].map((d, i) => `<circle cx="${cx + d}" cy="${base + 10 + (i % 2)}" r="1.6" fill="#5b6478"/>`).join('')}`;
   let smolder = '';
-  for (let i = 0; i < S.smolder; i++) {
+  for (let i = 0; i < V.smolder; i++) {
     smolder += `<circle cx="${cx + 34 + i * 8}" cy="${base - 4}" r="3" fill="none" stroke="#7fb8ff" stroke-width="1.5"/>`;
   }
   const fireText = `<text x="${cx}" y="${base + 30}" text-anchor="middle" fill="#f2efe6" font-size="15" font-weight="700">火力 ${f}</text>` +
-    (S.smolder ? `<text x="${cx}" y="${base + 45}" text-anchor="middle" fill="#7fb8ff" font-size="10">くすぶり ${S.smolder}</text>` : '');
+    (V.smolder ? `<text x="${cx}" y="${base + 45}" text-anchor="middle" fill="#7fb8ff" font-size="10">くすぶり ${V.smolder}</text>` : '');
 
   // 鍋
   const px = 162, py = 82, r = 28;
   let pot;
-  if (S.pot) {
+  if (V.pot) {
     const C = CONFIG.stew.doneStage;
     let marks = '';
-    const ms = S.pot.markers;
+    const ms = V.pot.markers;
     ms.forEach((m, i) => {
       const row = Math.floor(i / 5), col = i % 5, inRow = Math.min(5, ms.length - row * 5);
       const mx = px + (col - (inRow - 1) / 2) * 10;
       const my = py + 7 + row * 9;
-      marks += `<circle cx="${mx}" cy="${my}" r="4" fill="${S.players[m.seat].color}" stroke="#0f1626" stroke-width="1"/>`;
+      marks += `<circle cx="${mx}" cy="${my}" r="4" fill="${V.players[m.seat].color}" stroke="#0f1626" stroke-width="1"/>`;
     });
     let prog = '';
     for (let i = 0; i < C; i++) {
-      prog += `<rect x="${px - (C * 12 - 4) / 2 + i * 12}" y="${py + r + 8}" width="8" height="8" fill="${i < S.pot.stage ? '#ffb347' : 'none'}" stroke="#ffb347" stroke-width="1"/>`;
+      prog += `<rect x="${px - (C * 12 - 4) / 2 + i * 12}" y="${py + r + 8}" width="8" height="8" fill="${i < V.pot.stage ? '#ffb347' : 'none'}" stroke="#ffb347" stroke-width="1"/>`;
     }
-    const steam = S.pot.stage > 0 ? `<path d="M${px - 9},${py - 4} c-3,-5 3,-7 0,-13 M${px},${py - 4} c-3,-6 3,-8 0,-15 M${px + 9},${py - 4} c-3,-5 3,-7 0,-13" stroke="#f2efe6" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".55"/>` : '';
+    const steam = V.pot.stage > 0 ? `<path d="M${px - 9},${py - 4} c-3,-5 3,-7 0,-13 M${px},${py - 4} c-3,-6 3,-8 0,-15 M${px + 9},${py - 4} c-3,-5 3,-7 0,-13" stroke="#f2efe6" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".55"/>` : '';
     pot = `${steam}<path d="M${px - r - 7},${py + 3} a4,4 0 0 1 7,-3 M${px + r + 7},${py + 3} a4,4 0 0 0 -7,-3" stroke="#f2efe6" stroke-width="1.5" fill="none"/>
       <path d="M${px - r},${py} A${r},${r} 0 0 0 ${px + r},${py} Z" fill="#1c2740" stroke="#f2efe6" stroke-width="1.5"/>
       <line x1="${px - r - 3}" y1="${py}" x2="${px + r + 3}" y2="${py}" stroke="#f2efe6" stroke-width="2"/>
       ${marks}${prog}
-      <text x="${px}" y="${py + r + 30}" text-anchor="middle" fill="#f2efe6" font-size="10">煮込み ${S.pot.stage}/${C}</text>`;
+      <text x="${px}" y="${py + r + 30}" text-anchor="middle" fill="#f2efe6" font-size="10">煮込み ${V.pot.stage}/${C}</text>`;
   } else {
     pot = `<path d="M${px - r},${py} A${r},${r} 0 0 0 ${px + r},${py} Z" fill="none" stroke="#5d6782" stroke-width="1" stroke-dasharray="3 3"/>
       <text x="${px}" y="${py + r + 18}" text-anchor="middle" fill="#5d6782" font-size="10">鍋なし</text>`;
   }
-  return `<svg viewBox="28 6 170 154" role="img" aria-label="焚き火 火力${f}${S.pot ? '、鍋 煮込み' + S.pot.stage : ''}">
+  return `<svg viewBox="28 6 170 154" role="img" aria-label="焚き火 火力${f}${V.pot ? '、鍋 煮込み' + V.pot.stage : ''}">
     ${logs}<g class="${flameCls}">${flames}</g>${smolder}${fireText}${pot}</svg>`;
 }
 
-/* ---------- 席 ---------- */
-function buildSeats() {
+/* ---------- 席（自分の席がいつも手前に来るよう回す） ---------- */
+function buildSeats(n) {
   const table = $('table');
   ui.seatEls.forEach(el => el.remove());
   ui.seatEls = [];
-  for (let seat = 0; seat < S.n; seat++) {
+  for (let seat = 0; seat < n; seat++) {
     const el = document.createElement('div');
     el.className = 'seat';
-    const ang = (90 + seat * 360 / S.n) * Math.PI / 180;
+    const pos = (seat - ui.mySeat + n) % n;
+    const ang = (90 + pos * 360 / n) * Math.PI / 180;
     el.style.left = (50 + 36 * Math.cos(ang)) + '%';
     el.style.top = (50 + 39 * Math.sin(ang)) + '%';
     table.appendChild(el);
@@ -1101,39 +1204,82 @@ function retrigger(el, cls) {
   el.classList.add(cls);
 }
 
+/* ---------- 見える情報だけの状態（ビュー） ---------- */
+const visibleLog = (log, seat) => log.filter(e => e.to === undefined || e.to === seat);
+function waitingSeat() { return ui.human ? ui.mySeat : ui.remoteWait ? ui.remoteWait.seat : -1; }
+/** 席 seat の人に見せてよい情報だけを取り出す（他人の手札・山札の順番・CPUの性格は含めない） */
+function viewOf(s, seat) {
+  const reveal = !!(M && M.done);
+  return {
+    n: s.n, rounds: s.rounds, round: s.round, startSeat: s.startSeat, turnSeat: s.turnSeat,
+    fire: s.fire, smolder: s.smolder, over: s.over, endReason: s.endReason,
+    pot: s.pot && { stage: s.pot.stage, markers: s.pot.markers.map(m => ({ seat: m.seat })) },
+    deckCount: s.deck.length, discardCount: s.discard.length,
+    chillLeft: s.chillDeck.map(c => c.id).sort(),
+    players: s.players.map(p => ({
+      seat: p.seat, name: p.name, isHuman: p.isHuman, away: p.away, color: p.color,
+      temp: p.temp, alive: p.alive, deathOrder: p.deathOrder, deathRound: p.deathRound,
+      handCount: p.hand.length,
+      hand: p.seat === seat ? p.hand.map(c => ({ ...c })) : null,
+      personality: reveal ? p.personality : null,
+    })),
+    waitingSeat: waitingSeat(),
+    match: M && { nights: M.nights, night: M.night, results: M.results },
+  };
+}
+function matchTotalsOf(match, n) {
+  return Array.from({ length: n }, (_, seat) => match.results.reduce((a, r) => a + r.points[seat], 0));
+}
+function canAct() {
+  if (!V || V.over || V.waitingSeat !== ui.mySeat || !V.players[ui.mySeat].alive) return false;
+  return Net.role === 'guest' ? !ui.sent : !!ui.human;
+}
+
 /* ---------- 描画 ---------- */
+/** エンジンの状態からビューを作って描く。ホストは参加者にも配る。 */
 function render() {
-  if (!S) return;
+  if (S) {
+    V = viewOf(S, ui.mySeat);
+    V.log = visibleLog(S.log, ui.mySeat);
+    if (Net.role === 'host') Net.broadcastState();
+  }
+  if (V) draw();
+}
+
+function draw() {
   const prev = ui.prev;
 
   // 情報バー
-  $('info-night').hidden = !(M && M.nights > 1);
-  if (M) $('info-night').textContent = `第${M.night}夜 / ${M.nights}`;
-  $('info-round').textContent = `${S.round} / ${S.rounds}`;
+  $('info-night').hidden = !(V.match && V.match.nights > 1);
+  if (V.match) $('info-night').textContent = `第${V.match.night}夜 / ${V.match.nights}`;
+  $('info-round').textContent = `${V.round} / ${V.rounds}`;
   $('info-chill').innerHTML = CONFIG.chill.map(ch => {
-    const k = S.chillDeck.filter(x => x === ch).length;
+    const k = V.chillLeft.filter(id => id === ch.id).length;
     return `<span><i class="${ch.id}"></i>${ch.name} ${k}</span>`;
   }).join('');
-  $('info-deck').textContent = S.deck.length;
-  $('info-discard').textContent = `捨て札 ${S.discard.length}`;
+  $('info-deck').textContent = V.deckCount;
+  $('info-discard').textContent = `捨て札 ${V.discardCount}`;
 
   // 焚き火
-  const newlyDead = prev ? S.players.filter(p => !p.alive && prev.alive[p.seat]) : [];
+  const newlyDead = prev ? V.players.filter(p => !p.alive && prev.alive[p.seat]) : [];
   let anim = '';
-  if (prev && S.fire !== prev.fire) anim = newlyDead.length && S.fire > prev.fire ? 'burst' : S.fire > prev.fire ? 'up' : 'down';
+  if (prev && V.fire !== prev.fire) anim = newlyDead.length && V.fire > prev.fire ? 'burst' : V.fire > prev.fire ? 'up' : 'down';
   $('hearth').innerHTML = hearthSVG(anim);
 
   // 席（3夜制の2夜目以降は累計点も）
-  const totals = M && M.results.length ? matchTotals() : null;
-  for (const p of S.players) {
+  const totals = V.match && V.match.results.length ? matchTotalsOf(V.match, V.n) : null;
+  for (const p of V.players) {
     const el = ui.seatEls[p.seat];
     let bar = '';
     for (let i = 1; i <= CONFIG.temp.max; i++) bar += `<i class="${i <= p.temp ? 'on' : ''}"></i>`;
+    const tag = !p.alive ? '<span>凍死</span>'
+      : V.startSeat === p.seat && !V.over ? '<span class="badge">スタート</span>'
+      : p.away ? '<span class="away">切断</span>' : '';
     el.innerHTML = `
-      <div class="head"><i class="dot" style="background:${p.color}"></i><span class="nm">${p.name}</span>${totals ? `<span class="pts"><span class="lbl">計</span>${totals[p.seat]}点</span>` : ''}</div>
+      <div class="head"><i class="dot" style="background:${p.color}"></i><span class="nm">${esc(p.name)}</span>${totals ? `<span class="pts"><span class="lbl">計</span>${totals[p.seat]}点</span>` : ''}</div>
       <div class="temp"><div class="tbar" aria-hidden="true">${bar}</div><span class="tnum" aria-label="体温">${p.temp}</span></div>
-      <div class="sub"><span>手札 ${p.hand.length}</span>${!p.alive ? '<span>凍死</span>' : S.startSeat === p.seat && !S.over ? '<span class="badge">スタート</span>' : ''}</div>`;
-    el.classList.toggle('active', S.turnSeat === p.seat && p.alive);
+      <div class="sub"><span>手札 ${p.handCount}</span>${tag}</div>`;
+    el.classList.toggle('active', V.turnSeat === p.seat && p.alive);
     el.classList.toggle('dead', !p.alive);
     el.classList.toggle('cold', p.alive && p.temp <= CONFIG.ai.dangerTemp);
     if (prev) {
@@ -1147,30 +1293,34 @@ function render() {
   renderHand();
   renderLog();
 
-  ui.prev = { fire: S.fire, temps: S.players.map(p => p.temp), alive: S.players.map(p => p.alive) };
+  ui.prev = { fire: V.fire, temps: V.players.map(p => p.temp), alive: V.players.map(p => p.alive) };
 }
 
 function renderStatus() {
-  const me = S.players[0];
   const st = $('status');
-  if (S.over) { st.textContent = S.endReason === 'dawn' ? '夜が明けた。' : '焚き火は静かに燃えている…'; return; }
-  if (S.turnSeat < 0) { st.textContent = 'ラウンド終了'; return; }
-  const p = S.players[S.turnSeat];
-  if (p.isHuman) {
-    st.innerHTML = ui.pickStoke ? '<span class="you">くべる燃料を選んでください</span>' : '<span class="you">あなたの番です。</span>行動を1つ選んでください。';
+  if (V.over) { st.textContent = V.endReason === 'dawn' ? '夜が明けた。' : '焚き火は静かに燃えている…'; return; }
+  if (V.turnSeat < 0) { st.textContent = 'ラウンド終了'; return; }
+  const p = V.players[V.turnSeat];
+  if (p.seat === ui.mySeat) {
+    if (canAct()) st.innerHTML = ui.pickStoke ? '<span class="you">くべる燃料を選んでください</span>' : '<span class="you">あなたの番です。</span>行動を1つ選んでください。';
+    else st.textContent = ui.sent ? '送信しました…' : 'あなたの番です';
+  } else if (p.isHuman && !p.away) {
+    st.textContent = `${p.name} の番です（考え中…）`;
   } else {
     st.textContent = `${p.name} が考えている…`;
   }
-  if (!me.alive && !ui.ff) {
+  // 人間が全員凍死したら早送りできる（参加者はホストに合わせる）
+  const humansAlive = V.players.some(q => q.isHuman && !q.away && q.alive);
+  if (!humansAlive && !ui.ff && Net.role !== 'guest') {
     st.innerHTML += ' <button type="button" id="btn-ff" style="margin-left:8px;padding:4px 10px;font-size:12px">結果まで早送り</button>';
     $('btn-ff').onclick = () => { ui.ff = true; render(); };
   }
 }
 
 function renderHand() {
-  const me = S.players[0];
-  const myTurn = !!ui.human && S.turnSeat === 0 && me.alive;
-  const la = legalActions(S, 0);
+  const me = V.players[ui.mySeat];
+  const myTurn = canAct();
+  const la = legalActions(V, ui.mySeat);
   const hand = $('hand');
   $('hand-count').textContent = me.alive ? `${me.hand.length}枚` : '';
 
@@ -1187,9 +1337,9 @@ function renderHand() {
       b.type = 'button';
       b.className = 'card';
       const fuel = isFuel(c);
-      if (fuel && !canStoke(S, c)) b.classList.add('unplayable');
+      if (fuel && !canStoke(V, c)) b.classList.add('unplayable');
       if (ui.selected === c.id) b.classList.add('selected');
-      if (myTurn && ui.pickStoke && fuel && canStoke(S, c)) b.classList.add('pickable');
+      if (myTurn && ui.pickStoke && fuel && canStoke(V, c)) b.classList.add('pickable');
       b.disabled = !myTurn;
       b.innerHTML = `${cardIcon(c)}<span class="cn">${cardName(c)}</span><span class="ce">${cardEffect(c.type)}</span>`;
       b.title = `${cardName(c)}：${cardEffect(c.type).replace('<br>', '／')}`;
@@ -1226,15 +1376,28 @@ function renderHand() {
 
 function renderLog() {
   const ol = $('log');
-  if (ui.logShown > S.log.length) { ol.innerHTML = ''; ui.logShown = 0; }
-  for (; ui.logShown < S.log.length; ui.logShown++) {
-    const e = S.log[ui.logShown];
+  if (ui.logShown > V.log.length) { ol.innerHTML = ''; ui.logShown = 0; }
+  for (; ui.logShown < V.log.length; ui.logShown++) {
+    const e = V.log[ui.logShown];
     const li = document.createElement('li');
     li.textContent = e.text;
     if (e.cls) li.className = e.cls;
     ol.appendChild(li);
   }
   ol.scrollTop = ol.scrollHeight;
+}
+function resetBoard(n) {
+  ui.prev = null;
+  ui.logShown = 0;
+  ui.selected = null;
+  ui.pickStoke = false;
+  ui.hint = '';
+  $('log').innerHTML = '';
+  hideChillCard();
+  $('speed-in-game').value = ui.speed;
+  $('speed-in-game').hidden = Net.role === 'guest';
+  $('btn-quit').textContent = Net.role === 'host' ? '部屋を閉じる' : Net.role === 'guest' ? '退出' : 'やめる';
+  buildSeats(n);
 }
 
 /* ---------- あなたの操作 ---------- */
@@ -1243,9 +1406,9 @@ function actionForCard(c) {
   return { snow: 'startPot', food: 'addPot', soup: 'drink' }[c.type];
 }
 function cardActionLegal(c) {
-  const la = legalActions(S, 0);
+  const la = legalActions(V, ui.mySeat);
   switch (actionForCard(c)) {
-    case 'stoke': return canStoke(S, c) ? '' : `火力${CONFIG.cards[c.type].minFire}以上でないとくべられません`;
+    case 'stoke': return canStoke(V, c) ? '' : `火力${CONFIG.cards[c.type].minFire}以上でないとくべられません`;
     case 'startPot': return la.startPot ? '' : 'すでに鍋が置かれています';
     case 'addPot': return la.addPot ? '' : '鍋が置かれていません';
     case 'drink': return '';
@@ -1253,12 +1416,18 @@ function cardActionLegal(c) {
   return '';
 }
 function submitHuman(action) {
-  if (!ui.human) return;
-  const h = ui.human;
-  ui.human = null;
+  if (!canAct()) return;
   ui.selected = null;
   ui.pickStoke = false;
   ui.hint = '';
+  if (Net.role === 'guest') {
+    ui.sent = true;
+    Net.send({ t: 'action', action });
+    draw();
+    return;
+  }
+  const h = ui.human;
+  ui.human = null;
   h.resolve(action);
 }
 function cardToAction(c) {
@@ -1266,36 +1435,36 @@ function cardToAction(c) {
   return t === 'stoke' || t === 'addPot' ? { type: t, cardId: c.id } : { type: t };
 }
 function onCardClick(c) {
-  if (!ui.human) return;
+  if (!canAct()) return;
   const why = cardActionLegal(c);
   if (ui.pickStoke) {
     if (isFuel(c) && !why) return submitHuman(cardToAction(c));
     ui.hint = 'くべられる燃料を選んでください';
-    return render();
+    return draw();
   }
   if (ui.selected === c.id) {
     if (!why) return submitHuman(cardToAction(c));
     ui.hint = why;
-    return render();
+    return draw();
   }
   ui.selected = c.id;
   Sound.play('select');
   ui.hint = why || `${cardName(c)}：もう一度押すか、光っているボタンで実行`;
-  render();
+  draw();
 }
 function onActionClick(id) {
-  if (!ui.human) return;
-  const me = S.players[0];
-  const la = legalActions(S, 0);
+  if (!canAct()) return;
+  const me = V.players[ui.mySeat];
+  const la = legalActions(V, ui.mySeat);
   if (id === 'stoke') {
     const sel = me.hand.find(c => c.id === ui.selected);
-    if (sel && isFuel(sel) && canStoke(S, sel)) return submitHuman({ type: 'stoke', cardId: sel.id });
+    if (sel && isFuel(sel) && canStoke(V, sel)) return submitHuman({ type: 'stoke', cardId: sel.id });
     const types = [...new Set(la.stoke.map(c => c.type))];
     if (types.length === 1) return submitHuman({ type: 'stoke', cardId: la.stoke[0].id });
     ui.pickStoke = true;
     ui.selected = null;
     ui.hint = '';
-    return render();
+    return draw();
   }
   if (id === 'addPot') {
     const sel = me.hand.find(c => c.id === ui.selected && c.type === 'food');
@@ -1313,27 +1482,63 @@ function awaitHuman() {
     Sound.play('yourTurn');
   });
 }
+/** 参加者から届いた行動が正しいか（ホストで確認する） */
+function isLegalAction(s, seat, a) {
+  if (!a || typeof a !== 'object' || typeof a.type !== 'string') return false;
+  const la = legalActions(s, seat);
+  switch (a.type) {
+    case 'stoke': return la.stoke.some(c => c.id === a.cardId);
+    case 'warm': return la.warm > 0;
+    case 'gather': return true;
+    case 'startPot': return !!la.startPot;
+    case 'addPot': return !!la.addPot && s.players[seat].hand.some(c => c.id === a.cardId && c.type === 'food');
+    case 'drink': return !!la.drink;
+  }
+  return false;
+}
+function awaitPlayer(seat) {
+  return seat === ui.mySeat ? awaitHuman() : Net.awaitRemote(seat);
+}
+function abortWaits() {
+  ui.gen++;
+  if (ui.human) { ui.human.reject(ABORT); ui.human = null; }
+  if (ui.remoteWait) { ui.remoteWait.reject(ABORT); ui.remoteWait = null; }
+}
 
 /* ---------- 冷え込みの演出 ---------- */
-async function showChill(info) {
+function showChillCard(info) {
   const el = $('chill-card');
   const { card, radiant, value } = info;
   el.innerHTML = `<div class="face">
     <div class="lbl">冷え込み</div>
-    <svg class="ico" viewBox="0 0 40 40" aria-hidden="true">${ICONS[card.id]}</svg>
-    <div class="name">${card.name}</div>
+    <svg class="ico" viewBox="0 0 40 40" aria-hidden="true">${ICONS[card.id] || ''}</svg>
+    <div class="name">${esc(card.name)}</div>
     <div class="val">${radiant ? `<s>−${card.value}</s>` : ''}体温 −${value}</div>
     ${radiant ? `<div class="note">輻射熱で ${CONFIG.radiant.reduce} 軽減</div>` : ''}
   </div>`;
   el.hidden = false;
+}
+function hideChillCard() {
+  clearTimeout(ui.chillTimer);
+  $('chill-card').hidden = true;
+}
+async function showChill(info) {
+  const ms = Math.max(1000, speedMs() * 1.8);
+  if (!ui.ff) Net.broadcast({ t: 'chill', info, ms });
+  showChillCard(info);
   try {
-    await wait(Math.max(1000, speedMs() * 1.8));
+    await wait(ms);
   } finally {
-    el.hidden = true;
+    hideChillCard();
   }
 }
+/** 効果音を鳴らし、オンラインなら参加者にも鳴らしてもらう */
+function sfx(name, ...args) {
+  Sound.play(name, ...args);
+  if (!ui.ff) Net.broadcast({ t: 'sfx', name, args });
+}
 
-/* ---------- 進行 ---------- */
+/* ---------- 進行（ひとり用とホストで動く） ---------- */
 async function playGame() {
   render();
   await wait(500);
@@ -1345,21 +1550,21 @@ async function playGame() {
       S.turnSeat = seat;
       render();
       let action;
-      if (p.isHuman) {
-        action = await awaitHuman();
+      if (p.isHuman && !p.away) {
+        action = await awaitPlayer(seat);
       } else {
         await wait(speedMs());
         action = cpuChoose(S, seat);
       }
       doAction(S, seat, action);
-      Sound.play(action.type);
+      sfx(action.type);
       render();
       if (S.over) break;
       if (p.alive) {
         await wait(Math.max(250, speedMs() * 0.5));
         const logLen = S.log.length;
         endTurn(S, seat);
-        if (S.log.slice(logLen).some(e => e.cls === 'cold')) Sound.play('fizz');
+        if (S.log.slice(logLen).some(e => e.cls === 'cold')) sfx('fizz');
         render();
       }
       if (!S.over) await wait(p.isHuman ? 300 : speedMs() * 0.3);
@@ -1370,7 +1575,7 @@ async function playGame() {
     // ラウンド終了処理
     render();
     const info = revealChill(S);
-    Sound.play('chill', info.value);
+    sfx('chill', info.value);
     await showChill(info);
     applyChill(S, info);
     render();
@@ -1378,7 +1583,7 @@ async function playGame() {
     if (S.over) break;
     const hadPot = !!S.pot;
     if (stew(S)) {
-      if (hadPot && !S.pot) Sound.play('potDone');
+      if (hadPot && !S.pot) sfx('potDone');
       render();
       await wait(600);
     }
@@ -1386,7 +1591,7 @@ async function playGame() {
     render();
     await wait(500);
   }
-  if (S.endReason === 'dawn') Sound.play('dawn');
+  if (S.endReason === 'dawn') sfx('dawn');
   render();
   await wait(1200);
   endNight();
@@ -1401,9 +1606,13 @@ function startMatch() {
   console.info('[焚き火の夜] seed =', seed);
   const rng = mulberry32(seed);
   const P = CONFIG.personalities;
+  const defs = Net.role === 'host'
+    ? Net.seatDefs()
+    : Array.from({ length: ui.players }, (_, seat) => (seat === 0 ? { name: 'あなた' } : null));
+  if (Net.role !== 'host') ui.mySeat = 0;
   M = {
-    nights: ui.nights, night: 0, n: ui.players,
-    personalities: Array.from({ length: ui.players }, (_, seat) => (seat === 0 ? null : P[Math.floor(rng() * P.length)])),
+    nights: ui.nights, night: 0, n: ui.players, defs, done: false,
+    personalities: defs.map(d => (d ? null : P[Math.floor(rng() * P.length)])),
     seeds: Array.from({ length: ui.nights }, () => Math.floor(rng() * 2 ** 32)),
     results: [], // 夜ごとの { points: 席別得点, frozen: 席別の凍死 }
   };
@@ -1412,33 +1621,114 @@ function startMatch() {
 }
 
 function startNight() {
-  ui.gen++;
-  if (ui.human) { ui.human.reject(ABORT); ui.human = null; }
+  abortWaits();
   M.night++;
-  S = createGame(M.n, M.seeds[M.night - 1], { personalities: M.personalities });
+  S = createGame(M.n, M.seeds[M.night - 1], { seats: M.defs, personalities: M.personalities });
   if (M.nights > 1) S.log.unshift({ text: `第${M.night}夜 / ${M.nights}`, cls: 'night' });
   ui.ff = false;
-  ui.prev = null;
-  ui.logShown = 0;
-  $('log').innerHTML = '';
-  $('chill-card').hidden = true;
-  $('speed-in-game').value = ui.speed;
-  buildSeats();
+  if (Net.role === 'host') Net.newNight();
+  resetBoard(S.n);
   showScreen('game');
   playGame().catch(e => { if (e !== ABORT) throw e; });
 }
 
 function quitGame() {
-  ui.gen++;
-  if (ui.human) { ui.human.reject(ABORT); ui.human = null; }
+  abortWaits();
   S = null;
+  V = null;
   M = null;
   showScreen('start');
 }
 
-/** これまでの夜の合計点（席順） */
-function matchTotals() {
-  return Array.from({ length: M.n }, (_, seat) => M.results.reduce((a, r) => a + r.points[seat], 0));
+function endNight() {
+  M.results.push({
+    points: S.players.map(p => (p.alive ? p.temp : CONFIG.match.frozenPoints)),
+    frozen: S.players.map(p => !p.alive),
+  });
+  const kind = M.nights === 1 ? 'single' : M.night < M.nights ? 'interim' : 'final';
+  if (kind !== 'interim') M.done = true; // 性格を公開してよい
+  render();
+  Net.broadcast({ t: 'screen', kind });
+  showResultScreen(kind);
+}
+
+/* ---------- 結果 ---------- */
+function showResultScreen(kind) {
+  if (kind === 'single') showResult();
+  else if (kind === 'interim') showInterim();
+  else showFinal();
+  setResultButtonsFor(kind);
+  showScreen('result');
+}
+function setResultButtons(primary, primaryFn, secondary, secondaryFn) {
+  $('btn-again').textContent = primary;
+  $('btn-again').onclick = primaryFn;
+  $('btn-again').disabled = !primaryFn;
+  $('btn-title').textContent = secondary;
+  $('btn-title').onclick = secondaryFn;
+}
+function setResultButtonsFor(kind) {
+  if (Net.role === 'guest') return setResultButtons('ホスト待ち', null, '退出', () => Net.leave());
+  const [s2, s2fn] = Net.role === 'host' ? ['部屋を閉じる', () => Net.leave()] : [kind === 'interim' ? 'やめる' : 'タイトルへ', quitGame];
+  if (kind === 'interim') return setResultButtons(`第${M.night + 1}夜へ`, () => { Sound.unlock(); startNight(); }, s2, s2fn);
+  setResultButtons(Net.role === 'host' ? '部屋に戻る' : 'もう一度', Net.role === 'host' ? () => Net.backToLobby() : startMatch, s2, s2fn);
+}
+const nameCell = p => `<td class="pl"><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</td>`;
+const winnerTitle = winners => (winners.some(p => p.seat === ui.mySeat)
+  ? (winners.length > 1 ? 'あなたも勝利（同時勝利）' : 'あなたの勝ち')
+  : winners.map(p => p.name).join('・') + (winners.length > 1 ? ' の同時勝利' : ' の勝ち'));
+const persName = p => (p.personality ? p.personality.name + (p.isHuman ? '<small>切断後CPU</small>' : '') : '—');
+
+/** 1夜だけのとき */
+function showResult() {
+  const rows = ranking(V);
+  $('result-title').textContent = winnerTitle(rows.filter(r => r.win).map(r => r.p));
+  $('result-lead').textContent = V.endReason === 'dawn'
+    ? (aliveSeats(V).length ? '夜が明けた。いちばん暖かく朝を迎えた者が勝つ。' : '')
+    : '夜明けを待たず、全員が凍えてしまった。最後まで耐えた者の勝ち。';
+  $('result-head').innerHTML = '<tr><th>順位</th><th>プレイヤー</th><th>性格</th><th>最終体温</th></tr>';
+  $('result-body').innerHTML = rows.map(({ p, rank, win }) => `
+    <tr class="${win ? 'win' : ''}">
+      <td class="r">${rank}</td>${nameCell(p)}
+      <td>${persName(p)}</td>
+      <td>${p.alive ? p.temp : `<span class="frozen">凍死（R${p.deathRound}）</span>`}</td>
+    </tr>`).join('');
+  $('result-note').textContent = '';
+}
+
+/** 夜と夜のあいだ（性格はまだ明かさない） */
+function showInterim() {
+  const match = V.match;
+  const last = match.results[match.results.length - 1];
+  const best = Math.max(...last.points);
+  const tops = V.players.filter(p => p.alive && p.temp === best);
+  $('result-title').textContent = `第${match.night}夜が明けた`;
+  $('result-lead').textContent = V.endReason === 'dawn' && tops.length
+    ? `この夜いちばん暖かかったのは ${tops.map(p => p.name).join('・')}（体温 ${best}）`
+    : '夜明けを待たず、全員が凍えてしまった。この夜は全員0点。';
+  $('result-head').innerHTML = `<tr><th>順位</th><th>プレイヤー</th><th class="n">第${match.night}夜</th><th class="n">累計</th></tr>`;
+  $('result-body').innerHTML = rankByScore(matchTotalsOf(match, V.n)).map(({ seat, v, rank }) => {
+    const p = V.players[seat];
+    const pts = last.frozen[seat] ? `<span class="frozen">凍死 ${last.points[seat]}</span>` : last.points[seat];
+    return `<tr class="${rank === 1 ? 'win' : ''}"><td class="r">${rank}</td>${nameCell(p)}<td class="n">${pts}</td><td class="n total">${v}</td></tr>`;
+  }).join('');
+  $('result-note').textContent = `夜明けの体温がその夜の得点（凍死は${CONFIG.match.frozenPoints}点）。残り ${match.nights - match.night} 夜。`;
+}
+
+/** 全夜の終わり */
+function showFinal() {
+  const match = V.match;
+  const rows = rankByScore(matchTotalsOf(match, V.n));
+  $('result-title').textContent = winnerTitle(rows.filter(r => r.rank === 1).map(r => V.players[r.seat]));
+  $('result-lead').textContent = `${match.nights}夜の合計得点で勝敗が決まった。`;
+  const nightHeads = match.results.map((_, k) => `<th class="n">${k + 1}夜</th>`).join('');
+  $('result-head').innerHTML = `<tr><th>順位</th><th>プレイヤー</th><th>性格</th>${nightHeads}<th class="n">合計</th></tr>`;
+  $('result-body').innerHTML = rows.map(({ seat, v, rank }) => {
+    const p = V.players[seat];
+    const cells = match.results.map(r => `<td class="n">${r.frozen[seat] ? `<span class="frozen">${r.points[seat]}</span>` : r.points[seat]}</td>`).join('');
+    return `<tr class="${rank === 1 ? 'win' : ''}"><td class="r">${rank}</td>${nameCell(p)}<td>${persName(p)}</td>${cells}<td class="n total">${v}</td></tr>`;
+  }).join('');
+  $('result-note').textContent = '青い数字は凍死した夜';
 }
 /** 点数の高い順に並べ、同点は同順位 */
 function rankByScore(scores) {
@@ -1447,92 +1737,416 @@ function rankByScore(scores) {
   return order;
 }
 
-function endNight() {
-  M.results.push({
-    points: S.players.map(p => (p.alive ? p.temp : CONFIG.match.frozenPoints)),
-    frozen: S.players.map(p => !p.alive),
+/* ================================================================
+ * オンライン対戦（WebRTC の P2P。接続の仲介に PeerJS の公開サーバーを使う）
+ *  - 部屋を作った人（ホスト）のブラウザがゲームを進め、各参加者に見える情報だけを送る
+ *  - 参加者は自分の行動をホストに送るだけ。ホストが正しい手か確かめてから受け付ける
+ * ================================================================ */
+const NET = Object.assign({
+  peerjsSrc: 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
+  peerOptions: {},          // 自前の PeerServer を使うときは { host, port, path, secure }
+  idPrefix: 'takibi-no-yoru-v1-',
+  codeChars: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+  codeLength: 5,
+  maxHumans: 5,
+  joinTimeoutMs: 15000,
+  pingMs: 3000,            // 生存確認の間隔
+  dropMs: 20000,           // これだけ音沙汰がなければ切断とみなす（タブを閉じても通知が来ないことがあるため）
+}, window.CAMPFIRE_NET || {}); // テスト用の上書き（URLからは変えられない）
+
+function loadPeerJS() {
+  if (window.Peer) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = NET.peerjsSrc;
+    el.onload = () => (window.Peer ? resolve() : reject(new Error('load')));
+    el.onerror = () => reject(new Error('load'));
+    document.head.appendChild(el);
   });
-  if (M.nights === 1) showResult();
-  else if (M.night < M.nights) showInterim();
-  else showFinal();
+}
+const cleanName = n => (String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 8) || '旅人');
+const cleanCode = c => String(c || '').toUpperCase().split('').filter(ch => NET.codeChars.includes(ch)).join('').slice(0, NET.codeLength);
+function randomCode() {
+  let c = '';
+  for (let i = 0; i < NET.codeLength; i++) c += NET.codeChars[Math.floor(Math.random() * NET.codeChars.length)];
+  return c;
+}
+function safeSend(conn, msg) {
+  try { if (conn && conn.open) conn.send(msg); } catch (e) { /* 切断済み */ }
 }
 
-/* ---------- 結果 ---------- */
-function setResultButtons(primary, primaryFn, secondary, secondaryFn) {
-  $('btn-again').textContent = primary;
-  $('btn-again').onclick = primaryFn;
-  $('btn-title').textContent = secondary;
-  $('btn-title').onclick = secondaryFn;
-}
-const nameCell = p => `<td><i class="dot" style="background:${p.color}"></i>${p.name}</td>`;
-const winnerTitle = winners => (winners.some(p => p.isHuman)
-  ? (winners.length > 1 ? 'あなたも勝利（同時勝利）' : 'あなたの勝ち')
-  : winners.map(p => p.name).join('・') + (winners.length > 1 ? ' の同時勝利' : ' の勝ち'));
-const toTitle = () => { M = null; showScreen('start'); };
+const Net = {
+  role: null,       // null（ひとり用）| 'host' | 'guest'
+  peer: null,
+  code: '',
+  name: '',
+  started: false,
+  members: [],      // ホスト：参加者 { conn, name, seat, sentLog, reset, left }
+  conn: null,       // 参加者：ホストへの接続
+  lobby: null,      // 参加者：最後に受け取った部屋の情報
+  leaving: false,
+  heartbeat: 0,
+  lastSeen: 0,      // 参加者：ホストから最後に受信した時刻
 
-/** 1夜だけのとき */
-function showResult() {
-  const rows = ranking(S);
-  $('result-title').textContent = winnerTitle(rows.filter(r => r.win).map(r => r.p));
-  $('result-lead').textContent = S.endReason === 'dawn'
-    ? (aliveSeats(S).length ? '夜が明けた。いちばん暖かく朝を迎えた者が勝つ。' : '')
-    : '夜明けを待たず、全員が凍えてしまった。最後まで耐えた者の勝ち。';
-  $('result-head').innerHTML = '<tr><th>順位</th><th>プレイヤー</th><th>性格</th><th>最終体温</th></tr>';
-  $('result-body').innerHTML = rows.map(({ p, rank, win }) => `
-    <tr class="${win ? 'win' : ''}">
-      <td class="r">${rank}</td>${nameCell(p)}
-      <td>${p.personality ? p.personality.name : '—'}</td>
-      <td>${p.alive ? p.temp : `<span class="frozen">凍死（R${p.deathRound}）</span>`}</td>
-    </tr>`).join('');
-  $('result-note').textContent = '';
-  setResultButtons('もう一度', startMatch, 'タイトルへ', toTitle);
-  showScreen('result');
-}
+  /* ---- 共通 ---- */
+  active() { return this.members.filter(m => !m.left); },
+  broadcast(msg) {
+    if (this.role !== 'host') return;
+    for (const m of this.active()) safeSend(m.conn, msg);
+  },
+  send(msg) { if (this.role === 'guest') safeSend(this.conn, msg); },
+  reset() {
+    this.leaving = true;
+    clearInterval(this.heartbeat);
+    try { if (this.peer) this.peer.destroy(); } catch (e) { /* 無視 */ }
+    Object.assign(this, { role: null, peer: null, code: '', started: false, members: [], conn: null, lobby: null, leaving: false, heartbeat: 0 });
+  },
+  /** 部屋から出る（ホストなら部屋を閉じる） */
+  leave(message = '') {
+    if (this.role === 'host') this.broadcast({ t: 'closed', reason: 'ホストが部屋を閉じました' });
+    const finish = () => {
+      this.reset();
+      abortWaits();
+      S = null; V = null; M = null;
+      ui.mySeat = 0;
+      showScreen('start');
+      $('online-msg').textContent = message;
+    };
+    if (this.role === 'host') setTimeout(finish, 150); // closed を届けてから切る
+    else finish();
+  },
 
-/** 夜と夜のあいだ（性格はまだ明かさない） */
-function showInterim() {
-  const last = M.results[M.results.length - 1];
-  const best = Math.max(...last.points);
-  const tops = S.players.filter(p => p.alive && p.temp === best);
-  $('result-title').textContent = `第${M.night}夜が明けた`;
-  $('result-lead').textContent = S.endReason === 'dawn' && tops.length
-    ? `この夜いちばん暖かかったのは ${tops.map(p => p.name).join('・')}（体温 ${best}）`
-    : '夜明けを待たず、全員が凍えてしまった。この夜は全員0点。';
-  $('result-head').innerHTML = `<tr><th>順位</th><th>プレイヤー</th><th class="n">第${M.night}夜</th><th class="n">累計</th></tr>`;
-  $('result-body').innerHTML = rankByScore(matchTotals()).map(({ seat, v, rank }) => {
-    const p = S.players[seat];
-    const pts = last.frozen[seat] ? `<span class="frozen">凍死 ${last.points[seat]}</span>` : last.points[seat];
-    return `<tr class="${rank === 1 ? 'win' : ''}"><td class="r">${rank}</td>${nameCell(p)}<td class="n">${pts}</td><td class="n total">${v}</td></tr>`;
-  }).join('');
-  $('result-note').textContent = `夜明けの体温がその夜の得点（凍死は${CONFIG.match.frozenPoints}点）。残り ${M.nights - M.night} 夜。`;
-  setResultButtons(`第${M.night + 1}夜へ`, () => { Sound.unlock(); startNight(); }, 'やめる', toTitle);
-  showScreen('result');
-}
+  /* ---- ホスト ---- */
+  async host(name) {
+    this.name = cleanName(name);
+    await loadPeerJS();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const code = randomCode();
+      try {
+        await new Promise((resolve, reject) => {
+          const peer = new window.Peer(NET.idPrefix + code, NET.peerOptions);
+          peer.on('open', () => { this.peer = peer; resolve(); });
+          peer.on('error', err => {
+            if (this.peer !== peer) { peer.destroy(); reject(err); return; }
+            if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+              $('lobby-msg').textContent = '接続サーバーとの通信が不安定です…';
+            }
+          });
+        });
+      } catch (err) {
+        if (err.type === 'unavailable-id') continue; // コードが使用中なら作り直す
+        throw err;
+      }
+      Object.assign(this, { role: 'host', code, started: false, members: [] });
+      this.peer.on('disconnected', () => { if (!this.leaving && this.peer && !this.peer.destroyed) this.peer.reconnect(); });
+      this.peer.on('connection', conn => this.onConnection(conn));
+      this.heartbeat = setInterval(() => this.hostTick(), NET.pingMs);
+      return;
+    }
+    throw new Error('code');
+  },
+  onConnection(conn) {
+    conn.on('open', () => {
+      const reject = reason => { safeSend(conn, { t: 'reject', reason }); setTimeout(() => conn.close(), 300); };
+      if (this.started) return reject('ゲームがすでに始まっています');
+      if (this.active().length + 1 >= NET.maxHumans) return reject(`部屋が満員です（最大${NET.maxHumans}人）`);
+      const taken = [this.name, ...this.active().map(m => m.name)];
+      let name = cleanName(conn.metadata && conn.metadata.name);
+      for (let k = 2; taken.includes(name); k++) name = cleanName(name).slice(0, 7) + k;
+      this.members.push({ conn, name, seat: -1, sentLog: 0, reset: true, left: false, lastSeen: Date.now() });
+      ui.players = Math.max(ui.players, this.active().length + 1);
+      this.updateLobby();
+    });
+    conn.on('data', msg => {
+      const m = this.members.find(x => x.conn === conn);
+      if (!m || m.left || !msg) return;
+      m.lastSeen = Date.now();
+      if (msg.t === 'action') this.onAction(m, msg.action);
+      else if (msg.t === 'bye') { this.memberLeft(m); conn.close(); }
+    });
+    conn.on('close', () => {
+      const m = this.members.find(x => x.conn === conn);
+      if (m) this.memberLeft(m);
+    });
+    conn.on('error', () => {});
+  },
+  /** 生存確認：参加者に ping を送り、音沙汰のない参加者を切断扱いにする */
+  hostTick() {
+    const now = Date.now();
+    for (const m of this.active()) {
+      if (now - m.lastSeen > NET.dropMs) { this.memberLeft(m); try { m.conn.close(); } catch (e) { /* 無視 */ } }
+      else safeSend(m.conn, { t: 'ping' });
+    }
+  },
+  lobbyInfo(forMember) {
+    const people = [{ name: this.name, host: true }, ...this.active().map(m => ({ name: m.name }))];
+    return {
+      t: 'lobby', code: this.code, members: people,
+      you: forMember ? 1 + this.active().indexOf(forMember) : 0,
+      settings: { players: ui.players, nights: ui.nights, speed: ui.speed },
+    };
+  },
+  updateLobby() {
+    if (this.role !== 'host' || this.started) return;
+    for (const m of this.active()) safeSend(m.conn, this.lobbyInfo(m));
+    drawLobby(this.lobbyInfo(null));
+  },
+  memberLeft(m) {
+    if (m.left) return;
+    m.left = true;
+    if (!this.started) {
+      this.members = this.members.filter(x => x !== m);
+      this.updateLobby();
+      return;
+    }
+    // ゲーム中に抜けた人の席はCPUが引き継ぐ（以降の夜も）
+    if (M && m.seat >= 0) {
+      const seat = m.seat;
+      const def = M.defs[seat];
+      if (def && !def.away) {
+        const pers = CONFIG.personalities[Math.floor(Math.random() * CONFIG.personalities.length)];
+        M.defs[seat] = { ...def, away: true };
+        M.personalities[seat] = pers;
+        if (S) {
+          const p = S.players[seat];
+          Object.assign(p, { away: true, personality: pers, coop: pers.coop });
+          log(S, `${p.name} の接続が切れた。以降はCPUが代わりに行動する`, 'cold');
+        }
+      }
+      if (ui.remoteWait && ui.remoteWait.seat === seat) {
+        const w = ui.remoteWait;
+        ui.remoteWait = null;
+        w.resolve(cpuChoose(S, seat));
+      }
+      if (S) render();
+    }
+  },
+  /** 部屋のメンバーで席を決めてゲームを始める */
+  start() {
+    this.started = true;
+    this.active().forEach((m, i) => { m.seat = i + 1; });
+    for (const m of this.active()) safeSend(m.conn, { t: 'start', mySeat: m.seat });
+    ui.mySeat = 0;
+    startMatch();
+  },
+  seatDefs() {
+    const defs = Array.from({ length: ui.players }, () => null);
+    defs[0] = { name: this.name };
+    for (const m of this.active()) defs[m.seat] = { name: m.name };
+    return defs;
+  },
+  newNight() {
+    for (const m of this.members) { m.sentLog = 0; m.reset = true; }
+  },
+  sendState(m) {
+    if (!S || m.seat < 0) return;
+    const view = viewOf(S, m.seat);
+    const logAdd = visibleLog(S.log.slice(m.sentLog), m.seat);
+    m.sentLog = S.log.length;
+    safeSend(m.conn, { t: 'state', view, logAdd, reset: m.reset });
+    m.reset = false;
+  },
+  broadcastState() {
+    for (const m of this.active()) this.sendState(m);
+  },
+  awaitRemote(seat) {
+    return new Promise((resolve, reject) => {
+      const m = this.active().find(x => x.seat === seat);
+      if (!m) { resolve(cpuChoose(S, seat)); return; }
+      ui.remoteWait = { seat, resolve, reject };
+      render();
+    });
+  },
+  onAction(m, action) {
+    const w = ui.remoteWait;
+    if (!w || w.seat !== m.seat || !S) return;
+    if (!isLegalAction(S, m.seat, action)) { this.sendState(m); return; }
+    ui.remoteWait = null;
+    w.resolve({ type: action.type, cardId: action.cardId });
+  },
+  backToLobby() {
+    abortWaits();
+    this.started = false;
+    this.members = this.active();
+    for (const m of this.members) m.seat = -1;
+    S = null; V = null; M = null;
+    showScreen('lobby');
+    this.updateLobby();
+  },
 
-/** 全夜の終わり */
-function showFinal() {
-  const rows = rankByScore(matchTotals());
-  $('result-title').textContent = winnerTitle(rows.filter(r => r.rank === 1).map(r => S.players[r.seat]));
-  $('result-lead').textContent = `${M.nights}夜の合計得点で勝敗が決まった。`;
-  const nightHeads = M.results.map((_, k) => `<th class="n">${k + 1}夜</th>`).join('');
-  $('result-head').innerHTML = `<tr><th>順位</th><th>プレイヤー</th><th>性格</th>${nightHeads}<th class="n">合計</th></tr>`;
-  $('result-body').innerHTML = rows.map(({ seat, v, rank }) => {
-    const p = S.players[seat];
-    const cells = M.results.map(r => `<td class="n">${r.frozen[seat] ? `<span class="frozen">${r.points[seat]}</span>` : r.points[seat]}</td>`).join('');
-    return `<tr class="${rank === 1 ? 'win' : ''}"><td class="r">${rank}</td>${nameCell(p)}<td>${p.personality ? p.personality.name : '—'}</td>${cells}<td class="n total">${v}</td></tr>`;
-  }).join('');
-  $('result-note').textContent = '青い数字は凍死した夜';
-  setResultButtons('もう一度', startMatch, 'タイトルへ', toTitle);
-  showScreen('result');
+  /* ---- 参加者 ---- */
+  async join(name, code) {
+    this.name = cleanName(name);
+    await loadPeerJS();
+    await new Promise((resolve, reject) => {
+      const peer = new window.Peer(NET.peerOptions);
+      this.peer = peer;
+      const timer = setTimeout(() => reject(new Error('timeout')), NET.joinTimeoutMs);
+      const fail = err => { clearTimeout(timer); reject(err); };
+      peer.on('error', err => {
+        if (this.role === 'guest' && this.conn && this.conn.open) return; // 接続後の一時的なエラー
+        fail(err);
+      });
+      peer.on('open', () => {
+        const conn = peer.connect(NET.idPrefix + code, { reliable: true, serialization: 'json', metadata: { name: this.name } });
+        conn.on('open', () => {
+          clearTimeout(timer);
+          Object.assign(this, { role: 'guest', conn, code, lastSeen: Date.now() });
+          this.heartbeat = setInterval(() => {
+            if (Date.now() - this.lastSeen > NET.dropMs) this.leave('ホストとの接続が切れました');
+            else this.send({ t: 'ping' });
+          }, NET.pingMs);
+          resolve();
+        });
+        conn.on('data', msg => { this.lastSeen = Date.now(); this.onGuestData(msg); });
+        conn.on('close', () => {
+          if (this.role === 'guest' && !this.leaving) this.leave('ホストとの接続が切れました');
+        });
+        conn.on('error', () => {});
+      });
+    });
+  },
+  onGuestData(msg) {
+    if (!msg || typeof msg.t !== 'string') return;
+    switch (msg.t) {
+      case 'lobby':
+        this.lobby = msg;
+        drawLobby(msg);
+        if ($('screen-lobby').hidden) { S = null; V = null; showScreen('lobby'); }
+        break;
+      case 'reject':
+        this.leave(msg.reason);
+        break;
+      case 'closed':
+        this.leave(msg.reason || 'ホストが部屋を閉じました');
+        break;
+      case 'start':
+        ui.mySeat = msg.mySeat;
+        ui.ff = false;
+        break;
+      case 'state': {
+        const wasWaiting = V && !msg.reset ? V.waitingSeat : -1;
+        const log = msg.reset || !V ? [] : V.log;
+        V = msg.view;
+        V.log = log.concat(msg.logAdd || []);
+        ui.sent = false;
+        if (msg.reset) { resetBoard(V.n); showScreen('game'); }
+        const myTurnNow = V.waitingSeat === ui.mySeat && V.players[ui.mySeat].alive;
+        if (myTurnNow && wasWaiting !== ui.mySeat) {
+          ui.selected = null; ui.pickStoke = false; ui.hint = '';
+          Sound.play('yourTurn');
+        }
+        if (!$('screen-game').hidden || msg.reset) draw();
+        break;
+      }
+      case 'sfx':
+        Sound.play(msg.name, ...(Array.isArray(msg.args) ? msg.args : []));
+        break;
+      case 'chill':
+        showChillCard(msg.info);
+        clearTimeout(ui.chillTimer);
+        ui.chillTimer = setTimeout(hideChillCard, Number(msg.ms) || 1000);
+        break;
+      case 'screen':
+        if (V) showResultScreen(msg.kind);
+        break;
+    }
+  },
+};
+
+/* ---------- 部屋（ロビー）画面 ---------- */
+function drawLobby(info) {
+  const isHost = Net.role === 'host';
+  $('room-code').textContent = info.code;
+  const people = info.members;
+  const n = info.settings.players;
+  let html = people.map((p, i) => `<li><i class="dot" style="background:${CONFIG.colors[i]}"></i>${esc(p.name)}
+    ${p.host ? '<span class="tag">ホスト</span>' : ''}${i === info.you ? '<span class="tag you">あなた</span>' : ''}</li>`).join('');
+  for (let i = people.length; i < n; i++) html += `<li class="cpu"><i class="dot" style="background:${CONFIG.colors[i]}"></i>CPU${i}<span class="tag">CPU</span></li>`;
+  $('lobby-members').innerHTML = html;
+  $('lobby-settings').hidden = !isHost;
+  $('btn-lobby-start').hidden = !isHost;
+  const speedName = { fast: '速い', normal: '普通', slow: '遅い' }[info.settings.speed];
+  $('lobby-summary').textContent = `${n}人（CPU ${Math.max(0, n - people.length)}人）・${info.settings.nights}夜・CPUの速さ ${speedName}`;
+  $('lobby-msg').textContent = isHost
+    ? (people.length > 1 ? '全員そろったら「はじめる」を押してください' : '部屋コードを伝えて、参加を待っています')
+    : 'ホストが始めるのを待っています';
+  if (isHost) {
+    document.querySelectorAll('#lobby-players button').forEach(b => { b.disabled = Number(b.dataset.v) < people.length; });
+    syncSegs();
+  }
+  $('btn-copy-link').hidden = !/^https?:$/.test(location.protocol);
+}
+function inviteLink() {
+  return `${location.origin}${location.pathname}?room=${Net.code}`;
+}
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const old = btn.textContent;
+    btn.textContent = 'コピーしました';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  } catch (e) { /* クリップボードが使えない環境 */ }
+}
+function onlineError(err) {
+  const t = err && err.type;
+  if (err && err.message === 'load') return 'オンライン機能を読み込めませんでした（ネットにつながっているか確認してください）';
+  if (t === 'peer-unavailable') return '部屋が見つかりません。コードを確認してください';
+  if (err && err.message === 'timeout') return '部屋につながりませんでした。もう一度試してください';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return '接続サーバーにつながりません。しばらくしてから試してください';
+  if (t === 'browser-incompatible') return 'このブラウザはオンライン対戦に対応していません';
+  return 'オンライン接続に失敗しました';
+}
+function readName() {
+  const name = cleanName($('online-name').value);
+  try { localStorage.setItem('campfire.name', name); } catch (e) { /* 無視 */ }
+  return name;
+}
+async function onCreateRoom() {
+  Sound.unlock();
+  setOnlineBusy(true, '部屋を作っています…');
+  try {
+    await Net.host(readName());
+    showScreen('lobby');
+    Net.updateLobby();
+    setOnlineBusy(false, '');
+  } catch (err) {
+    Net.reset();
+    setOnlineBusy(false, onlineError(err));
+  }
+}
+async function onJoinRoom() {
+  Sound.unlock();
+  const code = cleanCode($('join-code').value);
+  if (code.length !== NET.codeLength) { $('online-msg').textContent = `部屋コード（${NET.codeLength}文字）を入力してください`; return; }
+  setOnlineBusy(true, '部屋に入っています…');
+  try {
+    await Net.join(readName(), code);
+    setOnlineBusy(false, '');
+  } catch (err) {
+    Net.reset();
+    setOnlineBusy(false, onlineError(err));
+  }
+}
+function setOnlineBusy(busy, msg) {
+  for (const id of ['btn-create', 'btn-join', 'btn-start']) $(id).disabled = busy;
+  $('online-msg').textContent = msg;
 }
 
 /* ---------- 開始画面 ---------- */
-function setupSeg(id, key) {
+const segSyncs = [];
+function syncSegs() { segSyncs.forEach(f => f()); }
+function setupSeg(id, key, onChange) {
   const box = $(id);
   const sync = () => box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === String(ui[key]))));
   box.querySelectorAll('button').forEach(b => {
-    b.onclick = () => { ui[key] = key === 'speed' ? b.dataset.v : Number(b.dataset.v); sync(); };
+    b.onclick = () => {
+      ui[key] = key === 'speed' ? b.dataset.v : Number(b.dataset.v);
+      syncSegs();
+      if (onChange) onChange();
+    };
   });
+  segSyncs.push(sync);
   sync();
 }
 function syncSoundButtons() {
@@ -1578,22 +2192,52 @@ function rulesHTML() {
     <h3>凍死したら</h3>
     <p>遺品を燃やして火力+${C.relicFire}。手札は次の席から時計回りに生存者へ1枚ずつ配られ、鍋の取り分は取り除かれる。</p>
     <h3>CPU</h3>
-    <p>CPUは「協力型」か「自己中型」のどちらか。性格は最後の結果画面で明かされる。</p>`;
+    <p>CPUは「協力型」か「自己中型」のどちらか。性格は最後の結果画面で明かされる。</p>
+    <h3>オンライン対戦</h3>
+    <p>「部屋を作る」と部屋コードが出るので、一緒に遊ぶ人に伝える。ほかの人はコードを入れて「コードで入る」。最大${NET.maxHumans}人で、空いた席はCPUが埋める。途中で抜けた人の席はCPUが引き継ぐ。部屋を作った人がページを閉じると部屋は終わる。</p>`;
 }
 
 setupSeg('opt-players', 'players');
 setupSeg('opt-nights', 'nights');
 setupSeg('opt-speed', 'speed');
+setupSeg('lobby-players', 'players', () => Net.updateLobby());
+setupSeg('lobby-nights', 'nights', () => Net.updateLobby());
+setupSeg('lobby-speed', 'speed', () => Net.updateLobby());
 syncSoundButtons();
 $('sound-start').onclick = toggleSound;
 $('sound-in-game').onclick = toggleSound;
 $('rules-body').innerHTML = rulesHTML();
 $('btn-start').onclick = startMatch;
-$('btn-quit').onclick = () => { if (!S || S.over || confirm('このゲームをやめてタイトルに戻りますか？')) quitGame(); };
-$('speed-in-game').onchange = e => { ui.speed = e.target.value; setupSeg('opt-speed', 'speed'); };
+$('btn-create').onclick = onCreateRoom;
+$('btn-join').onclick = onJoinRoom;
+$('join-code').oninput = e => { e.target.value = cleanCode(e.target.value); };
+$('join-code').onkeydown = e => { if (e.key === 'Enter') onJoinRoom(); };
+$('btn-lobby-start').onclick = () => Net.start();
+$('btn-lobby-leave').onclick = () => Net.leave();
+$('btn-copy-code').onclick = e => copyText(Net.code, e.currentTarget);
+$('btn-copy-link').onclick = e => copyText(inviteLink(), e.currentTarget);
+$('btn-quit').onclick = () => {
+  if (Net.role === 'guest') { if (confirm('部屋から退出しますか？（あなたの席はCPUが引き継ぎます）')) Net.leave(); return; }
+  if (Net.role === 'host') { if (confirm('部屋を閉じて、全員の対戦を終わりにしますか？')) Net.leave(); return; }
+  if (!S || S.over || confirm('このゲームをやめてタイトルに戻りますか？')) quitGame();
+};
+$('speed-in-game').onchange = e => { ui.speed = e.target.value; syncSegs(); };
+try { $('online-name').value = localStorage.getItem('campfire.name') || ''; } catch (e) { /* 無視 */ }
+{
+  const room = cleanCode(new URLSearchParams(location.search).get('room'));
+  if (room) $('join-code').value = room;
+}
+// タブを閉じたことをすぐ伝える（届かなくても生存確認で検出される）
+window.addEventListener('pagehide', () => {
+  if (Net.role === 'guest') Net.send({ t: 'bye' });
+  else if (Net.role === 'host') Net.broadcast({ t: 'closed', reason: 'ホストが部屋を閉じました' });
+});
+window.addEventListener('beforeunload', e => {
+  if (Net.role === 'host' && Net.active().length) { e.preventDefault(); e.returnValue = ''; }
+});
 
 // デバッグ・シミュレーション用
-window.campfire = { CONFIG, createGame, legalActions, doAction, endTurn, revealChill, applyChill, stew, nextRound, ranking, cpuChoose, state: () => S };
+window.campfire = { CONFIG, createGame, legalActions, doAction, endTurn, revealChill, applyChill, stew, nextRound, ranking, cpuChoose, viewOf, state: () => S, view: () => V, net: Net };
 </script>
 </body>
 </html>
