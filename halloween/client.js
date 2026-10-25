@@ -29,7 +29,31 @@
 
   const params = new URLSearchParams(location.search);
   const SERVER = params.get('server') || window.HALLOWEEN_SERVER || '';
-  const onlineAvailable = !!SERVER || location.protocol === 'http:' || location.protocol === 'https:';
+
+  // サーバーなし（GitHub Pages など）のときの P2P 通信の設定
+  const P2P = Object.assign({
+    peerjsSrc: 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
+    peerOptions: {},            // 自前の PeerServer を使うときは { host, port, path, secure }
+    idPrefix: 'halloween-candy-v1-',
+    codeChars: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+    codeLength: 5,
+    joinTimeoutMs: 15000,
+    pingMs: 3000,               // 生存確認の間隔
+    dropMs: 20000,              // これだけ音沙汰がなければ切断とみなす
+    maxRetry: 15,               // 参加者が再接続を試す回数
+  }, window.HALLOWEEN_P2P || {}); // テスト用の上書き（URLからは変えられない）
+
+  // サーバー（server.js）があればそれを使い、なければ P2P。?mode=p2p で P2P を強制
+  const modeReady = (async () => {
+    if (params.get('mode') === 'p2p') return 'p2p';
+    if (SERVER) return 'server';
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return 'p2p';
+    try {
+      const res = await fetch('health', { cache: 'no-store' });
+      if (res.ok && (await res.text()).trim() === 'ok') return 'server';
+    } catch (e) { /* サーバーなし */ }
+    return 'p2p';
+  })();
 
   const PHASE_NAMES = { lobby: 'ロビー', talk: '作戦タイム', choose: '家を選ぶ', result: '結果', final: '最終結果' };
   const TONES = ['info', 'arrive', 'collision', 'witch', 'steal', 'mission', 'good', 'declare'];
@@ -107,6 +131,200 @@
     }
   }
 
+  // ---------- P2P（サーバーなし）：ルームを作った人のブラウザがサーバーの代わりをする ----------
+
+  function loadPeerJS() {
+    if (window.Peer) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = P2P.peerjsSrc;
+      el.onload = () => (window.Peer ? resolve() : reject(new Error('load')));
+      el.onerror = () => reject(Object.assign(new Error('load'), { type: 'load' }));
+      document.head.appendChild(el);
+    });
+  }
+
+  function safeSend(conn, msg) {
+    try { if (conn && conn.open) conn.send(msg); } catch (e) { /* 切断済み */ }
+  }
+
+  function p2pError(err) {
+    const t = err && err.type;
+    if (t === 'peer-unavailable') return 'ルームが見つかりません。コードを確認してください';
+    if (t === 'load') return '通信ライブラリを読み込めませんでした。インターネット接続を確かめてください';
+    if (t === 'browser-incompatible') return 'このブラウザはオンライン対戦に対応していません';
+    return '接続できませんでした。少し待ってからもう一度試してください';
+  }
+
+  function openPeer(id) {
+    return new Promise((resolve, reject) => {
+      const peer = id ? new window.Peer(id, P2P.peerOptions) : new window.Peer(P2P.peerOptions);
+      let opened = false;
+      peer.on('open', () => { opened = true; resolve(peer); });
+      peer.on('error', err => { if (!opened) { peer.destroy(); reject(err); } });
+    });
+  }
+
+  class PeerHostTransport {
+    constructor(name, icon) {
+      this.isHost = true;
+      this.conns = new Map();   // conn → { id, lastSeen }
+      this.closed = false;
+      this.queue = [];
+      this.start(name, icon).catch(err => { if (!this.closed) leaveRoom(p2pError(err)); });
+    }
+    async start(name, icon) {
+      await loadPeerJS();
+      let code = '';
+      for (let attempt = 0; !this.peer; attempt++) {
+        code = Array.from({ length: P2P.codeLength }, () => P2P.codeChars[Math.floor(Math.random() * P2P.codeChars.length)]).join('');
+        try {
+          this.peer = await openPeer(P2P.idPrefix + code);
+        } catch (err) {
+          if (err.type !== 'unavailable-id' || attempt >= 4) throw err; // コードが使用中なら作り直す
+        }
+      }
+      if (this.closed) { this.peer.destroy(); return; }
+      this.peer.on('connection', conn => this.onConnection(conn));
+      this.peer.on('disconnected', () => { if (!this.closed && !this.peer.destroyed) this.peer.reconnect(); });
+      this.peer.on('error', () => { /* 参加者側の一時的なエラーは無視 */ });
+      const clone = m => JSON.parse(JSON.stringify(m));
+      this.room = new window.HalloweenRoom.Room({ code, send: (pid, msg) => this.deliver(pid, clone(msg)) });
+      this.token = token();
+      this.id = this.room.join(this.token, name, icon).id;
+      this.room.attach(this.id);
+      this.timer = setInterval(() => this.tick(), P2P.pingMs);
+      this.queue.forEach(m => this.send(m));
+      this.queue = [];
+    }
+    deliver(pid, msg) {
+      if (pid === this.id) { setTimeout(() => onMessage(msg), 0); return; }
+      for (const [conn, info] of this.conns) {
+        if (info.id !== pid) continue;
+        safeSend(conn, msg);
+        if (msg.type === 'kicked') setTimeout(() => conn.close(), 300);
+      }
+    }
+    onConnection(conn) {
+      conn.on('data', msg => {
+        if (this.closed || !msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+        const info = this.conns.get(conn);
+        if (info) {
+          info.lastSeen = Date.now();
+          if (msg.type !== 'ping') this.room.handle(info.id, msg);
+          return;
+        }
+        if (msg.type !== 'join') return;
+        const tok = typeof msg.token === 'string' ? msg.token.slice(0, 64) : '';
+        const reject = text => { safeSend(conn, { type: 'error', text, fatal: true }); setTimeout(() => conn.close(), 300); };
+        if (!tok) return reject('接続情報が正しくありません');
+        if (tok === this.token) return reject('ホストと同じブラウザからは参加できません（別のブラウザかシークレットウィンドウで開いてください）');
+        const r = this.room.join(tok, msg.name, msg.icon);
+        if (r.error) return reject(r.error);
+        // 同じ人の古い接続は閉じる
+        for (const [c, i] of this.conns) if (i.id === r.id) { this.conns.delete(c); c.close(); }
+        this.conns.set(conn, { id: r.id, lastSeen: Date.now() });
+        this.room.attach(r.id);
+      });
+      conn.on('close', () => this.drop(conn));
+      conn.on('error', () => {});
+    }
+    drop(conn) {
+      const info = this.conns.get(conn);
+      if (!info) return;
+      this.conns.delete(conn);
+      if (!this.closed && ![...this.conns.values()].some(i => i.id === info.id)) this.room.disconnect(info.id);
+    }
+    // 生存確認：返事のない参加者は切断扱い（タブを閉じても通知が来ないことがあるため）
+    tick() {
+      const now = Date.now();
+      for (const [conn, info] of this.conns) {
+        if (now - info.lastSeen > P2P.dropMs) { this.drop(conn); try { conn.close(); } catch (e) { /* 無視 */ } }
+        else safeSend(conn, { type: 'pong' });
+      }
+    }
+    send(msg) {
+      if (!this.room) { this.queue.push(msg); return; }
+      setTimeout(() => { if (!this.closed) this.room.handle(this.id, msg); }, 0);
+    }
+    close() {
+      if (this.closed) return;
+      this.closed = true;
+      clearInterval(this.timer);
+      for (const conn of this.conns.keys()) safeSend(conn, { type: 'error', text: 'ホストがルームを閉じました', fatal: true });
+      if (this.room) this.room.close();
+      const peer = this.peer;
+      setTimeout(() => { try { if (peer) peer.destroy(); } catch (e) { /* 無視 */ } }, 300);
+    }
+  }
+
+  class PeerGuestTransport {
+    constructor(first) {
+      this.first = first;
+      this.closed = false;
+      this.welcomed = false;
+      this.retry = 0;
+      this.lastSeen = 0;
+      this.unavailable = 0;
+      this.start().catch(err => { if (!this.closed) leaveRoom(p2pError(err)); });
+    }
+    async start() {
+      await loadPeerJS();
+      const peer = await openPeer(null);
+      if (this.closed) { peer.destroy(); return; }
+      this.peer = peer;
+      peer.on('error', err => {
+        if (this.closed) return;
+        if (err.type === 'peer-unavailable') {
+          if (!this.welcomed) leaveRoom(p2pError(err));
+          // ホストのページが閉じられた（何度つないでも見つからない）
+          else if (++this.unavailable >= 4) leaveRoom('ホストがいなくなったため、ルームが終わりました');
+          else if (this.conn) this.lost(this.conn);
+        }
+      });
+      peer.on('disconnected', () => { if (!this.closed && !peer.destroyed) peer.reconnect(); });
+      this.timer = setInterval(() => this.tick(), P2P.pingMs);
+      this.connect();
+    }
+    connect() {
+      const conn = this.peer.connect(P2P.idPrefix + this.first.code, { reliable: true, serialization: 'json' });
+      this.conn = conn;
+      setTimeout(() => { if (this.conn === conn && !conn.open) this.lost(conn); }, P2P.joinTimeoutMs);
+      conn.on('open', () => { this.lastSeen = Date.now(); safeSend(conn, this.first); });
+      conn.on('data', msg => {
+        if (this.conn !== conn || !msg) return;
+        this.lastSeen = Date.now();
+        if (msg.type === 'pong') return;
+        if (msg.type === 'welcome') { this.welcomed = true; this.retry = 0; this.unavailable = 0; setReconnecting(false); }
+        onMessage(msg);
+      });
+      conn.on('close', () => this.lost(conn));
+      conn.on('error', () => {});
+    }
+    lost(conn) {
+      if (this.closed || this.conn !== conn) return;
+      this.conn = null;
+      try { conn.close(); } catch (e) { /* 無視 */ }
+      if (!this.welcomed) { leaveRoom('ルームにつながりませんでした。コードを確認してください'); return; }
+      if (++this.retry > P2P.maxRetry) { leaveRoom('ホストとの接続が切れました'); return; }
+      setReconnecting(true);
+      setTimeout(() => { if (!this.closed) this.connect(); }, 2000);
+    }
+    tick() {
+      if (!this.conn || !this.conn.open) return;
+      if (Date.now() - this.lastSeen > P2P.dropMs) this.lost(this.conn);
+      else safeSend(this.conn, { type: 'ping' });
+    }
+    send(msg) { safeSend(this.conn, msg); }
+    close() {
+      this.closed = true;
+      clearInterval(this.timer);
+      try { if (this.conn) this.conn.close(); } catch (e) { /* 無視 */ }
+      const peer = this.peer;
+      setTimeout(() => { try { if (peer) peer.destroy(); } catch (e) { /* 無視 */ } }, 100);
+    }
+  }
+
   // CPU対戦：ブラウザの中でルームを動かす（通信なし）
   class LocalTransport {
     constructor(name, icon) {
@@ -132,7 +350,8 @@
         app.me = msg.id;
         app.code = msg.code;
         showRoom();
-        if (!msg.offline) {
+        // P2Pのホストは開き直すとルームが消えるので、URLにコードを残さない
+        if (!msg.offline && !(app.conn && app.conn.isHost)) {
           const u = new URL(location.href);
           u.searchParams.set('room', msg.code);
           history.replaceState(null, '', u);
@@ -168,13 +387,16 @@
   function savedName() { return store.get('name') || ''; }
   function nameInput() { return $('#in-name').value.trim() || 'ゲスト'; }
 
-  function startOnline(type, code) {
-    if (!onlineAvailable) { toast('オンライン対戦はサーバーで起動したときに使えます（READMEを見てください）'); return; }
+  async function startOnline(type, code) {
     const name = nameInput();
     store.set('name', name);
+    const mode = await modeReady;
     closeConn();
     app.online = true;
-    app.conn = new WsTransport({ type, code, token: token(), name, icon: store.get('icon') || '' });
+    const icon = store.get('icon') || '';
+    if (mode === 'server') app.conn = new WsTransport({ type, code, token: token(), name, icon });
+    else if (type === 'create') app.conn = new PeerHostTransport(name, icon);
+    else app.conn = new PeerGuestTransport({ type: 'join', code, token: token(), name, icon });
   }
 
   function startOffline() {
@@ -309,6 +531,7 @@
       u.search = '';
       u.searchParams.set('room', s.code);
       if (SERVER) u.searchParams.set('server', SERVER);
+      if (params.get('mode')) u.searchParams.set('mode', params.get('mode'));
       return u.toString();
     })();
 
@@ -318,6 +541,7 @@
           <div>ルームコード <b class="code">${esc(s.code)}</b> <button class="small" data-copy="${esc(s.code)}">📋 コピー</button></div>
           <div class="invite"><span class="url">${esc(invite)}</span> <button class="small" data-copy="${esc(invite)}">📋 招待URLをコピー</button></div>
           <button class="small" data-act="leave">🚪 退出</button>
+          ${app.conn && app.conn.isHost ? '<p class="host-warn">⚠️ このルームはあなたのブラウザで動いています。ゲームが終わるまで、このページを閉じたり再読み込みしたりしないでください（スマホならスリープや別アプリへの切り替えにも注意）。</p>' : ''}
         </div>`;
 
     const rows = s.players.map(p => `
@@ -712,11 +936,18 @@
     $('#in-name').value = savedName();
     const code = (params.get('room') || '').toUpperCase();
     if (code) $('#in-code').value = code;
-    if (!onlineAvailable) {
+    modeReady.then(mode => {
+      if (mode !== 'p2p') return;
       const note = $('#online-note');
       note.hidden = false;
-      note.textContent = 'ファイルを直接開いているのでオンライン対戦は使えません。サーバーの起動方法は README を見てください。';
-    }
+      note.textContent = '🔗 サーバーなしモード：ルームを作った人のブラウザがゲームを進めます（ブラウザ同士で直接通信）。';
+    });
+    // P2Pのホストがページを閉じたら、参加者にすぐ知らせる
+    window.addEventListener('pagehide', () => { if (app.conn && app.conn.isHost) app.conn.close(); });
+    // P2Pのホストがページを閉じるとルームが終わるので確認する
+    window.addEventListener('beforeunload', e => {
+      if (app.conn && app.conn.isHost && app.state) { e.preventDefault(); e.returnValue = ''; }
+    });
 
     $('#btn-create').addEventListener('click', () => startOnline('create'));
     $('#btn-join').addEventListener('click', () => {
@@ -753,7 +984,7 @@
     setTab('game');
 
     // 招待URL・再読み込み：名前が保存されていればそのまま入る（同じ識別子なら同じプレイヤーとして復帰）
-    if (code && onlineAvailable && savedName()) startOnline('join', code);
+    if (code && savedName()) startOnline('join', code);
   }
 
   init();
