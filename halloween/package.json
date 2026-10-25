@@ -1,0 +1,17 @@
+{
+  "name": "halloween-candy-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ハロウィンお菓子ゲーム — 家を選んでお菓子を集めるオンライン対戦ボードゲーム（CPU対戦あり）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
