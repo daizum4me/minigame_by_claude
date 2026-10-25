@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ハロウィンお菓子ゲーム</title>
+<meta name="description" content="ハロウィンお菓子ゲーム — 家を選んでお菓子を集める、読み合いと駆け引きのオンライン対戦ボードゲーム（CPU対戦あり）">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎃</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- トップ -->
+<main id="top" class="top">
+  <h1><span class="logo">🎃</span>ハロウィン<br>お菓子ゲーム</h1>
+  <p class="lead">集落の家を1軒選んでお菓子をもらおう。<br>でも、ほかの人と同じ家に行くと誰ももらえない…！</p>
+
+  <label class="field">
+    <span>なまえ（12文字まで・絵文字OK）</span>
+    <input id="in-name" type="text" maxlength="24" autocomplete="nickname" placeholder="ゲスト">
+  </label>
+
+  <section class="box">
+    <h2>👥 友だちとオンライン対戦</h2>
+    <button id="btn-create" class="primary big">🏠 ルームを作る</button>
+    <div class="row">
+      <input id="in-code" type="text" maxlength="6" placeholder="ルームコード" autocapitalize="characters" autocomplete="off">
+      <button id="btn-join">コードで参加</button>
+    </div>
+    <p id="online-note" class="note" hidden></p>
+  </section>
+
+  <section class="box">
+    <h2>🤖 CPUと対戦</h2>
+    <button id="btn-cpu" class="primary big alt">🤖 CPUと遊ぶ</button>
+    <p class="note">ひとりで遊べます（通信なし）。人数や設定は次の画面で変えられます。</p>
+  </section>
+
+  <details class="rules" id="rules-top"></details>
+</main>
+
+<!-- ルーム（ロビー・ゲーム・結果） -->
+<div id="room" class="room" hidden>
+  <div id="banner" class="banner" hidden>🔌 再接続中…</div>
+  <div class="room-main" id="view"></div>
+  <aside class="chat" id="chat">
+    <div class="chat-head">💬 チャット</div>
+    <ol class="chat-log" id="chat-log"></ol>
+    <div class="stamps" id="stamps"></div>
+    <form class="chat-form" id="chat-form" autocomplete="off">
+      <input id="chat-in" type="text" maxlength="200" placeholder="メッセージ（200文字まで）">
+      <button type="submit">送信</button>
+    </form>
+  </aside>
+  <nav class="tabs" id="tabs">
+    <button data-tab="game" aria-pressed="true">🎮 ゲーム</button>
+    <button data-tab="chat" aria-pressed="false">💬 チャット <span class="badge" id="unread" hidden></span></button>
+  </nav>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<template id="rules-template">
+  <summary>📖 ルール説明</summary>
+  <div class="rules-body">
+    <p>🎃 集落を全部で <b data-s="rounds">9</b> つ回ります。1ラウンド＝1集落。各集落には🏠家が <b data-s="houses">6</b> 軒あり、家ごとの🍬お菓子の量は全員に見えます。最後にお菓子が一番多い人が勝ち（同点なら共同優勝）。</p>
+    <p>👀 毎ラウンド、全員が同時に家を1軒選びます。<b>2人以上が同じ家を選ぶと💥衝突</b>して、誰ももらえません。</p>
+    <table>
+      <thead><tr><th>家の状態（見えない）</th><th>1人で訪問</th><th>2人以上</th></tr></thead>
+      <tbody>
+        <tr><td>🍬 普通</td><td>お菓子の量</td><td>全員0</td></tr>
+        <tr><td>💰 お金持ち</td><td>お菓子の量＋<span data-s="richBonus">5</span></td><td>全員0</td></tr>
+        <tr><td>💤 留守</td><td>0</td><td>全員0</td></tr>
+        <tr><td>🧙‍♀️ 魔女</td><td>−<span data-s="witchPenalty">5</span></td><td>全員 −<span data-s="witchPenalty">5</span></td></tr>
+      </tbody>
+    </table>
+    <p>👑 <b>先頭</b>（ラウンド開始時にお菓子が最多の人）と衝突した人は、先頭から🤚 0〜<span data-s="stealMax">2</span> 個奪えます。</p>
+    <p>🔍 <b>秘密のヒント</b>：毎ラウンド、家1軒の本当の状態があなたにだけ見えます。話すか、嘘をつくかは自由。</p>
+    <p>📜 <b>ミッション</b>：達成するとボーナス。達成したら新しいミッションが配られます。</p>
+    <p>📣 <b>宣言</b>：作戦タイムに「ここに行く」と宣言できます。宣言に拘束力はありません（嘘OK）。</p>
+    <p>⏳ 作戦タイム → 家を選ぶ → 結果、の順に進みます。選ぶ時間に確定しなかった人はランダムな家に行きます。</p>
+  </div>
+</template>
+
+<script src="shared/config.js"></script>
+<script src="shared/engine.js"></script>
+<script src="shared/cpu.js"></script>
+<script src="shared/room.js"></script>
+<script src="client.js"></script>
+</body>
+</html>
