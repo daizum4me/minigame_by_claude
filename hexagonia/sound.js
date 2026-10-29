@@ -96,6 +96,9 @@
       tone({ freq: 1568, dur: 0.12, vol: 0.08, type: 'triangle' });
       tone({ freq: 2093, t: 0.08, dur: 0.3, vol: 0.08, type: 'triangle' });
     },
+    abandon() {     // セルを捨てる：さらさら
+      noise({ dur: 0.5, type: 'bandpass', freq: 1800, freqEnd: 500, q: 1.5, vol: 0.12, attack: 0.05 });
+    },
     endTurn() {     // 手番終了：とん
       tone({ freq: 330, freqEnd: 260, dur: 0.1, vol: 0.1 });
     },

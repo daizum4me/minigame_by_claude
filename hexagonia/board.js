@@ -4,7 +4,7 @@
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
  * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, scale, byLongPress), onView() })
- * view.setData({ game, colors, patterns, targets, selected, me })
+ * view.setData({ game, colors, patterns, targets, selected, marked, me })
  */
 (function () {
   'use strict';
@@ -24,6 +24,10 @@
     cell: '#3A3A38',
     edge: '#56554F',
     mark: '#A3A198',
+    river: '#2E4250',
+    riverEdge: '#45606F',
+    wave: '#7FA4BC',
+    plank: '#B9A88C',
   };
 
   // アキシャル座標 → 世界座標（マスの半径 = 1、とがった頂点が上）
@@ -319,13 +323,37 @@
         const [wx, wy] = toWorld(c.q, c.r);
         const x = this.ox + wx * s, y = this.oy + wy * s;
         if (x < -s || y < -s || x > w + s || y > h + s) continue;
+        const river = c.terrain === 'river';
         hexPath(ctx, x, y, s * 0.97);
-        ctx.fillStyle = COL.cell;
+        ctx.fillStyle = river ? COL.river : COL.cell;
         ctx.fill();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = COL.edge;
+        ctx.strokeStyle = river ? COL.riverEdge : COL.edge;
         ctx.stroke();
-        if (c.terrain === 'mountain') {
+        if (river) {
+          if (c.owner) {
+            // 橋：板を並べた形
+            ctx.strokeStyle = COL.plank;
+            ctx.lineWidth = Math.max(1, s * 0.07);
+            ctx.beginPath();
+            ctx.moveTo(x - s * 0.45, y - s * 0.22); ctx.lineTo(x + s * 0.45, y - s * 0.22);
+            ctx.moveTo(x - s * 0.45, y + s * 0.22); ctx.lineTo(x + s * 0.45, y + s * 0.22);
+            for (let i = -2; i <= 2; i++) { ctx.moveTo(x + i * s * 0.18, y - s * 0.22); ctx.lineTo(x + i * s * 0.18, y + s * 0.22); }
+            ctx.stroke();
+          } else {
+            // 川：波の線
+            ctx.strokeStyle = COL.wave;
+            ctx.lineWidth = Math.max(1, s * 0.05);
+            for (const dy of [-0.12, 0.12]) {
+              ctx.beginPath();
+              for (let i = 0; i <= 8; i++) {
+                const px = x - s * 0.3 + i * s * 0.075, py = y + dy * s + Math.sin(i / 8 * Math.PI * 2) * s * 0.05;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+              }
+              ctx.stroke();
+            }
+          }
+        } else if (c.terrain === 'mountain') {
           ctx.beginPath();
           ctx.moveTo(x, y - s * 0.25);
           ctx.lineTo(x + s * 0.27, y + s * 0.2);
@@ -382,6 +410,22 @@
             }
           }
         }
+      }
+      // 捨てるセルとして選んだマス：赤い枠と×
+      for (const k of d.marked || []) {
+        if (!g.board[k]) continue;
+        const [x, y] = this.screenOf(k);
+        hexPath(ctx, x, y, s * 0.86);
+        ctx.fillStyle = 'rgba(255,90,90,0.25)';
+        ctx.fill();
+        ctx.lineWidth = Math.max(2, s * 0.08);
+        ctx.strokeStyle = 'rgba(255,120,120,0.95)';
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - s * 0.3, y - s * 0.3); ctx.lineTo(x + s * 0.3, y + s * 0.3);
+        ctx.moveTo(x + s * 0.3, y - s * 0.3); ctx.lineTo(x - s * 0.3, y + s * 0.3);
+        ctx.stroke();
       }
       // 行動できるマス（薄く光らせる）
       for (const k of targets) {

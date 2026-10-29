@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ヘキサゴニア</title>
-<meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜4人のオンライン陣取りゲーム">
+<meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -15,7 +15,7 @@
 <main id="top" class="screen center">
   <div class="card top-card">
     <h1 class="title"><span class="logo" aria-hidden="true"></span>ヘキサゴニア<small>（仮）</small></h1>
-    <p class="lead">六角形のマスでセルを広げ、強化し、<br>相手のコアを破壊する陣取りゲーム。2〜4人。</p>
+    <p class="lead">六角形のマスでセルを広げ、強化し、<br>相手のコアを破壊する陣取りゲーム。2〜12人。</p>
 
     <label class="field">
       <span>なまえ（12文字まで）</span>
@@ -52,7 +52,7 @@
       </div>
       <p id="host-warn" class="note warn" hidden>この部屋はあなたのブラウザで動いています。ゲームが終わるまで、このページを閉じたり再読み込みしたりしないでください。</p>
     </div>
-    <p id="lobby-local" class="note muted" hidden>CPUと遊ぶ（通信なし）。CPUは1〜3人まで入れられます。</p>
+    <p id="lobby-local" class="note muted" hidden>CPUと遊ぶ（通信なし）。CPUは1〜11人まで入れられます。</p>
 
     <h3>参加者 <span id="lobby-count" class="muted"></span></h3>
     <ul id="lobby-players" class="lobby-players"></ul>
@@ -66,6 +66,9 @@
       <option value="11">11マス</option>
       <option value="13">13マス</option>
       <option value="15">15マス</option>
+      <option value="17">17マス</option>
+      <option value="19">19マス</option>
+      <option value="21">21マス</option>
     </select>
 
     <h3>自分の陣営色</h3>
@@ -98,6 +101,7 @@
     <div id="grace" class="banner" hidden></div>
     <div id="clash" class="clash" hidden></div>
     <div id="extra" class="extra" hidden></div>
+    <div id="abandon" class="extra" hidden></div>
     <div id="tooltip" class="tooltip" hidden></div>
   </section>
 
@@ -131,7 +135,7 @@
   <div class="rules">
     <p>六角形の盤面で、自分の<b>セル</b>を広げ・強化し、相手のセルを破壊して争います。各プレイヤーは<b>コア</b>（中心に円のあるセル。盤面の一番外側に置かれる）を1つ持ち、コアを破壊されると脱落です。コアは<b>攻撃が3回成功するまで破壊されません</b>（円の下の3つの点が残りの耐久）。</p>
     <h3>手番</h3>
-    <p>自分の手番では行動を<b>最大3回</b>まで行い（使い切ったら、資源を払って行動 +1 できます。6個から始まり、同じ手番で買うたびに +4）、「手番終了」で資源を受け取って次の人へ。持ち時間は<b>120秒</b>で、切れると自動で手番終了になります（破壊の攻防のあいだは止まります）。資源が足りないなどで、もうできる行動がなくなったときも自動で手番終了になります。</p>
+    <p>自分の手番では行動を<b>最大3回</b>まで行い（使い切ったら、資源を払って行動 +1 できます。6個から始まり、同じ手番で買うたびに +4）、「手番終了」で資源を受け取って次の人へ。持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）で、切れると自動で手番終了になります（破壊の攻防のあいだは止まります）。資源が足りないなどで、もうできる行動がなくなったときも自動で手番終了になります。</p>
     <table>
       <tr><th>行動</th><th>資源</th><th>内容</th></tr>
       <tr><td colspan="3" class="muted">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了は右（スマホでは下）のパネルから。</td></tr>
@@ -141,7 +145,9 @@
       <tr><td>補強</td><td>2</td><td>防御トークン +1・攻撃トークン +1</td></tr>
     </table>
     <h3>手番終了時の資源</h3>
-    <p>強化済セル1つにつき +1（鉱山マスならさらに +1）。コアは常に +2（強化済ならさらに +1）。</p>
+    <p>強化済セル1つにつき +1。鉱山マスのセルは強化しなくても +1、強化すると +2。コアは常に +2（強化済ならさらに +1）。</p>
+    <h3>維持費</h3>
+    <p>手番終了時、資源を受け取ったあとに<b>維持費</b>を払います。維持費は「セルの数 ÷ 4（切り捨て）」で、<b>平原のセルは半分</b>として数えます。払えないときは、足りない資源1つにつきセルを1つ選んで捨てます（コアは捨てられません。30秒で決めなければ自動で選びます）。</p>
     <h3>破壊の攻防</h3>
     <ol>
       <li>攻撃側が資源を1払って破壊を宣言する</li>
@@ -152,7 +158,7 @@
     <h3>勝敗</h3>
     <p>自分以外の全員が脱落したら勝利。12ラウンド終了時は、<b>つながっている一番大きなかたまり</b>（隣り合う自分のセルのまとまり）が最も大きい人の勝利（同じなら同率優勝）。セルの総数ではないので、分断されたセルは数に入りません。</p>
     <h3>地形</h3>
-    <p>▲ 山岳マス（約15%）：拡張コスト +1、拡張・強化で防御トークン +1。<br>★ 鉱山マス（約15%）：そこのセルが強化済なら、手番終了時の資源 +1。</p>
+    <p>平原マス：維持費が半分。<br>▲ 山岳マス（約15%）：拡張コスト +1、拡張・強化で防御トークン +1。<br>★ 鉱山マス（約15%）：強化しなくても手番終了時の資源 +1、強化すると +2。<br>〜 川マス：資源4で<b>橋をかける</b>とセルを置ける。橋は強化できる。破壊されると橋が落ちて川に戻る。4人までは川が中心から外側まで流れて陣地を区切り、5人以上は外側の半分くらいだけ流れる。</p>
     <h3>操作</h3>
     <p>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。マスの情報：ホバー。マスを選ぶ（クリック／タップ）と、そのマスでできる行動のボタンが出ます。</p>
   </div>
@@ -172,11 +178,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=6"></script>
-<script src="shared/cpu.js?v=6"></script>
-<script src="shared/room.js?v=6"></script>
-<script src="sound.js?v=6"></script>
-<script src="board.js?v=6"></script>
-<script src="client.js?v=6"></script>
+<script src="shared/engine.js?v=7"></script>
+<script src="shared/cpu.js?v=7"></script>
+<script src="shared/room.js?v=7"></script>
+<script src="sound.js?v=7"></script>
+<script src="board.js?v=7"></script>
+<script src="client.js?v=7"></script>
 </body>
 </html>

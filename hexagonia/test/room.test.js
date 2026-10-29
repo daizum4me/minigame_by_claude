@@ -177,7 +177,7 @@ test('ホストは盤面の直径を設定できる', () => {
   assert.strictEqual(last(h).room.settings.diameter, 0);
   room.handle(h, { type: 'settings', diameter: 8 });    // 偶数は不可
   assert.strictEqual(inbox[h].at(-1).type, 'error');
-  room.handle(h, { type: 'settings', diameter: 17 });   // 範囲外
+  room.handle(h, { type: 'settings', diameter: 23 });   // 範囲外
   assert.strictEqual(inbox[h].at(-1).type, 'error');
   room.handle(h, { type: 'settings', diameter: 13 });
   assert.strictEqual(last(g).room.settings.diameter, 13);

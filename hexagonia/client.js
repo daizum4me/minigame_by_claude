@@ -42,26 +42,56 @@
 
   // ---------- 陣営色 ----------
 
-  const COLOR_NAMES = { red: '赤', blue: '青', green: '緑', yellow: '黄' };
+  const COLOR_NAMES = {
+    red: '赤', blue: '青', green: '緑', yellow: '黄', purple: '紫', orange: '橙',
+    cyan: '水色', pink: '桃', lime: '黄緑', brown: '茶', white: '白', indigo: '藍',
+  };
   const COLOR_SETS = {
+    // 暗い背景で見分けやすい12色
     normal: {
       red: { base: '#E5534B', light: '#FF9C94' },
       blue: { base: '#4C8EDA', light: '#9CC6F2' },
       green: { base: '#3FAE74', light: '#8EDDB2' },
       yellow: { base: '#E39B00', light: '#FFD36B' },  // 半透明で薄くならないよう山吹色寄り
+      purple: { base: '#A66BDB', light: '#D4B0F5' },
+      orange: { base: '#F07A2E', light: '#FFB27D' },
+      cyan: { base: '#2DBFC7', light: '#8DE7EC' },
+      pink: { base: '#E065A8', light: '#F7AED5' },
+      lime: { base: '#9BC53D', light: '#CDEB8B' },
+      brown: { base: '#A8744A', light: '#D9B08D' },
+      white: { base: '#CFCBC0', light: '#F5F2EA' },
+      indigo: { base: '#5E6AD8', light: '#A9B1F5' },
     },
-    // Okabe-Ito 配色
+    // Okabe-Ito 配色（8色。9人目からは同じ色を縁の模様で見分ける）
     cb: {
       red: { base: '#D55E00', light: '#FFA466' },
       blue: { base: '#0072B2', light: '#56B4E9' },
       green: { base: '#009E73', light: '#5FD6B2' },
       yellow: { base: '#F0E442', light: '#FFF6A0' },
+      purple: { base: '#CC79A7', light: '#EDB5D3' },
+      orange: { base: '#E69F00', light: '#FFCF66' },
+      cyan: { base: '#56B4E9', light: '#A8DBF7' },
+      white: { base: '#E8E8E8', light: '#FFFFFF' },
+      pink: { base: '#D55E00', light: '#FFA466' },
+      lime: { base: '#009E73', light: '#5FD6B2' },
+      brown: { base: '#F0E442', light: '#FFF6A0' },
+      indigo: { base: '#0072B2', light: '#56B4E9' },
     },
   };
-  const PATTERNS = { red: 'solid', blue: 'dashed', green: 'double', yellow: 'dotted' };
+  // 縁の模様。Okabe-Ito で同じ色になる組（赤と桃など）は、違う模様になるようにしてある
+  const PATTERNS = {
+    red: 'solid', blue: 'dashed', green: 'double', yellow: 'dotted', purple: 'solid', orange: 'dashed',
+    cyan: 'double', white: 'dotted', pink: 'dotted', lime: 'solid', brown: 'dashed', indigo: 'double',
+  };
   const PATTERN_NAMES = { solid: '実線', dashed: '破線', double: '二重線', dotted: '点線' };
 
   const settings = { cb: store.get('cb') === '1', patterns: store.get('patterns') === '1' };
+
+  // 縁の模様を使うか：設定でオンにしたとき、または Okabe-Ito で9人以上（同じ色があるので模様で見分ける）
+  function patternsOn() {
+    const n = app.room ? app.room.players.length : 0;
+    return settings.patterns || (settings.cb && n > 8);
+  }
 
   function colorOf(c) {
     const set = COLOR_SETS[settings.cb ? 'cb' : 'normal'][c] || COLOR_SETS.normal.red;
@@ -71,7 +101,7 @@
   // 陣営色の小さな六角形（模様のオプションがオンなら縁の模様も）
   function swatch(c, cls) {
     const col = colorOf(c);
-    const pat = settings.patterns ? col.pattern : 'solid';
+    const pat = patternsOn() ? col.pattern : 'solid';
     const hex = 'M12 2 L20.7 7 L20.7 17 L12 22 L3.3 17 L3.3 7 Z';
     const dash = pat === 'dashed' ? ' stroke-dasharray="4 2.5"' : pat === 'dotted' ? ' stroke-dasharray="0.1 3" stroke-linecap="round"' : '';
     const stroke = pat === 'double'
@@ -316,6 +346,7 @@
     prevCells: null,    // 前回の盤面（変化したマスを光らせるため）
     clashResult: null,  // 公開された攻防の結果を少しのあいだ見せる { ...lastClash, until }
     bid: null,          // 攻防で出す数の入力中の値 { key, n }
+    abandonSel: new Set(), // 捨てるセルとして選んだマス
     tip: null,          // ツールチップを出しているマス { key, pinned }。pinned なら行動のボタンも出す
   };
 
@@ -450,7 +481,7 @@
     sel.disabled = !isHost;
     sel.value = String(dia);
     const autoDia = enough ? R.radius[room.players.length] * 2 + 1 : 0;
-    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '2人 7・3人 9・4人 11';
+    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2人 7・4人 11・8人 15・12人 17 など）';
     $('#lobby-wait').textContent = isHost
       ? (enough ? `${room.players.length}人で始められます（盤面の直径 ${dia || autoDia}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
       : 'ホストがゲームを始めるのを待っています…';
@@ -480,7 +511,7 @@
 
     const colors = {};
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
-    boardView().setData({ game: g, colors, patterns: settings.patterns, targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, me: app.me });
+    boardView().setData({ game: g, colors, patterns: patternsOn(), targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, marked: abandoning(g) ? [...app.abandonSel] : [], me: app.me });
 
     // 変化したマス（拡張・強化・破壊・脱落）を一瞬光らせる
     const cells = {};
@@ -502,12 +533,13 @@
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
     $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御 +1・攻撃 +1</small></button>`
-      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>資源 +${me ? E.income(g, app.me) : 0}</small></button>`
+      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
       + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
     let hint = '';
     if (g.over) hint = '';
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
+    else if (g.abandon) hint = g.abandon.player === app.me ? '維持費が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
     else if (g.pending) hint = '破壊の攻防中です';
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
     else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
@@ -516,6 +548,7 @@
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
+    $('#players').classList.toggle('compact', g.players.length > 6);
     $('#players').innerHTML = g.players.map(p => {
       const cells = E.cellsOf(g, p.id).length;
       const group = E.largestGroup(g, p.id).length;
@@ -558,6 +591,7 @@
 
     renderClash(g, pl);
     renderExtra(g, me);
+    renderAbandon(g, me);
     tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
@@ -618,7 +652,7 @@
   // 行動回数を使い切ったら、画面中央で「手番終了」か「資源を払って行動 +1」かを選ぶ
   function renderExtra(g, me) {
     const el = $('#extra');
-    const show = myTurn(g) && me && me.alive && g.actionsLeft === 0;
+    const show = myTurn(g) && me && me.alive && g.actionsLeft === 0 && !g.abandon;
     const key = `${g.round}:${g.turn}:${g.extraBought}`;
     if (!show || app.extraHidden === key) { el.hidden = true; return; }
     const cost = E.extraActionCost(g);
@@ -626,7 +660,7 @@
     el.innerHTML = `<div class="extra-card">
       <h3>行動回数を使い切りました</h3>
       <div class="extra-btns">
-        <button data-extra="endTurn"><b>手番終了</b><small>資源 +${E.income(g, app.me)}</small></button>
+        <button data-extra="endTurn"><b>手番終了</b><small>${netText(g)}</small></button>
         <button class="primary" data-extra="buyAction" ${lack > 0 ? 'disabled' : ''}><b>行動 +1</b><small>${TOKEN_SVG.resource}${cost} を払う${lack > 0 ? `（あと ${lack} 足りない）` : ''}</small></button>
       </div>
       <p class="muted small">行動 +1 に必要な資源は、同じ手番で買うたびに +${R.extraAction.step}（手番が変わると ${R.extraAction.base} に戻る）</p>
@@ -636,15 +670,46 @@
     el.hidden = false;
   }
 
+  // 手番終了で受け取る資源（収入 − 維持費）
+  function netText(g) {
+    const inc = E.income(g, app.me), up = E.upkeep(g, app.me);
+    return up ? `資源 +${inc} −維持費 ${up}` : `資源 +${inc}`;
+  }
+
+  // 自分が捨てるセルを選んでいるところか
+  function abandoning(g) { return !!(g && g.abandon && g.abandon.player === app.me); }
+
+  // 維持費が払えないとき：捨てるセルを盤面で選ぶ（コアは選べない）
+  function renderAbandon(g, me) {
+    const el = $('#abandon');
+    if (!abandoning(g)) { el.hidden = true; app.abandonSel = new Set(); return; }
+    const n = g.abandon.count;
+    for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
+    const k = app.abandonSel.size;
+    el.innerHTML = `<div class="extra-card abandon-card">
+      <h3>維持費が足りません</h3>
+      <p>捨てるセルを <b>${n}</b> つ、盤面で選んでください（コアは選べません）</p>
+      <p class="abandon-count ${k === n ? 'ok' : ''}">選んだ数 <b>${k}</b> / ${n}</p>
+      <div class="extra-btns">
+        <button data-abandon="auto">おまかせで選ぶ</button>
+        <button class="primary danger" data-abandon="ok" ${k === n ? '' : 'disabled'}>このセルを捨てる</button>
+      </div>
+      <p class="muted small" data-left="abandon"></p>
+    </div>`;
+    el.hidden = false;
+    tickTimers();
+  }
+
   // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
   function playSounds(g, fresh) {
     if (!fresh.length) return;
-    const order = ['win', 'out', 'success', 'fail', 'declare', 'buy', 'strengthen', 'reinforce', 'expand', 'endTurn'];
+    const order = ['win', 'out', 'success', 'fail', 'abandon', 'declare', 'buy', 'strengthen', 'reinforce', 'expand', 'endTurn'];
     const found = new Set();
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
       else if (l.tone === 'out') found.add('out');
       else if (/^破壊成功/.test(l.text) || l.tone === 'hit') found.add('success');
+      else if (l.tone === 'abandon') found.add('abandon');
       else if (/^破壊失敗/.test(l.text)) found.add('fail');
       else if (l.tone === 'destroy') found.add('declare');
       else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1, buy: 1 }) found.add(l.tone);
@@ -661,7 +726,7 @@
     const room = app.room;
     const g = room && room.game;
     const el = $('#hud-timer');
-    if (!g || room.phase !== 'game' || g.over) { el.hidden = true; return; }
+    if (!g || room.phase !== 'game' || g.over || g.abandon) { el.hidden = true; return; }
     const pass = Date.now() - (app.graceAt || Date.now());
     const sec = ms => Math.max(0, Math.ceil(ms / 1000));
     const turnSec = room.turnPaused ? sec(room.turnLeftMs) : sec(room.turnLeftMs - pass);
@@ -672,6 +737,8 @@
     // 自分の手番の残り10秒は時計の音
     if (myTurn(g) && !room.turnPaused && turnSec <= 10 && turnSec > 0 && turnSec !== lastTickSec) window.HexSound.play('tick');
     lastTickSec = turnSec;
+    const abEl = document.querySelector('[data-left="abandon"]');
+    if (abEl) abEl.textContent = `あと ${sec(room.abandonLeftMs - pass)} 秒（時間切れのときは自動で選びます）`;
     const bidEl = document.querySelector('[data-left="bid"]');
     if (bidEl) bidEl.textContent = `あと ${sec(room.bidLeftMs - pass)} 秒`;
     const grace = $('#grace');
@@ -702,6 +769,17 @@
 
   // マスを選ぶ：そのマスの情報と、できる行動のボタンをツールチップに出す
   function onCellSelect(key) {
+    const g = app.room && app.room.game;
+    if (abandoning(g)) {
+      const c = key && g.board[key];
+      if (!c || c.owner !== app.me) return;
+      if (c.core) { toast('コアは捨てられません'); return; }
+      if (app.abandonSel.has(key)) app.abandonSel.delete(key);
+      else if (app.abandonSel.size < g.abandon.count) app.abandonSel.add(key);
+      else toast(`捨てるのは ${g.abandon.count} つまでです`);
+      render();
+      return;
+    }
     if (!key || (app.tip && app.tip.pinned && app.tip.key === key)) { hideTip(); return; }
     showTip({ key, pinned: true });
   }
@@ -713,9 +791,10 @@
   }
 
   const TERRAIN_EFFECTS = {
-    plain: '効果なし',
+    plain: '維持費を数えるとき、平原のセルは半分として数える',
     mountain: `拡張コスト +1（資源 ${R.cost.expandMountain}）。拡張すると防御トークン +1、強化すると攻撃トークン +1 に加えて防御トークン +1`,
-    mine: '強化済セルなら、手番終了時の資源 +1（強化済セルの +1 に加えて）',
+    mine: `強化しなくても手番終了時の資源 +${R.income.mine}、強化すると +${R.income.mineStrong}`,
+    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
@@ -729,12 +808,12 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mountain' ? '防御トークン +1' : '';
+      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて川を渡る' : '';
     } else if (c.owner === app.me) {
       if (c.strong) return { note: '強化済のセルです' };
       type = 'strengthen';
       cost = R.cost.strengthen;
-      const inc = R.income.strong + (c.terrain === 'mine' ? R.income.mineBonus : 0);
+      const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
       gain = '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
     } else {
       type = 'destroy';
@@ -742,13 +821,16 @@
       const foe = g.players.find(p => p.id === c.owner);
       gain = c.core
         ? `${foe.name} の防御トークン ${foe.defense} 個。コアの耐久 ${foe.coreHp} / ${R.coreHp}（攻撃が成功するたびに -1、0 で破壊）`
-        : `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
+        : c.terrain === 'river'
+          ? `${foe.name} の防御トークン ${foe.defense} 個。成功すると橋が落ちて川に戻る`
+          : `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
     }
     let why = '';
     if (!E.targets(g, app.me, type).includes(key)) {
       const cur = E.current(g);
       if (g.pending) why = '破壊の攻防が終わるまで待ってください';
       else if (cur.id !== app.me) why = `${cur.name} の手番です`;
+      else if (g.abandon) why = '捨てるセルを選んでいるところです';
       else if (g.actionsLeft <= 0) why = '行動回数を使い切りました';
       else if (me.resource < cost) why = `資源トークンが足りません（あと ${cost - me.resource}）`;
       else why = '自分のセルに隣接していません';
@@ -763,20 +845,20 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? '空きマス' : (c.core ? `コア（耐久 ${owner.coreHp} / ${R.coreHp}）・` : '') + (c.strong ? '強化済' : '未強化');
+    const state = !owner ? (c.terrain === 'river' ? '川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? `コア（耐久 ${owner.coreHp} / ${R.coreHp}）・` : '') + (c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
       const a = cellAction(g, tip.key);
       if (a && a.type) {
         acts = `<div class="tt-acts"><button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
-          <b>${E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
+          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
           ${a.why ? `<p class="tt-why">${esc(a.why)}</p>` : ''}</div>`;
       } else if (a && a.note) {
         acts = `<div class="tt-acts"><p class="tt-why">${esc(a.note)}</p></div>`;
       }
     }
     const el = $('#tooltip');
-    el.innerHTML = `<div class="tt-head">${{ plain: '', mountain: '▲ ', mine: '★ ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    el.innerHTML = `<div class="tt-head">${{ plain: '', mountain: '▲ ', mine: '★ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
@@ -817,7 +899,7 @@
     $('#set-pattern').checked = settings.patterns;
     $('#set-sound').checked = window.HexSound.on;
     $('#set-preview').innerHTML = window.HexRoom.COLORS.map(c =>
-      `<span>${swatch(c, 'big')}${colorOf(c).name}${settings.patterns ? `<small>${PATTERN_NAMES[PATTERNS[c]]}</small>` : ''}</span>`).join('');
+      `<span>${swatch(c, 'big')}${colorOf(c).name}${patternsOn() ? `<small>${PATTERN_NAMES[PATTERNS[c]]}</small>` : ''}</span>`).join('');
   }
 
   // ---------- イベント ----------
@@ -848,6 +930,13 @@
       if (!b || b.disabled) return;
       if (b.dataset.extra === 'hide') { app.extraHidden = $('#extra').dataset.key; $('#extra').hidden = true; return; }
       send({ type: 'act', action: { type: b.dataset.extra } });
+    };
+    $('#abandon').onclick = e => {
+      const b = e.target.closest('[data-abandon]');
+      const g = app.room && app.room.game;
+      if (!b || b.disabled || !abandoning(g)) return;
+      if (b.dataset.abandon === 'auto') { app.abandonSel = new Set(E.suggestAbandon(g, app.me)); render(); return; }
+      send({ type: 'act', action: { type: 'abandon', cells: [...app.abandonSel] } });
     };
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
     $('#actions').onclick = e => {
