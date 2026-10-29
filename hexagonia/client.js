@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア（仮）— 画面と通信
+ * ヘキサゴニア — 画面と通信
  * 通信は PeerJS（WebRTC の P2P）。部屋を作った人（ホスト）のブラウザで Room を動かし、
  * 参加者は行動の要求をホストへ送る。ホストが検証して、全員に最新の状態を配信する。
  */
@@ -140,7 +140,6 @@
     'cell-strong': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.2"/>`),
     core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
     'hex-plain': tile('#3A3A38', '#6A695F'),
-    'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M7.5 15 L10 9.5 L12 12.5 L13.5 10.5 L16.5 15 Z" fill="#A3A198"/>'),
     'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L14.8 12 L12 16.5 L9.2 12 Z" fill="#A3A198"/>'),
     'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
     'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
@@ -357,12 +356,17 @@
 
   // CPU対戦（通信なし）：自分のブラウザで Room を動かす
   class LocalTransport {
-    constructor(name) {
+    // tutorial：チュートリアル（CPU 1人と2人戦・イベントなし・すぐ始める）
+    constructor(name, tutorial) {
       this.isLocal = true;
       const clone = m => JSON.parse(JSON.stringify(m));
       this.room = new window.HexRoom.Room({ code: '', send: (pid, msg) => { if (pid === this.id) { const m = clone(msg); setTimeout(() => onMessage(m), 0); } } });
       this.id = this.room.join(token(), name).id;
       this.room.handle(this.id, { type: 'addCpu' });
+      if (tutorial) {
+        this.room.events = false;
+        this.room.handle(this.id, { type: 'start' });
+      }
     }
     send(msg) { setTimeout(() => { if (!this.room.closed) this.room.handle(this.id, msg); }, 0); }
     close() { this.room.close(); }
@@ -436,8 +440,9 @@
     store.set('name', name);
     if (type === 'create') {
       app.conn = new HostTransport(name);
-    } else if (type === 'local') {
-      app.conn = new LocalTransport(name);
+    } else if (type === 'local' || type === 'tutorial') {
+      app.tutorial = type === 'tutorial' ? { step: 0, base: null } : null;
+      app.conn = new LocalTransport(name, type === 'tutorial');
       return;
     } else {
       const code = $('#in-code').value.trim().toUpperCase();
@@ -445,7 +450,7 @@
       app.conn = new GuestTransport({ type: 'join', code, token: token(), name });
     }
     topMsg('接続しています…', 'info');
-    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = true;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = $('#btn-tutorial').disabled = true;
   }
 
   function leaveRoom(text) {
@@ -453,12 +458,14 @@
     app.conn = null;
     app.room = null;
     app.me = null;
+    app.tutorial = null;
+    $('#coach').hidden = true;
     setReconnecting(false);
     hideTip();
     const url = new URL(location.href);
     url.searchParams.delete('room');
     history.replaceState(null, '', url);
-    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = false;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = $('#btn-tutorial').disabled = false;
     show('top');
     topMsg(text || '');
   }
@@ -594,7 +601,7 @@
     let hint = '';
     if (g.over) hint = '';
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
-    else if (g.abandon) hint = g.abandon.player === app.me ? '維持費が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
+    else if (g.abandon) hint = g.abandon.player === app.me ? '食料が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
     else if (g.pending) hint = '破壊の攻防中です';
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
     else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
@@ -648,6 +655,7 @@
     app.wasMyTurn = mine;
 
     updateDock();
+    renderCoach();
     renderClash(g, pl);
     renderExtra(g, me);
     renderAbandon(g, me);
@@ -731,19 +739,19 @@
     el.hidden = false;
   }
 
-  // 手番終了で受け取る資源（収入 − 維持費）
+  // 手番終了で受け取る資源と、作る・食べる食料
   function netText(g) {
-    const inc = E.income(g, app.me), up = E.upkeep(g, app.me);
+    const inc = E.income(g, app.me);
     const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me);
     const me = g.players.find(p => p.id === app.me);
     const short = Math.max(0, eaten - made - ((me && me.food) || 0));
-    return (up ? `資源 +${inc} −維持費 ${up}` : `資源 +${inc}`) + `・食料 +${made} −${eaten}` + (short ? `（${short} 足りない）` : '');
+    return `資源 +${inc}・食料 +${made} −${eaten}` + (short ? `（${short} 足りない）` : '');
   }
 
   // 自分が捨てるセルを選んでいるところか
   function abandoning(g) { return !!(g && g.abandon && g.abandon.player === app.me); }
 
-  // 維持費が払えないとき：捨てるセルを盤面で選ぶ（コアは選べない）
+  // 食料が足りないとき：捨てるセルを盤面で選ぶ（コアは選べない）
   function renderAbandon(g, me) {
     const el = $('#abandon');
     if (!abandoning(g)) { el.hidden = true; app.abandonSel = new Set(); return; }
@@ -751,7 +759,7 @@
     for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
     const k = app.abandonSel.size;
     el.innerHTML = `<div class="extra-card abandon-card">
-      <h3>${R.upkeep.enabled ? '維持費か食料' : '食料'}が足りません</h3>
+      <h3>食料が足りません</h3>
       <p>捨てるセルを <b>${n}</b> つ、盤面で選んでください（コアは選べません）</p>
       <p class="abandon-count ${k === n ? 'ok' : ''}">選んだ数 <b>${k}</b> / ${n}</p>
       <div class="extra-btns">
@@ -762,6 +770,69 @@
     </div>`;
     el.hidden = false;
     tickTimers();
+  }
+
+  // ---------- チュートリアル ----------
+  // 1ステップずつ案内する。「やってみよう」のステップは、やったら自動で次へ進む
+  const myCells = g => E.cellsOf(g, app.me);
+  const TUTORIAL = [
+    { title: 'ヘキサゴニアへようこそ', next: true,
+      text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
+    { title: '盤面の見方', next: true,
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　● <b>農地</b>：毎手番 食料 +1　▲ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源4で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+    { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
+      text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
+      done: (g, base) => myCells(g).length > base.cells },
+    { title: 'やってみよう：強化', myTurn: true, target: '#tooltip [data-cell-act="strengthen"]',
+      text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、攻撃トークン +1・防御トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。',
+      done: g => myCells(g).some(c => c.strong) },
+    { title: 'トークンと食料', next: true, target: '#me-tokens',
+      text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-atk">攻撃</span>：破壊に使う　<span class="k-def">防御</span>：守りに使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。' },
+    { title: 'やってみよう：生産', myTurn: true, target: '#actions [data-act="reinforce"]', skippable: true,
+      text: '下のバーの<b>「生産」</b>で、資源からトークンを作れます。行動回数は使いません。<br>防御トークン（資源2）を作ってみましょう。資源が足りなければ「次へ」で進めます。',
+      done: (g, base) => { const me = g.players.find(p => p.id === app.me); return me && me.defense > base.defense; } },
+    { title: 'やってみよう：手番終了', myTurn: true, target: '#actions [data-act="endTurn"]',
+      text: '行動を使ったら<b>「手番終了」</b>を押します。資源と食料をもらい、食料を食べてから次の人の番です。<br>ボタンに、もらえる量と食べる量が出ています。',
+      done: (g, base) => g.turnNo !== base.turnNo },
+    { title: '破壊と読み合い', next: true,
+      text: '相手のセルの隣まで広げたら、<b>破壊</b>できます（資源2・攻撃トークンが1個以上必要）。<br>攻撃側と防御側が、出すトークンの数を<b>伏せて</b>決め、<b>攻撃 ≧ 防御</b>なら成功。成功したマスは自分のセルになります。<br>結果は成功か失敗かだけが知らされ、出した数は相手にはわかりません。' },
+    { title: 'もう少しだけ', next: true,
+      text: 'ラウンドの始まりに、ときどき<b>イベント</b>（豊作・不作など）が起きます。次のラウンドの分は画面上部で予告されます。<br>行動回数を使い切ったら、資源を払って<b>行動 +1</b> もできます。' },
+    { title: 'これでおしまい', next: true, last: true,
+      text: 'あとはこのまま CPU と最後まで遊んでみてください。<br>ルールはいつでも右上の <b>？</b> で見られます。' },
+  ];
+
+  function tutorialBase(g) {
+    const me = g.players.find(p => p.id === app.me) || {};
+    return { cells: myCells(g).length, defense: me.defense || 0, turnNo: g.turnNo };
+  }
+
+  function renderCoach() {
+    const el = $('#coach');
+    document.querySelectorAll('.coach-target').forEach(n => n.classList.remove('coach-target'));
+    const t = app.tutorial;
+    const g = app.room && app.room.game;
+    if (!t || !g || g.over || t.step >= TUTORIAL.length) { el.hidden = true; return; }
+    if (!t.base) t.base = tutorialBase(g);
+    let st = TUTORIAL[t.step];
+    // やってみようのステップは、やったら次へ
+    while (st.done && st.done(g, t.base)) {
+      t.step++;
+      t.base = tutorialBase(g);
+      if (t.step >= TUTORIAL.length) { el.hidden = true; return; }
+      st = TUTORIAL[t.step];
+    }
+    const mine = !g.pending && !g.abandon && E.current(g).id === app.me;
+    const wait = st.myTurn && !mine;
+    el.innerHTML = `<div class="coach-head"><b>${st.title}</b><span class="muted">${t.step + 1} / ${TUTORIAL.length}</span></div>
+      <p>${st.text}</p>
+      ${wait ? '<p class="muted small">相手の手番です。あなたの手番になるまで少し待ってください…</p>' : ''}
+      <div class="coach-btns">
+        <button class="link" data-coach="quit">チュートリアルをやめる</button>
+        ${st.next ? `<button class="primary" data-coach="next">${st.last ? 'おわる' : '次へ'}</button>` : st.skippable ? '<button data-coach="next">次へ</button>' : ''}
+      </div>`;
+    el.hidden = false;
+    if (st.target && !wait) { const n = document.querySelector(st.target); if (n) n.classList.add('coach-target'); }
   }
 
   // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
@@ -857,7 +928,6 @@
 
   const TERRAIN_EFFECTS = {
     plain: '効果なし',
-    mountain: `拡張コスト +1（資源 ${R.cost.expandMountain}）。拡張すると防御トークン +1、強化すると攻撃トークン +1 に加えて防御トークン +1`,
     mine: `拡張したとき（破壊で取ったときも）と強化したときに、攻撃トークン +${R.mineAttack}`,
     farm: `このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
     forest: `このセルがあると、手番終了時に資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
@@ -875,15 +945,15 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `攻撃トークン +${R.mineAttack}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
+      gain = c.terrain === 'mine' ? `攻撃トークン +${R.mineAttack}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
     } else if (c.owner === app.me) {
       if (c.strong) return { note: '強化済のセルです' };
       type = 'strengthen';
       cost = R.cost.strengthen;
-      const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
+      const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
       const gives = R.strengthenGives;
       const foodNote = `・食料 +${R.food.strong}`;
-      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? 1 : 0)}・手番終了時の資源 +${inc}${foodNote}`;
+      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense}・手番終了時の資源 +${inc}${foodNote}`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
@@ -928,13 +998,14 @@
       }
     }
     const el = $('#tooltip');
-    el.innerHTML = `<div class="tt-head">${{ plain: '', mountain: '⛰ ', mine: '◆ ', farm: '● ', forest: '▲ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    el.innerHTML = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▲ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
     el.classList.toggle('pinned', !!tip.pinned);
     el.hidden = false;
     positionTip();
+    if (app.tutorial) renderCoach();   // ツールチップのボタンを光らせる
     if (changed && view) view.setSelected(tip.pinned ? tip.key : null);
   }
 
@@ -999,6 +1070,16 @@
     $('#btn-create').onclick = () => enterRoom('create');
     $('#btn-join').onclick = () => enterRoom('join');
     $('#btn-local').onclick = () => enterRoom('local');
+    $('#btn-tutorial').onclick = () => enterRoom('tutorial');
+    $('#coach').onclick = e => {
+      const b = e.target.closest('[data-coach]');
+      if (!b || !app.tutorial) return;
+      if (b.dataset.coach === 'quit') { app.tutorial = null; renderCoach(); return; }
+      app.tutorial.step++;
+      app.tutorial.base = null;
+      if (app.tutorial.step >= TUTORIAL.length) app.tutorial = null;
+      renderCoach();
+    };
     $('#btn-add-cpu').onclick = () => send({ type: 'addCpu' });
     $('#lobby-players').onclick = e => { const b = e.target.closest('[data-remove-cpu]'); if (b) send({ type: 'removeCpu', target: b.dataset.removeCpu }); };
     $('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') enterRoom('join'); });

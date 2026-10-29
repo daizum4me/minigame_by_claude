@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア（仮）— 効果音（Web Audio で合成。音声ファイルなし）
+ * ヘキサゴニア — 効果音（Web Audio で合成。音声ファイルなし）
  * HexSound.play(name) / HexSound.setOn(bool) / HexSound.on
  */
 (function () {

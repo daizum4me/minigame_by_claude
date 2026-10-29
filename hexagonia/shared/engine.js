@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア（仮）— ルール判定
+ * ヘキサゴニア — ルール判定
  * 盤面の生成・行動の検証と実行・破壊の攻防・脱落・勝敗をここで扱う。
  * 状態（state）はただのオブジェクト（JSON にそのまま変換できる）。
  * ホストのブラウザでもテスト（Node.js）でも同じものを使う。
@@ -21,8 +21,8 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：山岳：鉱山：農地：森林（河川は別に流す）。いまは山岳はお休み。平原 約73%・鉱山／農地／森林 約9%ずつ
-    terrainRatio: { plain: 16, mountain: 0, mine: 2, farm: 2, forest: 2 },
+    // 平原：鉱山：農地：森林（河川は別に流す）。平原 約73%・鉱山／農地／森林 約9%ずつ
+    terrainRatio: { plain: 16, mine: 2, farm: 2, forest: 2 },
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
@@ -41,18 +41,15 @@
     roundsRange: [4, 20],
     preTurns: 1,                        // 内側にコアがある人は、ラウンド1の前に1手番ずつ先に動く
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
-    // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。補強は行動回数を使わない
+    // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。
     // 生産：資源でトークンを作る（行動回数を使わない・ログに出ない）。reinforce は防御トークン、produceAttack は攻撃トークン
-    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2, produceAttack: 3 },
-    // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）。鉱山は資源ではなく攻撃トークンをくれる
-    income: { strong: 1, mine: 0, mineStrong: 1, core: 2, coreStrongBonus: true },
+    cost: { expand: 1, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2, produceAttack: 3 },
+    // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）
+    income: { strong: 1, core: 2, coreStrongBonus: true },
     // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
     food: { start: 0, core: 5, strong: 1, perCell: 1 },
     strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
-    // 維持費：セルが多いほど割る数が小さくなる（累進）。6つまでは4つにつき1、7〜12は3つにつき1、13より多い分は2つにつき1。合計を切り捨て
-    // いまは試しに維持費なし（enabled: false）。戻すときは true にする
-    upkeep: { enabled: false, brackets: [[6, 4], [12, 3], [Infinity, 2]] },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -61,7 +58,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
   // イベント。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、actions：行動回数
   const EVENTS = {
     famine: { name: '不作', text: 'このラウンド、食料生産が0.5倍', food: 0.5 },
@@ -260,7 +257,7 @@
     river.forEach(k => { board[k].terrain = 'river'; });
     const free = Object.keys(board).filter(k => !fixed.has(k) && !river.has(k));
     const ratio = RULES.terrainRatio;
-    const kinds = ['mountain', 'mine', 'farm', 'forest'];
+    const kinds = ['mine', 'farm', 'forest'];
     const total = ratio.plain + kinds.reduce((n, t) => n + (ratio[t] || 0), 0);
     const counts = kinds.map(t => [t, Math.round(free.length * (ratio[t] || 0) / total)]);
     shuffle(free, rng);
@@ -311,7 +308,7 @@
       actionsLeft: actions,
       extraBought: 0,        // この手番で行動 +1 を買った回数
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
-      abandon: null,         // 維持費が払えず、セルを捨てる途中： { player, count }
+      abandon: null,         // 食料が足りず、セルを捨てる途中： { player, count }
       over: false,
       winners: [],
       endReason: '',
@@ -392,29 +389,13 @@
     let n = 0;
     for (const c of cellsOf(state, id)) {
       if (c.core) n += inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0);
-      else if (c.terrain === 'mine') n += c.strong ? inc.mineStrong : inc.mine;
       else if (c.strong) n += inc.strong;
       if (c.terrain === 'forest') n += RULES.forestResource;   // 森林は強化とは別に +1
     }
     return n;
   }
 
-  // 手番終了時に払う維持費：セルが多いほど割る数が小さくなる（累進）
-  function upkeep(state, id) {
-    if (!RULES.upkeep.enabled) return 0;
-    const weight = cellsOf(state, id).length;
-    let cost = 0, prev = 0;
-    for (const [limit, per] of RULES.upkeep.brackets) {
-      const part = Math.min(weight, limit) - prev;
-      if (part <= 0) break;
-      cost += part / per;
-      prev = limit;
-    }
-    return Math.floor(cost + 1e-9);
-  }
-
   function expandCost(cell) {
-    if (cell.terrain === 'mountain') return RULES.cost.expandMountain;
     if (cell.terrain === 'river') return RULES.cost.bridge;   // 河川には橋をかける
     return RULES.cost.expand;
   }
@@ -527,7 +508,6 @@
       p.resource -= cost;
       Object.assign(cell, { owner: id, strong: false, core: false });
       let extra = '';
-      if (cell.terrain === 'mountain') { p.defense += 1; p.defenseSeen += 1; extra = '（山岳：防御トークン +1）'; }
       if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
@@ -540,7 +520,6 @@
       p.defense += gives.defense;
       p.defenseSeen += gives.defense;
       let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
-      if (cell.terrain === 'mountain') { p.defense += 1; p.defenseSeen += 1; extra += '・山岳：防御トークン +1'; }
       if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra += `・鉱山：攻撃トークン +${RULES.mineAttack}`; }
       state.actionsLeft--;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
@@ -603,10 +582,9 @@
     }
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
-    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。山岳マスなら拡張と同じく防御トークン +1
+    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山マスなら拡張と同じく攻撃トークン +1
     Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = '';
-    if (cell.terrain === 'mountain') { a.defense += 1; a.defenseSeen += 1; extra = '（山岳：防御トークン +1）'; }
     if (cell.terrain === 'mine') { a.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
   }
@@ -631,27 +609,20 @@
     addLog(state, `🏆 ${winners.map(p => p.name).join('・')} の${winners.length > 1 ? '同率優勝' : '勝利'}（${reason}）`, 'win');
   }
 
-  // 手番終了：資源を受け取り、維持費を払う。払えなければ足りない数だけセルを選んで捨ててから次へ
-  // 手番終了：資源を受け取り、維持費（いまは無効）を払い、食料を作って食べる。
-  // 維持費か食料が足りなければ、足りない数だけセルを選んで捨ててから次へ
+  // 手番終了：資源を受け取り、食料を作って食べる。食料が足りなければ、足りない数だけセルを選んで捨ててから次へ
   function endTurn(state) {
     const p = current(state);
     const n = income(state, p.id);
     p.resource += n;
-    const cost = upkeep(state, p.id);
-    const paid = Math.min(cost, p.resource);
-    p.resource -= paid;
     const made = foodMade(state, p.id), eaten = foodEaten(state, p.id);
     p.food = (p.food || 0) + made - eaten;
     const hungry = Math.max(0, -p.food);
     p.food = Math.max(0, p.food);
-    addLog(state, `${p.name} が手番終了（資源トークン +${n}${cost ? `・維持費 −${paid}` : ''}・食料 +${made} −${eaten}）`, 'income');
-    const lack = (cost - paid) + hungry;
+    addLog(state, `${p.name} が手番終了（資源トークン +${n}・食料 +${made} −${eaten}）`, 'income');
     const spare = cellsOf(state, p.id).filter(c => !c.core).length;
-    if (lack > 0 && spare > 0) {
-      state.abandon = { player: p.id, count: Math.min(lack, spare) };
-      const why = hungry && cost - paid ? `維持費と食料が ${lack}` : hungry ? `食料が ${hungry}` : `維持費が ${lack}`;
-      addLog(state, `${p.name} は${why} 足りないため、セルを ${state.abandon.count} つ捨てる`, 'abandon');
+    if (hungry > 0 && spare > 0) {
+      state.abandon = { player: p.id, count: Math.min(hungry, spare) };
+      addLog(state, `${p.name} は食料が ${hungry} 足りないため、セルを ${state.abandon.count} つ捨てる`, 'abandon');
       return;
     }
     advance(state);
@@ -810,6 +781,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
+    largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
   };
 });

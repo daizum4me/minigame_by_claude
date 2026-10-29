@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ヘキサゴニア</title>
-<meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
+<meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 
 <!-- トップ -->
 <main id="top" class="screen center">
   <div class="card top-card">
-    <h1 class="title"><span class="logo" aria-hidden="true"></span>ヘキサゴニア<small>（仮）</small></h1>
+    <h1 class="title"><span class="logo" aria-hidden="true"></span>ヘキサゴニア</h1>
     <p class="lead">六角形のマスでセルを広げ、強化し、<br>相手のコアを破壊する陣取りゲーム。2〜12人。</p>
 
     <label class="field">
@@ -29,6 +29,7 @@
     </div>
     <div class="divider"><span>または</span></div>
     <button id="btn-local" class="big">CPUと遊ぶ（ひとりで・通信なし）</button>
+    <button id="btn-tutorial" class="big tutorial-btn">はじめての人へ：チュートリアル</button>
     <p id="top-msg" class="msg" hidden></p>
     <div class="row links">
       <button class="link" data-open="rules">ルール</button>
@@ -117,6 +118,7 @@
     </div>
     <div id="grace" class="banner" hidden></div>
     <div id="clash" class="clash" hidden></div>
+    <div id="coach" class="coach" hidden></div>
     <div id="extra" class="extra" hidden></div>
     <div id="abandon" class="extra" hidden></div>
     <div id="tooltip" class="tooltip" hidden></div>
@@ -214,7 +216,6 @@
           </ul>
         </div>
       </div>
-      <p class="r-hint">いまは維持費はなし。</p>
     </section>
 
     <section class="r-sec">
@@ -246,7 +247,7 @@
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="hex-river"></i>地形</h3>
-      <p class="r-hint">平原が約57%、鉱山・農地・森林が約14%ずつ。それに河川（山岳はお休み中）。</p>
+      <p class="r-hint">平原が約73%、鉱山・農地・森林が約9%ずつ。それに河川。</p>
       <div class="r-cards terrain">
         <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>効果なし</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山 ◆</b><small>拡張・強化したとき <span class="k-atk">攻撃 +1</span></small></div>
@@ -283,11 +284,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=19"></script>
-<script src="shared/cpu.js?v=19"></script>
-<script src="shared/room.js?v=19"></script>
-<script src="sound.js?v=19"></script>
-<script src="board.js?v=19"></script>
-<script src="client.js?v=19"></script>
+<script src="shared/engine.js?v=20"></script>
+<script src="shared/cpu.js?v=20"></script>
+<script src="shared/room.js?v=20"></script>
+<script src="sound.js?v=20"></script>
+<script src="board.js?v=20"></script>
+<script src="client.js?v=20"></script>
 </body>
 </html>

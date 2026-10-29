@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア（仮）— 部屋（ロビー・ゲーム進行・切断の扱い）
+ * ヘキサゴニア — 部屋（ロビー・ゲーム進行・切断の扱い）
  * ホスト権威型：ホストのブラウザでこの Room を動かし、参加者からの要求を handle() で受けて
  * ルール上可能かを確かめてから状態を更新し、全員に最新の状態を配信する。
  * CPU もここで動かす（ホストのブラウザの中で考えて行動する）。
@@ -15,7 +15,7 @@
   const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
   const TURN_MS = E.RULES.turnSeconds.normal * 1000;   // 1手番の持ち時間（7人以上は E.turnMs で60秒）。攻防のあいだは止まる
   const BID_MS = 30000;     // 攻防で出す数を決める時間。切れたら 0 個
-  const ABANDON_MS = 30000; // 維持費が払えないとき、捨てるセルを選ぶ時間。切れたら自動で選ぶ
+  const ABANDON_MS = 30000; // 食料が足りないとき、捨てるセルを選ぶ時間。切れたら自動で選ぶ
   const GRACE_MS = 30000;   // 切断した人の手番は、これだけ待ってから自動で終える
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
@@ -39,6 +39,7 @@
       this.phase = 'lobby';
       // 盤面の直径（マス）・1手番の行動回数・ラウンド数。0 は人数に合わせる
       this.settings = { diameter: 0, actions: 0, rounds: 0 };
+      this.events = true;       // イベントを起こすか（チュートリアルでは起こさない）
       this.game = null;
       this.seq = 0;
       this.timers = {};         // turn / bid / grace / cpu
@@ -159,7 +160,7 @@
           const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
           const { actions, rounds } = this.settings;
           try {
-            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, actions, rounds });
+            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, actions, rounds, events: this.events });
           } catch (e) {
             return err(e.message);
           }
