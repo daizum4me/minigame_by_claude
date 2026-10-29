@@ -534,3 +534,10 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .pill.event .next { font-size: 12.5px; }
 .log .lg-event { color: var(--warn); font-weight: 600; }
 .r-table.events td { white-space: normal !important; }
+
+/* 生産のボタン */
+.act.prod { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "ic name" "ic cost"; align-items: center; column-gap: 6px; text-align: left; }
+.act.prod .tk { grid-area: ic; width: 22px; height: 22px; }
+.act.prod b { grid-area: name; }
+.act.prod small { grid-area: cost; }
+@media (max-width: 820px) { .act.prod { grid-template-areas: "ic name"; } }

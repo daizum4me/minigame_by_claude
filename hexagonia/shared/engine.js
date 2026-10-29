@@ -42,7 +42,8 @@
     preTurns: 1,                        // 内側にコアがある人は、ラウンド1の前に1手番ずつ先に動く
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。補強は行動回数を使わない
-    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2 },
+    // 生産：資源でトークンを作る（行動回数を使わない・ログに出ない）。reinforce は防御トークン、produceAttack は攻撃トークン
+    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2, produceAttack: 3 },
     // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）。鉱山は資源ではなく攻撃トークンをくれる
     income: { strong: 1, mine: 0, mineStrong: 1, core: 2, coreStrongBonus: true },
     // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
@@ -73,7 +74,8 @@
     plague: { name: '疫病', text: 'このラウンド、行動可能回数 −1', actions: -1 },
   };
 
-  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '補強' };
+  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '生産（防御トークン）', produceAttack: '生産（攻撃トークン）' };
+  const PRODUCE = ['reinforce', 'produceAttack'];   // 生産（行動回数を使わない）
 
   function shuffle(arr, rng) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -291,7 +293,9 @@
       players: order.map((p, i) => {
         const [q, r] = cores[i];
         Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: RULES.startDefense, food: RULES.food.start, alive: true, core: key(q, r) };
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: RULES.startDefense, food: RULES.food.start, alive: true, core: key(q, r),
+          // defenseSeen：ほかの人から見てわかる防御トークンの数の目安（生産の分と、攻防で出した数は含まない）
+          defenseSeen: RULES.startDefense };
       }),
       actionsPerTurn: actions,
       rounds,
@@ -436,7 +440,7 @@
     }
     if (!(type in ACTION_NAMES)) return '不明な行動です';
     // 補強は行動回数を使わない
-    if (type !== 'reinforce' && state.actionsLeft <= 0) return 'この手番の行動回数を使い切りました';
+    if (!PRODUCE.includes(type) && state.actionsLeft <= 0) return 'この手番の行動回数を使い切りました';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
     if (p.resource < min) return '資源トークンが足りません';
     if (type === 'destroy' && p.attack < 1) return '破壊には攻撃トークンが1個以上必要です';
@@ -482,7 +486,7 @@
   }
 
   function canAct(state, id) {
-    if (!actionBlocked(state, id, 'reinforce') || !actionBlocked(state, id, 'buyAction')) return true;
+    if (PRODUCE.some(t => !actionBlocked(state, id, t)) || !actionBlocked(state, id, 'buyAction')) return true;
     return ['expand', 'strengthen', 'destroy'].some(t => targets(state, id, t).length > 0);
   }
 
@@ -502,10 +506,15 @@
       addLog(state, `${p.name} が資源トークン ${cost} 個を払って行動 +1`, 'buy');
       return { ok: true };
     }
+    // 生産：資源でトークンを作る。行動回数を使わず、ログにも出さない
     if (action.type === 'reinforce') {
       p.resource -= RULES.cost.reinforce;
       p.defense += 1;
-      // 補強は防御トークン +1 だけ（攻撃トークンは増えない）。ログに出さない（防御トークンの数を相手にわかりにくくするため）
+      return { ok: true };
+    }
+    if (action.type === 'produceAttack') {
+      p.resource -= RULES.cost.produceAttack;
+      p.attack += 1;
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -518,7 +527,7 @@
       p.resource -= cost;
       Object.assign(cell, { owner: id, strong: false, core: false });
       let extra = '';
-      if (cell.terrain === 'mountain') { p.defense += 1; extra = '（山岳：防御トークン +1）'; }
+      if (cell.terrain === 'mountain') { p.defense += 1; p.defenseSeen += 1; extra = '（山岳：防御トークン +1）'; }
       if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
@@ -529,8 +538,9 @@
       const gives = RULES.strengthenGives;
       p.attack += gives.attack;
       p.defense += gives.defense;
+      p.defenseSeen += gives.defense;
       let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
-      if (cell.terrain === 'mountain') { p.defense += 1; extra += '・山岳：防御トークン +1'; }
+      if (cell.terrain === 'mountain') { p.defense += 1; p.defenseSeen += 1; extra += '・山岳：防御トークン +1'; }
       if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra += `・鉱山：攻撃トークン +${RULES.mineAttack}`; }
       state.actionsLeft--;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
@@ -577,9 +587,12 @@
     a.attack -= atk;
     d.defense -= def;
     const success = atk >= def;
+    // 出した数は公開しない（成功か失敗かだけ）。数は当人にだけ見せる（room.js）
     state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, success };
+    // 守られたなら、防御側は攻撃側より多く出したはず（攻撃トークンの数は見えるので、そこまではわかる）
+    if (!success) d.defenseSeen = Math.max(0, d.defenseSeen - (atk + 1));
     const what = cell.core ? 'コア' : 'セル';
-    if (d.defense + def > 0) addLog(state, `攻防：${a.name} 攻撃トークン ${atk} 個 ／ ${d.name} 防御トークン ${def} 個`, 'clash');
+    if (d.defense + def > 0) addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
     const wasCore = cell.core;
     Object.assign(cell, { owner: null, strong: false, core: false });
@@ -593,7 +606,7 @@
     // 破壊したマスはそのまま攻撃側のセル（未強化）になる。山岳マスなら拡張と同じく防御トークン +1
     Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = '';
-    if (cell.terrain === 'mountain') { a.defense += 1; extra = '（山岳：防御トークン +1）'; }
+    if (cell.terrain === 'mountain') { a.defense += 1; a.defenseSeen += 1; extra = '（山岳：防御トークン +1）'; }
     if (cell.terrain === 'mine') { a.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
   }
@@ -601,7 +614,7 @@
   function eliminate(state, p) {
     p.alive = false;
     for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
-    p.resource = 0; p.attack = 0; p.defense = 0; p.food = 0;
+    p.resource = 0; p.attack = 0; p.defense = 0; p.food = 0; p.defenseSeen = 0;
     addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);
@@ -794,7 +807,7 @@
   }
 
   return {
-    RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES, EVENTS,
+    RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
     largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
