@@ -52,17 +52,6 @@
     ctx.closePath();
   }
 
-  function starPath(ctx, cx, cy, outer, inner) {
-    ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const rad = i % 2 ? inner : outer;
-      const a = Math.PI / 5 * i - Math.PI / 2;
-      if (i === 0) ctx.moveTo(cx + rad * Math.cos(a), cy + rad * Math.sin(a));
-      else ctx.lineTo(cx + rad * Math.cos(a), cy + rad * Math.sin(a));
-    }
-    ctx.closePath();
-  }
-
   function rgba(hex, a) {
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
@@ -110,8 +99,16 @@
       this.draw();
     }
 
+    // 盤面の下に浮いている自分の情報の高さ（その上の範囲に盤面を収める）
+    setInsetBottom(px) {
+      if (Math.abs((this.insetBottom || 0) - px) < 2) return;
+      this.insetBottom = px;
+      if (!this.moved) this.fit();
+      this.draw();
+    }
+
     fitScale() {
-      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      const w = this.canvas.clientWidth, h = Math.max(120, this.canvas.clientHeight - (this.insetBottom || 0));
       const R = this.radius + 0.8;
       // 盤面全体（大きな六角形）が収まる大きさ
       return Math.max(1, Math.min(w / (SQRT3 * (2 * R + 0.2)), h / (3 * R + 1.2)) * 0.98);
@@ -120,7 +117,7 @@
     fit() {
       this.scale = Math.min(FIT_MAX_HEX_PX, this.fitScale());
       this.ox = this.canvas.clientWidth / 2;
-      this.oy = this.canvas.clientHeight / 2;
+      this.oy = Math.max(60, (this.canvas.clientHeight - (this.insetBottom || 0)) / 2);
     }
 
     reset() { this.moved = false; this.fit(); this.draw(); }
@@ -144,7 +141,7 @@
       this.focusAnim = {
         t0: performance.now(),
         from: { ox: this.ox, oy: this.oy, scale: this.scale },
-        to: { ox: w / 2 - wx * scale, oy: h / 2 - wy * scale, scale },
+        to: { ox: w / 2 - wx * scale, oy: (h - (this.insetBottom || 0)) / 2 - wy * scale, scale },
       };
       this.moved = true;
       this.animate();
@@ -385,6 +382,18 @@
             }
           }
         } else if (c.terrain === 'mountain') {
+          // 山岳（いまはお休み）：山が2つ
+          ctx.beginPath();
+          ctx.moveTo(x - s * 0.32, y + s * 0.2);
+          ctx.lineTo(x - s * 0.1, y - s * 0.18);
+          ctx.lineTo(x + s * 0.04, y + s * 0.04);
+          ctx.lineTo(x + s * 0.14, y - s * 0.1);
+          ctx.lineTo(x + s * 0.32, y + s * 0.2);
+          ctx.closePath();
+          ctx.fillStyle = COL.mark;
+          ctx.fill();
+        } else if (c.terrain === 'mine') {
+          // 鉱山：▲
           ctx.beginPath();
           ctx.moveTo(x, y - s * 0.25);
           ctx.lineTo(x + s * 0.27, y + s * 0.2);
@@ -392,8 +401,10 @@
           ctx.closePath();
           ctx.fillStyle = COL.mark;
           ctx.fill();
-        } else if (c.terrain === 'mine') {
-          starPath(ctx, x, y + s * 0.02, s * 0.28, s * 0.12);
+        } else if (c.terrain === 'farm') {
+          // 農地：●
+          ctx.beginPath();
+          ctx.arc(x, y, s * 0.2, 0, Math.PI * 2);
           ctx.fillStyle = COL.mark;
           ctx.fill();
         }

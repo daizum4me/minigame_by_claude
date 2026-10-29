@@ -37,6 +37,8 @@
     const touchesMine = c => E.neighbors(c.q, c.r).some(([q, r]) => myGroup.has(E.key(q, r)));
     const danger = threat(g, me);
     const net = E.income(g, id) - E.upkeep(g, id);      // 毎手番の資源の増え方（維持費を引いたあと）
+    // 食料：手番終了時に「貯え + 作る量 − 食べる量」が足りないとセルを捨てることになる
+    const foodLeft = (me.food || 0) + E.foodMade(g, id) - E.foodEaten(g, id);
     const out = [];
     const noise = () => (rng() - 0.5) * 0.6;
 
@@ -46,7 +48,8 @@
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
-        if (c.terrain === 'mine') s += 2.2;           // 鉱山は取っただけで毎手番 +1
+        if (c.terrain === 'mine') s += me.attack <= 1 ? 2.5 : 1.2;   // 鉱山は取ると攻撃トークン +1
+        if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'mountain') s += me.defense < 2 ? 0.8 : -0.3;
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
@@ -58,6 +61,9 @@
         }
         // 維持費で資源が増えなくなってきたら、広げるのを控える（平原は維持費が半分）
         if (net <= 1) s -= c.terrain === 'plain' ? 0.4 : 0.8;
+        // 広げると食料を1つ多く食べる。食べさせきれないなら広げない
+        if (foodLeft - 1 < 0) s -= 6;
+        else if (foodLeft - 1 < 2) s -= 1.5;
         // 一番大きなかたまりにつながる拡張を重視（終盤は特に）
         if (touchesMine(c)) s += late ? 2.8 : 0.6;
         else if (late) s += 0.3;
@@ -69,6 +75,7 @@
         const c = g.board[k];
         // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
+        if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (c.terrain === 'mountain') s += 0.8;
@@ -98,8 +105,8 @@
       }
     }
     if (!E.actionBlocked(g, id, 'reinforce')) {
-      // 補強は防御トークン +1 と攻撃トークン +1（行動回数は使わない）。攻撃トークンがないと破壊できない
-      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.attack === 0 && frontier(g, id) > 0 ? 4 : me.defense <= 1 && g.round >= 3 ? 1.8 : 0.2;
+      // 補強は防御トークン +1 だけ（行動回数は使わない）
+      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.defense <= 1 && g.round >= 3 ? 1.8 : 0.2;
       out.push({ s: s + noise(), a: { type: 'reinforce' } });
     }
     return out;
