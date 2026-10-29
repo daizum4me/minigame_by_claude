@@ -693,14 +693,16 @@
       const foeAtk = foe.attack;   // 攻撃トークンの数は見える。防御トークンの数は見えない
       const key = `${pd.attacker}|${pd.target}|${g.round}|${g.turn}|${side}`;
       const lo = E.minBid(side);
-      if (!app.bid || app.bid.key !== key) app.bid = { key, n: side === 'atk' ? Math.min(have, 1) : Math.min(have, foeAtk + 1) };
+      const wall = pd.wall || 0;
+      if (!app.bid || app.bid.key !== key) app.bid = { key, n: side === 'atk' ? Math.min(have, 1 + wall) : Math.min(have, Math.max(0, foeAtk + 1 - wall)) };
       app.bid.lo = lo;
       const n = app.bid.n;
       const kind = side === 'atk' ? 'attack' : 'defense';
       body = `<p class="ask">${side === 'atk'
         ? `出す攻撃トークンの数を決めてください（1個以上。${esc(foe.name)} の防御トークンの数は見えません）`
         : `あなたの${what}が狙われています。出す防御トークンの数を決めてください（${esc(foe.name)} の攻撃トークンは ${foeAtk} 個）`}</p>
-        <p class="muted small">相手には公開まで見えません。攻撃 ≧ 防御なら破壊成功。出したトークンはなくなります</p>
+        ${wall ? `<p class="wall-note">城壁：このセルは隣の強化済のセルに守られていて、防御側に +${wall}</p>` : ''}
+        <p class="muted small">相手には公開まで見えません。攻撃 ≧ 防御${wall ? `＋${wall}` : ''}なら破壊成功。出したトークンはなくなります</p>
         <div class="bid">
           <button class="step" data-bid-step="-1" ${n <= lo ? 'disabled' : ''} aria-label="1個減らす">−</button>
           <span class="bid-n tk-${kind}">${TOKEN_SVG[kind]}<b>${n}</b><small>/ ${have}</small></span>
@@ -784,7 +786,7 @@
       text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
       done: (g, base) => myCells(g).length > base.cells },
     { title: 'やってみよう：強化', myTurn: true, target: '#tooltip [data-cell-act="strengthen"]',
-      text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、攻撃トークン +1・防御トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。',
+      text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、攻撃トークン +1・防御トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。<br>強化済のセルは、あとで説明する<b>拠点</b>と<b>城壁</b>にもなります。',
       done: g => myCells(g).some(c => c.strong) },
     { title: 'トークンと食料', next: true, target: '#me-tokens',
       text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-atk">攻撃</span>：破壊に使う　<span class="k-def">防御</span>：守りに使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。' },
@@ -795,7 +797,9 @@
       text: '行動を使ったら<b>「手番終了」</b>を押します。資源と食料をもらい、食料を食べてから次の人の番です。<br>ボタンに、もらえる量と食べる量が出ています。',
       done: (g, base) => g.turnNo !== base.turnNo },
     { title: '破壊と読み合い', next: true,
-      text: '相手のセルの隣まで広げたら、<b>破壊</b>できます（資源2・攻撃トークンが1個以上必要）。<br>攻撃側と防御側が、出すトークンの数を<b>伏せて</b>決め、<b>攻撃 ≧ 防御</b>なら成功。成功したマスは自分のセルになります。<br>結果は成功か失敗かだけが知らされ、出した数は相手にはわかりません。' },
+      text: '相手のセルは<b>破壊</b>できます（資源2・攻撃トークンが1個以上必要）。<br>攻撃側と防御側が、出すトークンの数を<b>伏せて</b>決め、<b>攻撃 ≧ 防御</b>なら成功。成功したマスは自分のセルになります。<br>結果は成功か失敗かだけが知らされ、出した数は相手にはわかりません。' },
+    { title: 'どこを強化するか：拠点と城壁', next: true,
+      text: '<b>拠点</b>：破壊できるのは、<b>自分の強化済のセルの隣</b>にある相手のセルだけ。攻めたい方向のセルを強化しましょう。<br><b>城壁</b>：<b>強化済のセルの隣</b>のセルが狙われると、守る側に <span class="k-def">防御 +1</span>。<br>前線に強化すれば攻めと守りの要になるけれど、狙われやすい。後方に強化すれば安全に稼げるけれど、攻めにも守りにも使えません。' },
     { title: 'もう少しだけ', next: true,
       text: 'ラウンドの始まりに、ときどき<b>イベント</b>（豊作・不作など）が起きます。次のラウンドの分は画面上部で予告されます。<br>行動回数を使い切ったら、資源を払って<b>行動 +1</b> もできます。' },
     { title: 'これでおしまい', next: true, last: true,
@@ -953,12 +957,13 @@
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
       const gives = R.strengthenGives;
       const foodNote = `・食料 +${R.food.strong}`;
-      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense}・手番終了時の資源 +${inc}${foodNote}`;
+      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense}・手番終了時の資源 +${inc}${foodNote}。隣の相手セルを破壊できる拠点になり、隣の自分のセルを城壁で守る（防御 +${R.wallBonus}）`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
-      gain = '攻撃トークンが1個以上必要（相手の防御トークンの数は見えない）。' + (c.core
+      const wall = E.wallOf(g, c);
+      gain = '攻撃トークンが1個以上必要（相手の防御トークンの数は見えない）。' + (wall ? `城壁で守られている（防御側 +${wall}）。` : '') + (c.core
         ? `成功するとコアを破壊（${foe.name} は脱落）`
         : c.terrain === 'river'
           ? '成功すると橋が落ちて河川に戻る'
@@ -973,6 +978,7 @@
       else if (g.actionsLeft <= 0) why = '行動回数を使い切りました';
       else if (me.resource < cost) why = `資源トークンが足りません（あと ${cost - me.resource}）`;
       else if (type === 'destroy' && me.attack < 1) why = '攻撃トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
+      else if (type === 'destroy') why = '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると狙えます';
       else why = '自分のセルに隣接していません';
     }
     return { type, cost, gain, why };
@@ -985,7 +991,7 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
+    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化') + (E.wallOf(g, c) ? '・城壁あり' : '');
     let acts = '';
     if (tip.pinned) {
       const a = cellAction(g, tip.key);

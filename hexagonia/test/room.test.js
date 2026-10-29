@@ -45,7 +45,7 @@ function declareOnCore(r, gDefense, hAttack) {
   hp.attack = hAttack;
   const [cq, cr] = E.parseKey(gp.core);
   const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => room.game.board[E.key(q, r)]);
-  Object.assign(room.game.board[E.key(nq, nr)], { owner: h });
+  Object.assign(room.game.board[E.key(nq, nr)], { owner: h, strong: true });
   room.handle(h, { type: 'act', action: { type: 'destroy', q: cq, r: cr } });
   return { gp, hp };
 }

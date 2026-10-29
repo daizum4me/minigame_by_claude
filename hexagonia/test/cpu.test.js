@@ -33,7 +33,8 @@ test('CPU どうしで最後まで遊べる（ルール違反の手を選ばな�
 
 test('2人戦では、攻め合いでの決着と、最後のラウンドでの決着の両方が起きる', () => {
   const stats = { core: 0, rounds: 0 };
-  for (let seed = 1; seed <= 20; seed++) {
+  // コアを破壊するには、コアの隣に強化済のセル（拠点）を作る必要があるので、攻め合いでの決着はまれ
+  for (let seed = 1; seed <= 60; seed++) {
     const rng = seeded(seed);
     const g = E.createGame(PLAYERS.slice(0, 2), rng);
     while (!g.over) for (const id of E.waiting(g)) E.apply(g, id, CPU.decide(g, id, rng));
@@ -63,7 +64,7 @@ test('CPU はコアを守れる数を出し、攻撃では相手の防御トー�
   const [a, b] = g.players;
   const [cq, cr] = E.parseKey(b.core);
   const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => g.board[E.key(q, r)]);
-  Object.assign(g.board[E.key(nq, nr)], { owner: a.id });
+  Object.assign(g.board[E.key(nq, nr)], { owner: a.id, strong: true });
   b.defense = 3;
   a.attack = 2;
   a.resource = 10;
