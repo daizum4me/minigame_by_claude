@@ -26,6 +26,8 @@
       <input id="in-code" type="text" maxlength="6" placeholder="部屋ID" autocapitalize="characters" autocomplete="off" spellcheck="false">
       <button id="btn-join">参加する</button>
     </div>
+    <div class="divider"><span>または</span></div>
+    <button id="btn-local" class="big">CPUと遊ぶ（ひとりで・通信なし）</button>
     <p id="top-msg" class="msg" hidden></p>
     <div class="row links">
       <button class="link" data-open="rules">ルール</button>
@@ -38,18 +40,22 @@
 <main id="lobby" class="screen center" hidden>
   <div class="card lobby-card">
     <h2>ロビー</h2>
-    <div class="room-id">
-      <span>部屋ID</span>
-      <strong id="lobby-code">-----</strong>
+    <div id="lobby-online">
+      <div class="room-id">
+        <span>部屋ID</span>
+        <strong id="lobby-code">-----</strong>
+      </div>
+      <div class="row">
+        <input id="invite-url" type="text" readonly>
+        <button id="btn-copy">招待URLをコピー</button>
+      </div>
+      <p id="host-warn" class="note warn" hidden>この部屋はあなたのブラウザで動いています。ゲームが終わるまで、このページを閉じたり再読み込みしたりしないでください。</p>
     </div>
-    <div class="row">
-      <input id="invite-url" type="text" readonly>
-      <button id="btn-copy">招待URLをコピー</button>
-    </div>
-    <p id="host-warn" class="note warn" hidden>この部屋はあなたのブラウザで動いています。ゲームが終わるまで、このページを閉じたり再読み込みしたりしないでください。</p>
+    <p id="lobby-local" class="note muted" hidden>CPUと遊ぶ（通信なし）。CPUは1〜3人まで入れられます。</p>
 
     <h3>参加者 <span id="lobby-count" class="muted"></span></h3>
     <ul id="lobby-players" class="lobby-players"></ul>
+    <button id="btn-add-cpu" class="add-cpu" hidden>＋ CPUを追加</button>
 
     <h3>自分の陣営色</h3>
     <div id="color-pick" class="color-pick"></div>
@@ -115,6 +121,7 @@
     <p>自分の手番では行動を<b>最大3回</b>まで行い、「手番終了」で資源を受け取って次の人へ。</p>
     <table>
       <tr><th>行動</th><th>資源</th><th>内容</th></tr>
+      <tr><td colspan="3" class="muted">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了は右（スマホでは下）のパネルから。</td></tr>
       <tr><td>拡張</td><td>1<br><small>山岳は2</small></td><td>自分のセルに隣接する空きマスにセルを置く。山岳マスなら防御トークン +1</td></tr>
       <tr><td>強化</td><td>2</td><td>未強化セルを強化済にする。攻撃トークン +1。山岳マスなら防御トークン +1 も</td></tr>
       <tr><td>破壊</td><td>1</td><td>自分のセルに隣接する相手セルを破壊しようとする（下の攻防）</td></tr>
@@ -134,7 +141,7 @@
     <h3>地形</h3>
     <p>▲ 山岳マス：拡張コスト +1、拡張・強化で防御トークン +1。<br>★ 鉱山マス：そこのセルが強化済なら、手番終了時の資源 +1。</p>
     <h3>操作</h3>
-    <p>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。マスの情報：ホバー／長押し。</p>
+    <p>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。マスの情報：ホバー。マスを選ぶ（クリック／タップ）と、そのマスでできる行動のボタンが出ます。</p>
   </div>
   <form method="dialog"><button class="primary">閉じる</button></form>
 </dialog>
@@ -152,6 +159,7 @@
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
 <script src="shared/engine.js"></script>
+<script src="shared/cpu.js"></script>
 <script src="shared/room.js"></script>
 <script src="board.js"></script>
 <script src="client.js"></script>

@@ -80,15 +80,15 @@
     return `<svg viewBox="0 0 24 24" class="swatch ${cls || ''}" role="img" aria-label="${col.name}"><title>${col.name}</title><path d="${hex}" fill="${col.base}" fill-opacity=".55"/>${stroke}</svg>`;
   }
 
-  // ---------- トークンの絵（すべて半透明・形がすべて違う） ----------
+  // ---------- トークンの絵（すべて半透明・平面的・形がすべて違う） ----------
 
   const TOKEN_SVG = {
-    // 資源：オレンジの六角柱
-    resource: `<svg viewBox="0 0 24 24" class="tk"><path d="M5 8 L5 15 L8.5 19 L15.5 19 L19 15 L19 8 Z" fill="rgba(255,150,40,.42)" stroke="#FFB868" stroke-width="1.2" stroke-linejoin="round"/><path d="M5 8 L8.5 4.5 L15.5 4.5 L19 8 L15.5 11.5 L8.5 11.5 Z" fill="rgba(255,170,70,.62)" stroke="#FFC888" stroke-width="1.2" stroke-linejoin="round"/><path d="M8.5 11.5 V19 M15.5 11.5 V19" stroke="#FFB868" stroke-width="1" opacity=".7"/></svg>`,
-    // 防御：青の立方体
-    defense: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L12 12 L4 7.5 Z" fill="rgba(120,190,255,.62)" stroke="#A8D6FF" stroke-width="1.2" stroke-linejoin="round"/><path d="M4 7.5 L12 12 L12 21 L4 16.5 Z" fill="rgba(90,165,255,.42)" stroke="#A8D6FF" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 12 L20 7.5 L20 16.5 L12 21 Z" fill="rgba(70,140,240,.32)" stroke="#A8D6FF" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
-    // 攻撃：赤の六芒星柱
-    attack: `<svg viewBox="0 0 24 24" class="tk"><g transform="translate(0 3.2)" opacity=".75"><path d="M12 2.5 L17.2 11.5 L6.8 11.5 Z M12 17.5 L6.8 8.5 L17.2 8.5 Z" fill="rgba(255,95,120,.36)" stroke="#FF9AAE" stroke-width="1" stroke-linejoin="round" transform="translate(12 10) scale(1 .62) translate(-12 -10)"/></g><path d="M12 2.5 L17.2 11.5 L6.8 11.5 Z M12 17.5 L6.8 8.5 L17.2 8.5 Z" fill="rgba(255,120,140,.58)" stroke="#FFB0C0" stroke-width="1.2" stroke-linejoin="round" transform="translate(12 10) scale(1 .62) translate(-12 -10)"/><path d="M6.8 8.4 V12.7 M17.2 8.4 V12.7 M12 13.3 V17.5" stroke="#FF9AAE" stroke-width="1" opacity=".75" transform="translate(0 -1)"/></svg>`,
+    // 資源：オレンジの六角形
+    resource: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 2.5 L20.2 7.25 L20.2 16.75 L12 21.5 L3.8 16.75 L3.8 7.25 Z" fill="rgba(255,150,40,.5)" stroke="#FFB868" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
+    // 攻撃：赤の六芒星
+    attack: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 2 L14.89 7 L20.66 7 L17.77 12 L20.66 17 L14.89 17 L12 22 L9.11 17 L3.34 17 L6.23 12 L3.34 7 L9.11 7 Z" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
+    // 防御：青の正方形
+    defense: `<svg viewBox="0 0 24 24" class="tk"><rect x="4.5" y="4.5" width="15" height="15" rx="1.2" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.6"/></svg>`,
   };
   const TOKEN_NAMES = { resource: '資源', attack: '攻撃', defense: '防御' };
   const tokenChip = (kind, n, label) =>
@@ -292,16 +292,28 @@
     }
   }
 
+  // CPU対戦（通信なし）：自分のブラウザで Room を動かす
+  class LocalTransport {
+    constructor(name) {
+      this.isLocal = true;
+      const clone = m => JSON.parse(JSON.stringify(m));
+      this.room = new window.HexRoom.Room({ code: '', send: (pid, msg) => { if (pid === this.id) { const m = clone(msg); setTimeout(() => onMessage(m), 0); } } });
+      this.id = this.room.join(token(), name).id;
+      this.room.handle(this.id, { type: 'addCpu' });
+    }
+    send(msg) { setTimeout(() => { if (!this.room.closed) this.room.handle(this.id, msg); }, 0); }
+    close() { this.room.close(); }
+  }
+
   // ---------- アプリの状態 ----------
 
   const app = {
     conn: null,
     me: null,
     room: null,
-    action: null,       // 選んでいる行動
     lastLogSeq: 0,
     lastWaiting: null,
-    tip: null,          // ツールチップを出しているマス { key, x, y, scale, sticky }
+    tip: null,          // ツールチップを出しているマス { key, pinned }。pinned なら行動のボタンも出す
   };
 
   function send(msg) { if (app.conn) app.conn.send(msg); }
@@ -341,7 +353,6 @@
       }
     }
     if (!prev || prev.phase !== msg.room.phase) {
-      app.action = null;
       app.lastLogSeq = 0;
       app.resultHidden = false;
       const b = $('#btn-show-result');
@@ -356,13 +367,16 @@
     store.set('name', name);
     if (type === 'create') {
       app.conn = new HostTransport(name);
+    } else if (type === 'local') {
+      app.conn = new LocalTransport(name);
+      return;
     } else {
       const code = $('#in-code').value.trim().toUpperCase();
       if (!code) { topMsg('部屋IDを入れてください'); return; }
       app.conn = new GuestTransport({ type: 'join', code, token: token(), name });
     }
     topMsg('接続しています…', 'info');
-    $('#btn-create').disabled = $('#btn-join').disabled = true;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = true;
   }
 
   function leaveRoom(text) {
@@ -370,13 +384,12 @@
     app.conn = null;
     app.room = null;
     app.me = null;
-    app.action = null;
     setReconnecting(false);
     hideTip();
     const url = new URL(location.href);
     url.searchParams.delete('room');
     history.replaceState(null, '', url);
-    $('#btn-create').disabled = $('#btn-join').disabled = false;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = false;
     show('top');
     topMsg(text || '');
   }
@@ -406,30 +419,35 @@
   }
 
   function renderLobby(room) {
+    const local = !!(app.conn && app.conn.isLocal);
+    const isHost = room.hostId === app.me;
+    $('#lobby-online').hidden = local;
+    $('#lobby-local').hidden = !local;
     $('#lobby-code').textContent = room.code || '-----';
     $('#invite-url').value = room.code ? inviteUrl(room.code) : '';
     $('#host-warn').hidden = !(app.conn && app.conn.isHost);
     $('#lobby-count').textContent = `${room.players.length} / ${R.maxPlayers}人`;
     $('#lobby-players').innerHTML = room.players.map(p =>
-      `<li>${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${p.id === room.hostId ? '<span class="badge">ホスト</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}</li>`).join('');
+      `<li>${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${p.cpu ? '<span class="badge cpu">CPU</span>' : ''}${p.id === room.hostId && !local ? '<span class="badge">ホスト</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${isHost && p.cpu ? `<button class="small remove" data-remove-cpu="${p.id}" title="このCPUを外す">外す</button>` : ''}</li>`).join('');
+    $('#btn-add-cpu').hidden = !isHost;
+    $('#btn-add-cpu').disabled = room.players.length >= R.maxPlayers;
     const mine = room.players.find(p => p.id === app.me);
     $('#color-pick').innerHTML = window.HexRoom.COLORS.map(c => {
       const owner = room.players.find(p => p.color === c);
       const taken = owner && owner.id !== app.me;
       return `<button class="color-btn${mine && mine.color === c ? ' on' : ''}" data-color="${c}" ${taken ? 'disabled' : ''}>${swatch(c)}${colorOf(c).name}${taken ? `<small>${esc(owner.name)}</small>` : ''}</button>`;
     }).join('');
-    const isHost = room.hostId === app.me;
     const enough = room.players.length >= R.minPlayers;
     $('#btn-start').hidden = !isHost;
     $('#btn-start').disabled = !enough;
     $('#lobby-wait').textContent = isHost
-      ? (enough ? `${room.players.length}人で始められます（盤面の半径 ${R.radius[room.players.length]}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。招待URLを送ってください`)
+      ? (enough ? `${room.players.length}人で始められます（盤面の半径 ${R.radius[room.players.length]}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
       : 'ホストがゲームを始めるのを待っています…';
   }
 
   let view = null;
   function boardView() {
-    if (!view) view = new window.HexBoardView($('#board'), { onSelect: onCellSelect, onHover: onCellHover });
+    if (!view) view = new window.HexBoardView($('#board'), { onSelect: onCellSelect, onHover: onCellHover, onView: positionTip });
     return view;
   }
 
@@ -441,14 +459,14 @@
     const me = pl(app.me);
     const cur = E.current(g);
     const conn = id => { const p = room.players.find(x => x.id === id); return p ? p.connected : false; };
+    const cpuOf = id => { const p = room.players.find(x => x.id === id); return !!(p && p.cpu); };
 
-    // 選んでいる行動が今もできるか
-    if (app.action && (!myTurn(g) || E.actionBlocked(g, app.me, app.action) || !E.targets(g, app.me, app.action).length)) app.action = null;
-    const targets = app.action ? E.targets(g, app.me, app.action) : [];
+    // 自分の手番では、何か行動できるマスを薄く光らせる
+    const targets = myTurn(g) ? [...new Set(CELL_ACTIONS.flatMap(t => E.targets(g, app.me, t)))] : [];
 
     const colors = {};
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
-    boardView().setData({ game: g, colors, patterns: settings.patterns, targets, me: app.me });
+    boardView().setData({ game: g, colors, patterns: settings.patterns, targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, me: app.me });
 
     // 上部の表示
     $('#hud-round').textContent = `${g.round} / ${R.rounds}`;
@@ -461,28 +479,18 @@
     $('#me-actions').textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${R.actionsPerTurn}` : '';
     $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('attack', me.attack, true) + tokenChip('defense', me.defense, true) : '';
 
-    const acts = [
-      ['expand', '拡張', `資源 ${R.cost.expand}（山岳 ${R.cost.expandMountain}）`],
-      ['strengthen', '強化', `資源 ${R.cost.strengthen}`],
-      ['destroy', '破壊', `資源 ${R.cost.destroy}`],
-      ['reinforce', '補強', `資源 ${R.cost.reinforce}`],
-    ];
+    // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
-    $('#actions').innerHTML = acts.map(([type, label, cost]) => {
-      const blocked = !canAct || E.actionBlocked(g, app.me, type) || (type !== 'reinforce' && !E.targets(g, app.me, type).length);
-      return `<button class="act${app.action === type ? ' on' : ''}" data-act="${type}" ${blocked ? 'disabled' : ''}><b>${label}</b><small>${cost}</small></button>`;
-    }).join('') + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>資源 +${me ? E.income(g, app.me) : 0}</small></button>`;
+    $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御トークン +1</small></button>`
+      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>資源 +${me ? E.income(g, app.me) : 0}</small></button>`;
 
     let hint = '';
     if (g.over) hint = '';
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
     else if (g.pending) hint = '破壊の攻防中です';
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
-    else if (app.action === 'expand') hint = '光っている空きマスを選んで拡張します';
-    else if (app.action === 'strengthen') hint = '光っている自分のセルを選んで強化します';
-    else if (app.action === 'destroy') hint = '光っている相手のセルを選んで破壊を宣言します';
     else if (g.actionsLeft === 0) hint = '行動回数を使い切りました。「手番終了」を押してください';
-    else hint = 'あなたの手番です。行動を選んでください';
+    else hint = 'あなたの手番です。光っているマスを選ぶと、拡張・強化・破壊のボタンが出ます';
     $('#hint').textContent = hint;
 
     // プレイヤー一覧
@@ -491,7 +499,7 @@
       const cells = E.cellsOf(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
-        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
         <div class="pstats"><span class="cells" title="セルの数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${cells}</b></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -573,24 +581,16 @@
 
   // ---------- 盤面の操作 ----------
 
+  // マスを選ぶ：そのマスの情報と、できる行動のボタンをツールチップに出す
   function onCellSelect(key) {
-    const g = app.room && app.room.game;
-    if (!g) return;
-    if (app.action && E.targets(g, app.me, app.action).includes(key)) {
-      const [q, r] = E.parseKey(key);
-      send({ type: 'act', action: { type: app.action, q, r } });
-      hideTip();
-      return;
-    }
-    // 行動を選んでいないとき（タッチ端末など）はマスの情報を出す
-    if (app.tip && app.tip.key === key) { hideTip(); return; }
-    const [x, y] = boardView().screenOf(key);
-    showTip({ key, x, y, scale: boardView().scale, sticky: true });
+    if (!key || (app.tip && app.tip.pinned && app.tip.key === key)) { hideTip(); return; }
+    showTip({ key, pinned: true });
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
-    if (!key) { if (!(app.tip && app.tip.sticky)) hideTip(); return; }
-    showTip({ key, x, y, scale, sticky: !!byLongPress });
+    if (byLongPress) { if (key) showTip({ key, pinned: true }); return; }
+    if (app.tip && app.tip.pinned) return;   // 選んでいるマスがあるあいだは、そちらを出したまま
+    if (!key) hideTip(); else showTip({ key, pinned: false });
   }
 
   const TERRAIN_EFFECTS = {
@@ -599,31 +599,95 @@
     mine: '強化済セルなら、手番終了時の資源 +1（強化済セルの +1 に加えて）',
   };
 
+  const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
+
+  // そのマスでできる行動（1つ）と、できないときの理由
+  function cellAction(g, key) {
+    const c = g.board[key];
+    const me = g.players.find(p => p.id === app.me);
+    if (!me || !me.alive || g.over) return null;
+    let type, cost, gain;
+    if (!c.owner) {
+      type = 'expand';
+      cost = E.expandCost(c);
+      gain = c.terrain === 'mountain' ? '防御トークン +1' : '';
+    } else if (c.owner === app.me) {
+      if (c.strong) return { note: '強化済のセルです' };
+      type = 'strengthen';
+      cost = R.cost.strengthen;
+      const inc = R.income.strong + (c.terrain === 'mine' ? R.income.mineBonus : 0);
+      gain = '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
+    } else {
+      type = 'destroy';
+      cost = R.cost.destroy;
+      const foe = g.players.find(p => p.id === c.owner);
+      gain = `${foe.name} の防御トークン ${foe.defense} 個`;
+    }
+    let why = '';
+    if (!E.targets(g, app.me, type).includes(key)) {
+      const cur = E.current(g);
+      if (g.pending) why = '破壊の攻防が終わるまで待ってください';
+      else if (cur.id !== app.me) why = `${cur.name} の手番です`;
+      else if (g.actionsLeft <= 0) why = '行動回数を使い切りました';
+      else if (me.resource < cost) why = `資源トークンが足りません（あと ${cost - me.resource}）`;
+      else why = '自分のセルに隣接していません';
+    }
+    return { type, cost, gain, why };
+  }
+
   function showTip(tip) {
     const g = app.room && app.room.game;
     if (!g || !g.board[tip.key]) { hideTip(); return; }
+    const changed = !app.tip || app.tip.key !== tip.key || app.tip.pinned !== tip.pinned;
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
     const state = !owner ? '空きマス' : (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
+    let acts = '';
+    if (tip.pinned) {
+      const a = cellAction(g, tip.key);
+      if (a && a.type) {
+        acts = `<div class="tt-acts"><button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
+          <b>${E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
+          ${a.why ? `<p class="tt-why">${esc(a.why)}</p>` : ''}</div>`;
+      } else if (a && a.note) {
+        acts = `<div class="tt-acts"><p class="tt-why">${esc(a.note)}</p></div>`;
+      }
+    }
     const el = $('#tooltip');
     el.innerHTML = `<div class="tt-head">${{ plain: '', mountain: '▲ ', mine: '★ ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
-      <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>`;
+      <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
+    el.classList.toggle('pinned', !!tip.pinned);
     el.hidden = false;
-    // マスの横に出す（はみ出すなら反対側）
-    const wrap = $('.board-wrap').getBoundingClientRect();
+    positionTip();
+    if (changed && view) view.setSelected(tip.pinned ? tip.key : null);
+  }
+
+  // マスの左に出す（はみ出すなら右）。盤面を動かしたときもついていく
+  function positionTip() {
+    const el = $('#tooltip');
+    if (!app.tip || el.hidden || !view) return;
+    const [x, y] = view.screenOf(app.tip.key);
+    const s = view.scale;
+    const wrap = $('.board-wrap');
+    const W = wrap.clientWidth, H = wrap.clientHeight;
     const w = el.offsetWidth, h = el.offsetHeight;
-    let left = tip.x + tip.scale * 1.1;
-    if (left + w > wrap.width - 8) left = tip.x - tip.scale * 1.1 - w;
-    left = Math.max(8, Math.min(left, wrap.width - w - 8));
-    const top = Math.max(8, Math.min(tip.y - h / 2, wrap.height - h - 8));
+    let left = x - s * 1.05 - w;
+    if (left < 8) left = x + s * 1.05;
+    left = Math.max(8, Math.min(left, W - w - 8));
+    const top = Math.max(8, Math.min(y - h / 2, H - h - 8));
     el.style.left = left + 'px';
     el.style.top = top + 'px';
   }
 
-  function hideTip() { app.tip = null; $('#tooltip').hidden = true; }
+  function hideTip() {
+    const had = app.tip && app.tip.pinned;
+    app.tip = null;
+    $('#tooltip').hidden = true;
+    if (had && view) view.setSelected(null);
+  }
 
   // ---------- 設定 ----------
 
@@ -644,6 +708,9 @@
 
     $('#btn-create').onclick = () => enterRoom('create');
     $('#btn-join').onclick = () => enterRoom('join');
+    $('#btn-local').onclick = () => enterRoom('local');
+    $('#btn-add-cpu').onclick = () => send({ type: 'addCpu' });
+    $('#lobby-players').onclick = e => { const b = e.target.closest('[data-remove-cpu]'); if (b) send({ type: 'removeCpu', target: b.dataset.removeCpu }); };
     $('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') enterRoom('join'); });
     $('#btn-copy').onclick = async () => {
       const url = $('#invite-url').value;
@@ -657,11 +724,16 @@
     $('#actions').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b || b.disabled) return;
-      const type = b.dataset.act;
-      if (type === 'endTurn' || type === 'reinforce') { app.action = null; send({ type: 'act', action: { type } }); return; }
-      app.action = app.action === type ? null : type;
-      hideTip();
-      render();
+      send({ type: 'act', action: { type: b.dataset.act } });
+    };
+    $('#tooltip').onclick = e => {
+      const b = e.target.closest('[data-cell-act]');
+      if (!b || b.disabled || !app.tip) return;
+      const type = b.dataset.cellAct;
+      const [q, r] = E.parseKey(app.tip.key);
+      send({ type: 'act', action: { type, q, r } });
+      // 拡張・強化のあとは同じマスを選んだまま（続けて強化できるように）。破壊は攻防の画面へ
+      if (type === 'destroy') hideTip();
     };
     $('#clash').onclick = e => {
       const b = e.target.closest('[data-clash]');
@@ -679,7 +751,7 @@
     };
     $('#btn-fit').onclick = () => { boardView().reset(); hideTip(); };
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && app.action) { app.action = null; render(); }
+      if (e.key === 'Escape' && app.tip) hideTip();
     });
 
     document.querySelectorAll('[data-open]').forEach(b => {

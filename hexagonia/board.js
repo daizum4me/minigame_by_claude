@@ -3,8 +3,8 @@
  * 拡大・縮小（ホイール／ピンチ）、移動（ドラッグ）、マスの選択（クリック／タップ）、
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
- * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, byLongPress) })
- * view.setData({ game, colors, patterns, targets, me })
+ * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, scale, byLongPress), onView() })
+ * view.setData({ game, colors, patterns, targets, selected, me })
  */
 (function () {
   'use strict';
@@ -117,6 +117,12 @@
     }
 
     reset() { this.moved = false; this.fit(); this.draw(); }
+
+    setSelected(key) {
+      if (!this.data || this.data.selected === key) return;
+      this.data.selected = key;
+      this.draw();
+    }
 
     limits() { const f = this.fitScale(); return [Math.min(MIN_HEX_PX, f * 0.6), Math.max(MAX_HEX_PX, f * 2.5)]; }
 
@@ -235,7 +241,7 @@
         if (click) {
           const k = this.keyAt(p.x, p.y);
           if (e.pointerType !== 'mouse') this.setHover(null, true);
-          if (k && this.h.onSelect) this.h.onSelect(k);
+          if (this.h.onSelect) this.h.onSelect(k);  // 盤面の外なら null（選択を外す）
         }
         this.dragging = false;
       };
@@ -357,14 +363,23 @@
           ctx.stroke();
         }
       }
-      // 行動の対象になるマス
+      // 行動できるマス（薄く光らせる）
       for (const k of targets) {
         const [x, y] = this.screenOf(k);
         hexPath(ctx, x, y, s * 0.8);
-        ctx.fillStyle = `rgba(255,255,255,${0.06 + 0.1 * pulse})`;
+        ctx.fillStyle = `rgba(255,255,255,${0.04 + 0.06 * pulse})`;
         ctx.fill();
-        ctx.lineWidth = Math.max(1.5, s * 0.07);
-        ctx.strokeStyle = `rgba(255,255,255,${0.45 + 0.45 * pulse})`;
+        ctx.lineWidth = Math.max(1, s * 0.045);
+        ctx.strokeStyle = `rgba(255,255,255,${0.25 + 0.3 * pulse})`;
+        ctx.setLineDash([]);
+        ctx.stroke();
+      }
+      // 選んでいるマス
+      if (d.selected && g.board[d.selected]) {
+        const [x, y] = this.screenOf(d.selected);
+        hexPath(ctx, x, y, s * 0.99);
+        ctx.lineWidth = Math.max(2, s * 0.09);
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.setLineDash([]);
         ctx.stroke();
       }
@@ -382,10 +397,11 @@
         const [x, y] = this.screenOf(this.hoverKey);
         hexPath(ctx, x, y, s * 0.97);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
         ctx.setLineDash([]);
         ctx.stroke();
       }
+      if (this.h.onView) this.h.onView();
     }
 
     // セルの縁（陣営ごとの模様：実線・点線・二重線・破線）
