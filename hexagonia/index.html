@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 
@@ -120,10 +120,10 @@
     <div id="clash" class="clash" hidden></div>
     <div id="coach" class="coach" hidden></div>
     <div id="extra" class="extra" hidden></div>
-    <div id="abandon" class="extra" hidden></div>
     <div id="tooltip" class="tooltip" hidden></div>
     <!-- 自分の情報と、生産・手番終了のボタン（盤面の下に浮かせる） -->
     <section id="dock" class="dock me">
+      <div id="abandon" class="dock-abandon" hidden></div>
       <div class="me-head">
         <span id="me-swatch"></span>
         <strong id="me-name"></strong>
@@ -240,7 +240,7 @@
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="event"></i>イベント</h3>
-      <p>ラウンドの始まりに <b>1/3</b> の確率で、どれか1つが起きて<b>そのラウンドの間</b>続きます。次のラウンドの分は、1ラウンド前に<b>予告</b>されます（画面上部とログ）。</p>
+      <p>ラウンドの始まりに <b>1/3</b> の確率で、どれか1つが起きて<b>そのラウンドの間</b>続きます。<b>予告はありません</b>。起きたイベントは画面上部とログに出ます。</p>
       <table class="r-table events">
         <tr><td><b class="k-bad">不作</b></td><td>食料生産が0.5倍</td><td><b class="k-good">豊作</b></td><td>食料生産が1.5倍</td></tr>
         <tr><td><b class="k-bad">枯渇</b></td><td>資源生産が0.5倍</td><td><b class="k-good">発見</b></td><td>資源生産が1.5倍</td></tr>
@@ -289,11 +289,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=21"></script>
-<script src="shared/cpu.js?v=21"></script>
-<script src="shared/room.js?v=21"></script>
-<script src="sound.js?v=21"></script>
-<script src="board.js?v=21"></script>
-<script src="client.js?v=21"></script>
+<script src="shared/engine.js?v=22"></script>
+<script src="shared/cpu.js?v=22"></script>
+<script src="shared/room.js?v=22"></script>
+<script src="sound.js?v=22"></script>
+<script src="board.js?v=22"></script>
+<script src="client.js?v=22"></script>
 </body>
 </html>

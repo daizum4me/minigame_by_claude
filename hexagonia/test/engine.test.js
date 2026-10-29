@@ -643,18 +643,18 @@ test('森林マス：このセルがあると手番終了時に資源 +1（強�
   assert.strictEqual(P(g, me).resource, before + 4);
 });
 
-test('イベント：ラウンドの始まりに約1/3の確率で起き、そのラウンドの間続く。次のラウンドの分は予告される', () => {
+test('イベント：ラウンドの始まりに約1/3の確率で起き、そのラウンドの間続く。予告はしない', () => {
   let rounds = 0, withEvent = 0;
   for (let seed = 1; seed <= 40; seed++) {
     const g = E.createGame(PLAYERS.slice(0, 2), seeded(seed));
     for (let r = 1; r <= g.rounds; r++) { rounds++; if (g.eventPlan[r]) withEvent++; }
-    // ラウンド1のイベントと、ラウンド2の予告
     assert.strictEqual(g.event, g.eventPlan[1]);
-    assert.strictEqual(g.nextEvent, g.eventPlan[2]);
+    assert.strictEqual(g.nextEvent, undefined);
+    assert.ok(!g.log.some(l => l.text.startsWith('予告')));
     // ラウンドが進むと入れ替わる
     E.apply(g, cur(g), { type: 'endTurn' });
     E.apply(g, cur(g), { type: 'endTurn' });
-    if (!g.over) assert.deepStrictEqual([g.round, g.event, g.nextEvent], [2, g.eventPlan[2], g.eventPlan[3]]);
+    if (!g.over) assert.deepStrictEqual([g.round, g.event], [2, g.eventPlan[2]]);
   }
   assert.ok(withEvent / rounds > 0.25 && withEvent / rounds < 0.42, `${withEvent}/${rounds}`);
   assert.ok(E.createGame(PLAYERS.slice(0, 2), seeded(1), { events: false }).eventPlan.every(e => !e));
