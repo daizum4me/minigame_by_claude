@@ -15,17 +15,22 @@
   // ルールの数値はすべてここ
   const RULES = {
     minPlayers: 2,
-    maxPlayers: 4,
-    radius: { 2: 3, 3: 4, 4: 5 },       // 人数ごとの盤面の半径（直径 7・9・11 マス）。部屋の設定で変えられる
-    radiusRange: [3, 7],                // 設定できる半径（直径 7〜15 マス）
+    maxPlayers: 12,
+    // 人数ごとの盤面の半径（直径 = 半径×2+1）。部屋の設定で変えられる
+    radius: { 2: 3, 3: 4, 4: 5, 5: 6, 6: 6, 7: 7, 8: 7, 9: 8, 10: 8, 11: 8, 12: 8 },
+    radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
+    fullRiversUpTo: 4,                  // この人数までは川が中心から外側まで。それより多いと外側の半分くらいだけ
+    turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
     terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
     startResource: 3,
     coreHp: 3,                          // コアは攻撃が3回成功すると破壊される
     actionsPerTurn: 3,
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     rounds: 12,
-    cost: { expand: 1, expandMountain: 2, strengthen: 2, destroy: 1, reinforce: 2 },
-    income: { strong: 1, mineBonus: 1, core: 2, coreStrongBonus: true }, // 要確認：強化済コアは +1 も得る（暫定：得る）
+    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 1, reinforce: 2 },
+    // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
+    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
+    upkeep: { per: 4, plainWeight: 0.5 },  // 維持費 = セルの数 ÷ 4（切り捨て）。平原のセルは半分として数える
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -34,7 +39,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', river: '川マス' };
   const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '補強' };
 
   function shuffle(arr, rng) {
@@ -60,25 +65,78 @@
   }
 
   // コアの位置：盤面の一番外側の輪に、人数で等間隔に並べる。
-  // 全員が同じ条件になるよう、全員が角（隣のマス3つ）か、全員が辺（隣のマス4つ）になる置き方を選ぶ
+  // 全員が同じ条件になるよう、全員が角（隣のマス3つ）か、全員が辺（隣のマス4つ）にする。
+  // 等間隔ではどうしても角と辺が混ざるときは、角に来たコアを辺へ1マスずらす（間隔は1マスくらい違ってよい）
   function corePositions(radius, count) {
     const cells = ring(radius);
     const n = cells.length;
-    let best = null;
-    for (let o = 0; o < radius; o++) {
-      const idx = Array.from({ length: count }, (_, i) => Math.round(o + i * n / count) % n);
-      const corners = idx.filter(i => i % radius === 0).length;
-      if (corners !== 0 && corners !== count) continue;
+    const isCorner = i => i % radius === 0;
+    const gapOf = idx => {
       const pos = idx.map(i => cells[i]);
       let gap = Infinity;
       for (let i = 0; i < count; i++) for (let j = i + 1; j < count; j++) gap = Math.min(gap, dist(pos[i], pos[j]));
-      if (!best || gap > best.gap) best = { pos, gap };
+      return gap;
+    };
+    let best = null;
+    for (let o = 0; o < radius; o++) {
+      let idx = Array.from({ length: count }, (_, i) => Math.round(o + i * n / count) % n);
+      const corners = idx.filter(isCorner).length;
+      let moved = 0;
+      if (corners !== 0 && corners !== count) {
+        // 角に来たものを、となりの辺のマスへ（間隔が広く残るほうへ）
+        for (let j = 0; j < count; j++) {
+          if (!isCorner(idx[j])) continue;
+          const opts = [(idx[j] + 1) % n, (idx[j] + n - 1) % n].map(v => { const t = idx.slice(); t[j] = v; return t; });
+          idx = gapOf(opts[0]) >= gapOf(opts[1]) ? opts[0] : opts[1];
+          moved++;
+        }
+      }
+      const gap = gapOf(idx);
+      if (!best || moved < best.moved || (moved === best.moved && gap > best.gap)) best = { idx, gap, moved };
     }
-    return best.pos;
+    return best.idx.map(i => cells[i]);
+  }
+
+  // 盤面の座標 → 角度（川の向きを決めるため）
+  const angleOf = (q, r) => Math.atan2(1.5 * r, Math.sqrt(3) * (q + r / 2));
+
+  /*
+   * 川：隣り合うコアのあいだを、盤面の外側から中心へ向かって流れる（人数分）。
+   * 4人までは中心まで流れて陣地を区切り、5人以上は外側の半分くらいだけ（中心は開けておく）。
+   * 少し曲がりくねるが、コアとその周りには流れない
+   */
+  function makeRivers(radius, cores, fixed, rng) {
+    const count = cores.length;
+    const full = count <= RULES.fullRiversUpTo;
+    const inBoard = (q, r) => dist([q, r], [0, 0]) <= radius;
+    const sorted = cores.map(c => ({ c, a: angleOf(...c) })).sort((x, y) => x.a - y.a);
+    const closest = (cells, a) => cells
+      .filter(c => !fixed.has(key(...c)))
+      .map(c => [c, Math.abs(Math.atan2(Math.sin(angleOf(...c) - a), Math.cos(angleOf(...c) - a)))])
+      .sort((x, y) => x[1] - y[1])[0];
+    const river = new Set();
+    for (let i = 0; i < count; i++) {
+      const a1 = sorted[i].a, a2 = sorted[(i + 1) % count].a + (i + 1 === count ? Math.PI * 2 : 0);
+      const mid = (a1 + a2) / 2;
+      const start = closest(ring(radius), mid);
+      if (!start) continue;
+      const goal = full ? [0, 0] : (closest(ring(Math.max(1, Math.round(radius / 2))), mid) || [[0, 0]])[0];
+      let cur = start[0];
+      river.add(key(...cur));
+      for (let step = 0; step < radius * 3 && key(...cur) !== key(...goal); step++) {
+        const d = dist(cur, goal);
+        const next = neighbors(...cur).filter(([q, r]) => inBoard(q, r) && !fixed.has(key(q, r)) && dist([q, r], goal) < d);
+        if (!next.length) break;
+        cur = next[Math.floor(rng() * next.length)];
+        river.add(key(...cur));
+      }
+    }
+    return river;
   }
 
   function generateBoard(count, rng, radius) {
     radius = radius || RULES.radius[count];
+    if (radius * 6 < count * 3) throw new Error('人数に対して盤面が小さすぎます');
     const cores = corePositions(radius, count);
     const board = {};
     for (let q = -radius; q <= radius; q++) {
@@ -89,7 +147,9 @@
     // 公平さの補正：コアのマスとその周囲1マスは平原に固定
     const fixed = new Set();
     cores.forEach(([q, r]) => { fixed.add(key(q, r)); neighbors(q, r).forEach(([nq, nr]) => fixed.add(key(nq, nr))); });
-    const free = Object.keys(board).filter(k => !fixed.has(k));
+    const river = makeRivers(radius, cores, fixed, rng);
+    river.forEach(k => { board[k].terrain = 'river'; });
+    const free = Object.keys(board).filter(k => !fixed.has(k) && !river.has(k));
     const ratio = RULES.terrainRatio;
     const total = ratio.plain + ratio.mountain + ratio.mine;
     const nMountain = Math.round(free.length * ratio.mountain / total);
@@ -100,7 +160,7 @@
   }
 
   /*
-   * players: [{ id, name, color }]（2〜4人）
+   * players: [{ id, name, color }]（2〜12人）
    * opts.radius：盤面の半径（省略すると人数に合わせる）
    * 手番順はランダム。盤面上の配置も手番順に並べる。
    */
@@ -125,6 +185,7 @@
       actionsLeft: RULES.actionsPerTurn,
       extraBought: 0,        // この手番で行動 +1 を買った回数
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
+      abandon: null,         // 維持費が払えず、セルを捨てる途中： { player, count }
       over: false,
       winners: [],
       endReason: '',
@@ -155,14 +216,30 @@
     const inc = RULES.income;
     let n = 0;
     for (const c of cellsOf(state, id)) {
-      if (c.core) n += inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0) + (c.strong && c.terrain === 'mine' ? inc.mineBonus : 0);
-      else if (c.strong) n += inc.strong + (c.terrain === 'mine' ? inc.mineBonus : 0);
+      if (c.core) n += inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0);
+      else if (c.terrain === 'mine') n += c.strong ? inc.mineStrong : inc.mine;
+      else if (c.strong) n += inc.strong;
     }
     return n;
   }
 
+  // 手番終了時に払う維持費：セルの数 ÷ 4（切り捨て）。平原のセルは半分として数える
+  function upkeep(state, id) {
+    const u = RULES.upkeep;
+    const weight = cellsOf(state, id).reduce((n, c) => n + (c.terrain === 'plain' ? u.plainWeight : 1), 0);
+    return Math.floor(weight / u.per + 1e-9);
+  }
+
   function expandCost(cell) {
-    return cell.terrain === 'mountain' ? RULES.cost.expandMountain : RULES.cost.expand;
+    if (cell.terrain === 'mountain') return RULES.cost.expandMountain;
+    if (cell.terrain === 'river') return RULES.cost.bridge;   // 川には橋をかける
+    return RULES.cost.expand;
+  }
+
+  // 1手番の持ち時間（ミリ秒）
+  function turnMs(state) {
+    const t = RULES.turnSeconds;
+    return (state.players.length >= t.manyFrom ? t.many : t.normal) * 1000;
   }
 
   // 今その行動ができるか（マスの指定がいらない判定）。できなければ理由を返す
@@ -171,6 +248,7 @@
     const p = current(state);
     if (!p || p.id !== id) return 'あなたの手番ではありません';
     if (state.pending) return '破壊の攻防が終わるまで待ってください';
+    if (state.abandon) return '捨てるセルを選んでいるところです';
     if (type === 'endTurn') return '';
     if (type === 'buyAction') {
       if (state.actionsLeft > 0) return 'まだ行動回数が残っています';
@@ -216,7 +294,7 @@
 
   // 手番の人が資源を使い切るなどして、もう何もできなければ自動で手番終了
   function autoEndIfStuck(state) {
-    while (!state.over && !state.pending && !canAct(state, current(state).id)) {
+    while (!state.over && !state.pending && !state.abandon && !canAct(state, current(state).id)) {
       addLog(state, `${current(state).name} はもう行動できないため、自動で手番終了`, 'info');
       endTurn(state);
     }
@@ -230,6 +308,7 @@
   function applyAction(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
     if (action.type === 'bid') return bid(state, id, action.count);
+    if (action.type === 'abandon') return abandonCells(state, id, action.cells);
     const blocked = actionBlocked(state, id, action.type);
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
@@ -262,7 +341,8 @@
       let extra = '';
       if (cell.terrain === 'mountain') { p.defense += 1; extra = '（山岳：防御トークン +1）'; }
       state.actionsLeft--;
-      addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
+      if (cell.terrain === 'river') addLog(state, `${p.name} が川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
+      else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
@@ -323,6 +403,11 @@
       }
     }
     Object.assign(cell, { owner: null, strong: false, core: false });
+    if (cell.terrain === 'river') {
+      // 橋は破壊されると落ちて、川に戻る（攻撃側のセルにはならない）
+      addLog(state, `破壊成功：${a.name} が ${d.name} の橋${cellLabel(cell)}を落とした（川に戻る）`, 'destroy');
+      return;
+    }
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
     // 破壊したマスはそのまま攻撃側のセル（未強化）になる。山岳マスなら拡張と同じく防御トークン +1
@@ -344,17 +429,64 @@
   function finish(state, winners, reason) {
     state.over = true;
     state.pending = null;
+    state.abandon = null;
     state.winners = winners.map(p => p.id);
     state.endReason = reason;
     addLog(state, `🏆 ${winners.map(p => p.name).join('・')} の${winners.length > 1 ? '同率優勝' : '勝利'}（${reason}）`, 'win');
   }
 
+  // 手番終了：資源を受け取り、維持費を払う。払えなければ足りない数だけセルを選んで捨ててから次へ
   function endTurn(state) {
     const p = current(state);
     const n = income(state, p.id);
     p.resource += n;
-    addLog(state, `${p.name} が手番終了（資源トークン +${n}）`, 'income');
+    const cost = upkeep(state, p.id);
+    const paid = Math.min(cost, p.resource);
+    p.resource -= paid;
+    addLog(state, `${p.name} が手番終了（資源トークン +${n}${cost ? `・維持費 −${paid}` : ''}）`, 'income');
+    const lack = cost - paid;
+    const spare = cellsOf(state, p.id).filter(c => !c.core).length;
+    if (lack > 0 && spare > 0) {
+      state.abandon = { player: p.id, count: Math.min(lack, spare) };
+      addLog(state, `${p.name} は維持費が ${lack} 足りないため、セルを ${state.abandon.count} つ捨てる`, 'abandon');
+      return;
+    }
     advance(state);
+  }
+
+  // 捨てるセルを選ぶ（コアは捨てられない）
+  function abandonCells(state, id, cells) {
+    const ab = state.abandon;
+    if (state.over || !ab) return fail('いまはセルを捨てるところではありません');
+    if (ab.player !== id) return fail('セルを捨てるのはあなたではありません');
+    if (!Array.isArray(cells)) return fail('捨てるセルを選んでください');
+    const keys = [...new Set(cells.map(String))];
+    if (keys.length !== ab.count) return fail(`捨てるセルを ${ab.count} つ選んでください`);
+    for (const k of keys) {
+      const c = state.board[k];
+      if (!c || c.owner !== id) return fail('自分のセルを選んでください');
+      if (c.core) return fail('コアは捨てられません');
+    }
+    for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, core: false });
+    const p = playerById(state, id);
+    addLog(state, `${p.name} がセル ${keys.map(k => cellLabel(state.board[k])).join(' ')} を捨てた`, 'abandon');
+    state.abandon = null;
+    advance(state);
+    return { ok: true };
+  }
+
+  // 捨てるセルのおすすめ（時間切れ・CPU 用）：一番大きなかたまりから外れたもの、未強化、コアから遠いものから
+  function suggestAbandon(state, id) {
+    const ab = state.abandon;
+    if (!ab || ab.player !== id) return [];
+    const p = playerById(state, id);
+    const core = parseKey(p.core);
+    const group = new Set(largestGroup(state, id));
+    return cellsOf(state, id).filter(c => !c.core)
+      .map(c => ({ k: key(c.q, c.r), s: (group.has(key(c.q, c.r)) ? 0 : 1000) + (c.strong ? 0 : 100) + dist([c.q, c.r], core) }))
+      .sort((x, y) => y.s - x.s)
+      .slice(0, ab.count)
+      .map(x => x.k);
   }
 
   // 次の生きているプレイヤーの手番へ。一周したらラウンドが進む
@@ -416,6 +548,7 @@
     const p = playerById(state, id);
     if (!p || !p.alive || state.over) return;
     if (state.pending && (state.pending.attacker === id || state.pending.defender === id)) state.pending = null;
+    if (state.abandon && state.abandon.player === id) state.abandon = null;
     const wasTurn = current(state).id === id;
     eliminate(state, p);
     // 手番の人が抜けたら次へ（資源は受け取らない）
@@ -428,6 +561,7 @@
     if (state.over) return [];
     const pd = state.pending;
     if (pd) return [pd.atk === null ? pd.attacker : null, pd.def === null ? pd.defender : null].filter(Boolean);
+    if (state.abandon) return [state.abandon.player];
     return [current(state).id];
   }
 
@@ -435,6 +569,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost,
+    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon,
   };
 });

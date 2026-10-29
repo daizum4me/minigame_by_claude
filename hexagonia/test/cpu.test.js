@@ -9,12 +9,12 @@ function seeded(seed) {
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 
-const PLAYERS = ['a', 'b', 'c', 'd'].map((id, i) => ({ id, name: id.toUpperCase(), color: ['red', 'blue', 'green', 'yellow'][i] }));
+const PLAYERS = 'abcdefghijkl'.split('').map(id => ({ id, name: id.toUpperCase(), color: 'red' }));
 
 test('CPU どうしで最後まで遊べる（ルール違反の手を選ばない）', () => {
   const stats = { core: 0, rounds: 0 };
-  for (let seed = 1; seed <= 30; seed++) {
-    const n = 2 + seed % 3;
+  for (let seed = 1; seed <= 33; seed++) {
+    const n = 2 + seed % 11;   // 2〜12人
     const rng = seeded(seed);
     const g = E.createGame(PLAYERS.slice(0, n), rng);
     let steps = 0;
@@ -74,13 +74,11 @@ test('部屋に CPU を入れて遊べる', () => {
     clearTimer: t => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); },
   });
   const h = room.join('t1', 'H').id;
-  room.handle(h, { type: 'addCpu' });
-  room.handle(h, { type: 'addCpu' });
-  room.handle(h, { type: 'addCpu' });
-  room.handle(h, { type: 'addCpu' }); // 5人目は入れない
-  assert.strictEqual(room.players.length, 4);
-  assert.deepStrictEqual(room.players.filter(p => p.cpu).map(p => p.name), ['CPU 1', 'CPU 2', 'CPU 3']);
-  room.handle(h, { type: 'removeCpu', target: room.players[2].id });
+  for (let i = 0; i < 12; i++) room.handle(h, { type: 'addCpu' }); // 13人目は入れない
+  assert.strictEqual(room.players.length, 12);
+  assert.deepStrictEqual(room.players.filter(p => p.cpu).map(p => p.name), Array.from({ length: 11 }, (_, i) => `CPU ${i + 1}`));
+  assert.strictEqual(new Set(room.players.map(p => p.color)).size, 12);   // 12色すべて違う
+  while (room.players.length > 3) room.handle(h, { type: 'removeCpu', target: room.players.at(-1).id });
   assert.strictEqual(room.players.length, 3);
   assert.ok(inbox[h].at(-1).room.players.some(p => p.cpu));
   room.handle(h, { type: 'start' });

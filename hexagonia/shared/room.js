@@ -12,9 +12,10 @@
 })(typeof self !== 'undefined' ? self : this, function (E, CPU) {
   'use strict';
 
-  const COLORS = ['red', 'blue', 'green', 'yellow'];
-  const TURN_MS = 120000;   // 1手番の持ち時間。切れたら自動で手番終了（攻防のあいだは止まる）
+  const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
+  const TURN_MS = E.RULES.turnSeconds.normal * 1000;   // 1手番の持ち時間（7人以上は E.turnMs で60秒）。攻防のあいだは止まる
   const BID_MS = 30000;     // 攻防で出す数を決める時間。切れたら 0 個
+  const ABANDON_MS = 30000; // 維持費が払えないとき、捨てるセルを選ぶ時間。切れたら自動で選ぶ
   const GRACE_MS = 30000;   // 切断した人の手番は、これだけ待ってから自動で終える
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
@@ -197,10 +198,23 @@
       const g = this.game;
       const now = this.now();
       if (!g || this.phase !== 'game' || g.over) {
-        ['turn', 'bid', 'grace'].forEach(n => this.stop(n));
-        this.turnKey = this.bidFor = this.graceFor = null;
+        ['turn', 'bid', 'grace', 'abandon'].forEach(n => this.stop(n));
+        this.turnKey = this.bidFor = this.graceFor = this.abandonFor = null;
         return;
       }
+      if (g.abandon) {
+        // 捨てるセルを選ぶあいだ（手番はもう終わっている）
+        ['turn', 'grace', 'bid'].forEach(n => this.stop(n));
+        this.graceFor = this.bidFor = null;
+        if (this.abandonFor !== g.abandon) {
+          const ab = this.abandonFor = g.abandon;
+          this.abandonDeadline = now + ABANDON_MS;
+          this.timer('abandon', () => this.abandonTimeout(ab), ABANDON_MS);
+        }
+        return;
+      }
+      this.stop('abandon');
+      this.abandonFor = null;
       if (g.pending) {
         // 攻防のあいだは持ち時間を止める
         if (this.timers.turn) { this.turnRemain = Math.max(0, this.turnDeadline - now); this.stop('turn'); }
@@ -218,7 +232,7 @@
       const key = `${g.round}:${g.turn}`;
       if (key !== this.turnKey) {
         this.turnKey = key;
-        this.turnRemain = TURN_MS;
+        this.turnRemain = E.turnMs(g);
         this.stop('turn');
       }
       if (!this.timers.turn) {
@@ -248,6 +262,16 @@
       this.changed();
     }
 
+    // 時間切れ：おすすめのセルを捨てる
+    abandonTimeout(ab) {
+      const g = this.game;
+      if (this.closed || !g || g.abandon !== ab) return;
+      const p = g.players.find(x => x.id === ab.player);
+      this.note(`⏳ ${p.name}：時間切れのため、捨てるセルを自動で選びます`);
+      E.apply(g, ab.player, { type: 'abandon', cells: E.suggestAbandon(g, ab.player) });
+      this.changed();
+    }
+
     // 決めていない人は 0 個
     bidTimeout(pd) {
       const g = this.game;
@@ -265,7 +289,7 @@
       const cpus = g && this.phase === 'game' && !g.over ? E.waiting(g).filter(id => (this.player(id) || {}).cpu) : [];
       if (!cpus.length) { this.stop('cpu'); this.cpuAt = null; return; }
       const pd = g.pending;
-      const at = `${g.logSeq}:${pd ? `${pd.atk}/${pd.def}` : ''}:${cpus.join(',')}`;
+      const at = `${g.logSeq}:${pd ? `${pd.atk}/${pd.def}` : ''}:${g.abandon ? 'ab' : ''}:${cpus.join(',')}`;
       if (this.timers.cpu && this.cpuAt === at) return;   // 同じ局面にはすでに予約済み
       this.cpuAt = at;
       this.timer('cpu', () => this.cpuAct(), pd ? CPU_REPLY_MS : CPU_DELAY_MS);
@@ -280,7 +304,11 @@
         const action = CPU.decide(g, id, this.rng);
         const r = action ? E.apply(g, id, action) : { ok: false };
         // 万一ルール上できない手を選んだら、止まらないように進める
-        if (!r.ok) E.apply(g, id, g.pending ? { type: 'bid', count: 0 } : { type: 'endTurn' });
+        if (!r.ok) {
+          if (g.pending) E.apply(g, id, { type: 'bid', count: 0 });
+          else if (g.abandon) E.apply(g, id, { type: 'abandon', cells: E.suggestAbandon(g, id) });
+          else E.apply(g, id, { type: 'endTurn' });
+        }
       }
       this.changed();
     }
@@ -309,8 +337,9 @@
         hostId: this.hostId,
         settings: this.settings,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu })),
-        turnLeftMs: live ? (g.pending ? this.turnRemain : Math.max(0, this.turnDeadline - now)) : 0,
+        turnLeftMs: live && !g.abandon ? (g.pending ? this.turnRemain : Math.max(0, this.turnDeadline - now)) : 0,
         turnPaused: !!(live && g.pending),
+        abandonLeftMs: live && g.abandon ? Math.max(0, this.abandonDeadline - now) : 0,
         bidLeftMs: live && g.pending ? Math.max(0, this.bidDeadline - now) : 0,
         graceFor: live && this.graceFor ? E.current(g).id : null,
         graceLeftMs: live && this.graceFor ? Math.max(0, this.graceDeadline - now) : 0,
@@ -329,5 +358,5 @@
     }
   }
 
-  return { Room, COLORS, TURN_MS, BID_MS, GRACE_MS };
+  return { Room, COLORS, TURN_MS, BID_MS, GRACE_MS, ABANDON_MS };
 });

@@ -13,6 +13,7 @@ const PLAYERS = [
   { id: 'b', name: 'B', color: 'blue' },
   { id: 'c', name: 'C', color: 'green' },
   { id: 'd', name: 'D', color: 'yellow' },
+  ...'efghijkl'.split('').map(id => ({ id, name: id.toUpperCase(), color: 'red' })),
 ];
 
 function newGame(n, seed) { return E.createGame(PLAYERS.slice(0, n), seeded(seed || 1)); }
@@ -36,7 +37,7 @@ test('人数ごとの盤面の大きさ（直径 7・9・11）と、大きさの
   assert.strictEqual(Object.keys(g.board).length, 169);
   assert.strictEqual(g.radius, 7);
   assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 2 }));
-  assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 8 }));
+  assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 11 }));
 });
 
 test('コアは一番外側に等間隔、全員同じ条件（隣のマスの数が同じ）、周囲1マスは平原', () => {
@@ -59,9 +60,9 @@ test('地形はおおよそ 70%：15%：15%', () => {
   const g = newGame(4, 3);
   const cnt = { plain: 0, mountain: 0, mine: 0 };
   Object.values(g.board).forEach(c => cnt[c.terrain]++);
-  // コアとその周りのマスは平原。残りのマスの15%ずつ
+  // コアとその周りのマスは平原、川は川。残りのマスの15%ずつ
   const fixed = g.players.reduce((n, p) => n + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
-  const free = Object.keys(g.board).length - fixed;
+  const free = Object.keys(g.board).length - fixed - Object.values(g.board).filter(c => c.terrain === 'river').length;
   assert.deepStrictEqual([cnt.mountain, cnt.mine], [Math.round(free * 0.15), Math.round(free * 0.15)], JSON.stringify(cnt));
 });
 
@@ -127,7 +128,7 @@ test('強化：攻撃+1、山岳なら防御+1も。強化済は再強化不可'
   assert.deepStrictEqual([P(g, me).attack, P(g, me).defense], [2, 1]);
 });
 
-test('ターン終了時の資源：強化済+1、鉱山+1、コア+2（強化済コアは+1も）', () => {
+test('ターン終了時の資源：強化済+1、鉱山は強化なしで+1・強化で+2、コア+2（強化済コアは+1も）', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
@@ -136,13 +137,15 @@ test('ターン終了時の資源：強化済+1、鉱山+1、コア+2（強化�
   setCell(g, ...ns[0], { owner: me });                       // 未強化：0
   setCell(g, ...ns[1], { owner: me, strong: true });         // 強化済：+1
   setCell(g, ...ns[2], { owner: me, strong: true, terrain: 'mine' }); // 鉱山の強化済：+2
-  setCell(g, 0, 0, { owner: me, terrain: 'mine' });          // 鉱山の未強化：0
-  assert.strictEqual(E.income(g, me), 2 + 1 + 2);
+  setCell(g, 0, 0, { owner: me, terrain: 'mine' });          // 鉱山の未強化：+1
+  assert.strictEqual(E.income(g, me), 2 + 1 + 2 + 1);
   g.board[P(g, me).core].strong = true;
-  assert.strictEqual(E.income(g, me), 3 + 1 + 2);
+  assert.strictEqual(E.income(g, me), 3 + 1 + 2 + 1);
+  // 維持費：平原2つ（コア・未強化）は 0.5×2 ＋ 強化済の平原 0.5 ＋ 鉱山2つ 1×2 = 3.5 → 3.5÷4 = 0
+  assert.strictEqual(E.upkeep(g, me), 0);
   const before = P(g, me).resource;
   E.apply(g, me, { type: 'endTurn' });
-  assert.strictEqual(P(g, me).resource, before + 6);
+  assert.strictEqual(P(g, me).resource, before + 7);
   assert.notStrictEqual(cur(g), me);
 });
 
@@ -382,4 +385,131 @@ test('もう何もできなくなったら自動で手番終了', () => {
   P(k, km).resource = 10;
   E.apply(k, km, { type: 'reinforce' });
   assert.strictEqual(cur(k), km);      // まだできる
+});
+
+test('維持費：セルの数 ÷ 4（切り捨て）、平原は半分として数える', () => {
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
+  const me = cur(g);
+  // コア（平原）だけ：0.5 → 0
+  assert.strictEqual(E.upkeep(g, me), 0);
+  // 平原7つ＋コア：8×0.5 = 4 → 1
+  const plains = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 7);
+  plains.forEach(c => { c.owner = me; });
+  assert.strictEqual(E.upkeep(g, me), 1);
+  // 山岳4つを足す：4 + 4 = 8 → 2
+  Object.values(g.board).filter(c => !c.owner && c.terrain === 'mountain').slice(0, 4).forEach(c => { c.owner = me; });
+  assert.strictEqual(E.upkeep(g, me), 2);
+  // 手番終了で収入を受け取ってから払う
+  P(g, me).resource = 0;
+  const inc = E.income(g, me);
+  E.apply(g, me, { type: 'endTurn' });
+  assert.strictEqual(P(g, me).resource, inc - 2);
+});
+
+test('維持費が払えなければ、足りない資源1つにつきセルを1つ選んで捨てる（コアは捨てられない）', () => {
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
+  const me = cur(g), other = g.players.find(p => p.id !== me).id;
+  const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'mountain').slice(0, 12);
+  mine.forEach(c => { c.owner = me; });                 // 山岳12＋コア0.5 → 維持費3
+  P(g, me).resource = 0;
+  assert.strictEqual(E.income(g, me), 2);
+  E.apply(g, me, { type: 'endTurn' });                  // +2 を受け取って 2 払う。1 足りない
+  assert.deepStrictEqual(g.abandon, { player: me, count: 1 });
+  assert.strictEqual(P(g, me).resource, 0);
+  assert.strictEqual(cur(g), me);                       // 捨てるまで次の人に回らない
+  assert.deepStrictEqual(E.waiting(g), [me]);
+  assert.strictEqual(E.apply(g, me, { type: 'reinforce' }).ok, false);
+  // 数が違う・コア・他人のセルは不可
+  const k = E.key(mine[0].q, mine[0].r);
+  assert.strictEqual(E.apply(g, me, { type: 'abandon', cells: [] }).ok, false);
+  assert.strictEqual(E.apply(g, me, { type: 'abandon', cells: [P(g, me).core] }).ok, false);
+  assert.strictEqual(E.apply(g, me, { type: 'abandon', cells: [P(g, other).core] }).ok, false);
+  assert.strictEqual(E.apply(g, other, { type: 'abandon', cells: [k] }).ok, false);
+  assert.ok(E.apply(g, me, { type: 'abandon', cells: [k] }).ok);
+  assert.strictEqual(g.board[k].owner, null);
+  assert.strictEqual(g.abandon, null);
+  assert.strictEqual(cur(g), other);
+  // おすすめ：一番大きなかたまりから外れたセル・未強化・コアから遠いものから
+  const h = E.createGame(PLAYERS.slice(0, 2), seeded(2), { radius: 6 });
+  const hm = cur(h);
+  const hc = E.parseKey(P(h, hm).core);
+  const near = nb(h, ...hc)[0];
+  setCell(h, ...near, { owner: hm });
+  setCell(h, 0, 0, { owner: hm });                      // 離れたセル
+  h.abandon = { player: hm, count: 1 };
+  assert.deepStrictEqual(E.suggestAbandon(h, hm), ['0,0']);
+});
+
+test('川：4人までは中心から外側まで流れて、コアどうしを区切る', () => {
+  for (const n of [2, 3, 4]) {
+    for (let seed = 1; seed <= 5; seed++) {
+      const g = E.createGame(PLAYERS.slice(0, n), seeded(seed));
+      const river = Object.values(g.board).filter(c => c.terrain === 'river');
+      assert.ok(river.length > 0);
+      assert.strictEqual(g.board['0,0'].terrain, 'river');
+      // コアとその周りは川にならない
+      for (const p of g.players) for (const [q, r] of [E.parseKey(p.core), ...nb(g, ...E.parseKey(p.core))]) assert.notStrictEqual(g.board[E.key(q, r)].terrain, 'river');
+      // 川を渡らずに、ほかのコアへはたどり着けない
+      for (const p of g.players) {
+        const seen = new Set([p.core]), stack = [p.core];
+        while (stack.length) {
+          const [q, r] = E.parseKey(stack.pop());
+          for (const [nq, nr] of nb(g, q, r)) {
+            const k = E.key(nq, nr);
+            if (!seen.has(k) && g.board[k].terrain !== 'river') { seen.add(k); stack.push(k); }
+          }
+        }
+        for (const o of g.players) if (o !== p) assert.ok(!seen.has(o.core), `${n}人 seed ${seed}`);
+      }
+    }
+  }
+});
+
+test('川：5人以上は外側だけ（中心は開いている）', () => {
+  for (const n of [5, 8, 12]) {
+    const g = E.createGame(PLAYERS.slice(0, n), seeded(3));
+    assert.notStrictEqual(g.board['0,0'].terrain, 'river');
+    const river = Object.values(g.board).filter(c => c.terrain === 'river');
+    assert.ok(river.length >= n);   // 人数分の川
+    assert.ok(river.every(c => E.dist([c.q, c.r], [0, 0]) >= g.radius / 2 - 1));
+  }
+});
+
+test('橋：川マスへの拡張は資源4。強化できる。破壊されると川に戻る', () => {
+  const { g, a, b } = clashSetup();
+  const ac = E.parseKey(P(g, a).core);
+  const [rq, rr] = nb(g, ...ac).find(([q, r]) => !g.board[E.key(q, r)].owner);
+  const rk = E.key(rq, rr);
+  g.board[rk].terrain = 'river';
+  P(g, a).resource = 3;
+  assert.ok(!E.targets(g, a, 'expand').includes(rk));     // 資源3では足りない
+  P(g, a).resource = 10;
+  assert.ok(E.apply(g, a, { type: 'expand', q: rq, r: rr }).ok);
+  assert.strictEqual(P(g, a).resource, 6);
+  assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain], [a, 'river']);
+  assert.ok(E.apply(g, a, { type: 'strengthen', q: rq, r: rr }).ok);
+  assert.strictEqual(g.board[rk].strong, true);
+  // b が橋を破壊すると川に戻る（b のセルにはならない）
+  E.apply(g, a, { type: 'endTurn' });
+  setCell(g, ...nb(g, rq, rr).find(([q, r]) => !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river'), { owner: b });
+  P(g, b).resource = 5;
+  assert.ok(E.apply(g, b, { type: 'destroy', q: rq, r: rr }).ok);
+  assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain, g.board[rk].strong], [null, 'river', false]);
+});
+
+test('12人まで遊べる：コアは一番外側に全員同じ条件、7人以上は持ち時間60秒', () => {
+  for (const n of [5, 6, 7, 9, 12]) {
+    const g = E.createGame(PLAYERS.slice(0, n), seeded(n));
+    assert.strictEqual(g.players.length, n);
+    const cores = g.players.map(p => E.parseKey(p.core));
+    assert.strictEqual(new Set(g.players.map(p => p.core)).size, n);
+    for (const c of cores) assert.strictEqual(E.dist(c, [0, 0]), g.radius);
+    assert.strictEqual(new Set(cores.map(c => nb(g, ...c).length)).size, 1);
+    let gap = Infinity;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) gap = Math.min(gap, E.dist(cores[i], cores[j]));
+    assert.ok(gap >= 3, `${n}人のコアの間隔 ${gap}`);
+    assert.strictEqual(E.turnMs(g), n >= 7 ? 60000 : 120000);
+  }
+  assert.throws(() => E.createGame([...PLAYERS, { id: 'm', name: 'M', color: 'red' }], seeded(1)));   // 13人は不可
+  assert.throws(() => E.createGame(PLAYERS.slice(0, 12), seeded(1), { radius: 3 }));   // 盤面が小さすぎる
 });

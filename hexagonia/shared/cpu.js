@@ -36,6 +36,7 @@
     const leaderGroups = new Set(foes.map(p => E.largestGroup(g, p.id)).sort((a, b) => b.length - a.length)[0] || []);
     const touchesMine = c => E.neighbors(c.q, c.r).some(([q, r]) => myGroup.has(E.key(q, r)));
     const danger = threat(g, me);
+    const net = E.income(g, id) - E.upkeep(g, id);      // 毎手番の資源の増え方（維持費を引いたあと）
     const out = [];
     const noise = () => (rng() - 0.5) * 0.6;
 
@@ -45,8 +46,18 @@
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
-        if (c.terrain === 'mine') s += 1.6;
+        if (c.terrain === 'mine') s += 2.2;           // 鉱山は取っただけで毎手番 +1
         if (c.terrain === 'mountain') s += me.defense < 2 ? 0.8 : -0.3;
+        if (c.terrain === 'river') {
+          // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
+          const beyond = E.neighbors(c.q, c.r).filter(([q, r]) => {
+            const n = cellAt(g, q, r);
+            return n && !n.owner && n.terrain !== 'river' && !E.neighbors(q, r).some(([a, b]) => { const m = cellAt(g, a, b); return m && m.owner === id; });
+          }).length;
+          s += beyond ? beyond * 0.5 - 1.5 : -3;
+        }
+        // 維持費で資源が増えなくなってきたら、広げるのを控える（平原は維持費が半分）
+        if (net <= 1) s -= c.terrain === 'plain' ? 0.4 : 0.8;
         // 一番大きなかたまりにつながる拡張を重視（終盤は特に）
         if (touchesMine(c)) s += late ? 2.8 : 0.6;
         else if (late) s += 0.3;
@@ -59,7 +70,7 @@
         // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
         if (c.core) s += 2.5;
-        if (c.terrain === 'mine') s += 2.2;
+        if (c.terrain === 'mine') s += 1.2;
         if (c.terrain === 'mountain') s += 0.8;
         if (me.attack === 0 && frontier(g, id) > 0) s += 1.5;
         out.push({ s: s + noise(), a: { type: 'strengthen', q: c.q, r: c.r } });
@@ -97,6 +108,7 @@
   function decide(g, id, rng) {
     rng = rng || Math.random;
     const me = playerById(g, id);
+    if (g.abandon) return g.abandon.player === id ? { type: 'abandon', cells: E.suggestAbandon(g, id) } : null;
     const pd = g.pending;
     if (pd) {
       // 出す数を伏せて決める。相手が出せる最大数は見えている
