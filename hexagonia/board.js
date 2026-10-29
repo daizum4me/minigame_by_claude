@@ -13,6 +13,7 @@
   const SQRT3 = Math.sqrt(3);
   const DRAG_PX = 6;          // これ以上動いたらドラッグ扱い
   const LONG_PRESS_MS = 450;
+  const FLASH_MS = 900;       // 変化したマスを光らせる時間
   const MIN_HEX_PX = 9;       // 拡大率の下限・上限（マスの半径のピクセル数）
   const MAX_HEX_PX = 140;
   const FIT_MAX_HEX_PX = 90;  // 全体表示のときの上限（小さい画面以外で大きくなりすぎないように）
@@ -76,6 +77,7 @@
       this.hoverKey = null;
       this.radius = 0;
       this.frame = 0;
+      this.flashes = new Map(); // 光らせているマス → { t: 始めた時刻, color }
       this.bind();
       new ResizeObserver(() => this.resize()).observe(canvas);
       this.resize();
@@ -117,6 +119,13 @@
     }
 
     reset() { this.moved = false; this.fit(); this.draw(); }
+
+    // 変化したマスを一瞬光らせる
+    flash(keys, color) {
+      const t = performance.now();
+      for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255' });
+      if (keys.length) this.animate();
+    }
 
     setSelected(key) {
       if (!this.data || this.data.selected === key) return;
@@ -272,7 +281,7 @@
       if (this.anim) return;
       const loop = () => {
         const d = this.data;
-        const need = d && (d.targets.length || (d.game.pending && !d.game.over));
+        const need = d && (d.targets.length || (d.game.pending && !d.game.over) || this.flashes.size);
         if (!need) { this.anim = 0; this.draw(); return; }
         this.draw();
         this.anim = requestAnimationFrame(loop);
@@ -373,6 +382,24 @@
         ctx.strokeStyle = `rgba(255,255,255,${0.25 + 0.3 * pulse})`;
         ctx.setLineDash([]);
         ctx.stroke();
+      }
+      // 変化したマス：明るく光って消えていく
+      for (const [k, f] of this.flashes) {
+        const age = (t - f.t) / FLASH_MS;
+        if (age >= 1 || !g.board[k]) { this.flashes.delete(k); continue; }
+        const a = (1 - age) * (1 - age);
+        const [x, y] = this.screenOf(k);
+        ctx.save();
+        ctx.shadowColor = `rgba(${f.color},${a})`;
+        ctx.shadowBlur = s * 0.8;
+        hexPath(ctx, x, y, s * (0.92 + 0.12 * age));
+        ctx.fillStyle = `rgba(${f.color},${0.5 * a})`;
+        ctx.fill();
+        ctx.lineWidth = Math.max(2, s * 0.1);
+        ctx.strokeStyle = `rgba(${f.color},${a})`;
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.restore();
       }
       // 選んでいるマス
       if (d.selected && g.board[d.selected]) {

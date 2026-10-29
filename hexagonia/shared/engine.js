@@ -17,7 +17,7 @@
     minPlayers: 2,
     maxPlayers: 4,
     radius: { 2: 4, 3: 5, 4: 6 },       // 人数ごとの盤面の半径
-    terrainRatio: { plain: 6, mountain: 2, mine: 2 }, // 平原：山岳：鉱山（要調整）
+    terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
     startResource: 3,
     actionsPerTurn: 3,
     rounds: 12,
@@ -104,7 +104,7 @@
       turn: 0,               // players の何番目の手番か
       round: 1,
       actionsLeft: RULES.actionsPerTurn,
-      pending: null,         // 破壊の攻防中： { attacker, defender, target, stage: 'defend'|'attack', def, atk }
+      pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
       over: false,
       winners: [],
       endReason: '',
@@ -181,11 +181,11 @@
   /*
    * 行動を実行する。state は書き換わる。
    * action: { type: 'expand'|'strengthen'|'destroy', q, r } / { type: 'reinforce' } / { type: 'endTurn' }
-   *         { type: 'defend', use: bool }（防御側） / { type: 'attack', use: bool }（攻撃側）
+   *         { type: 'bid', count }（破壊の攻防で、攻撃側・防御側が出すトークンの数を伏せて決める）
    */
   function apply(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
-    if (action.type === 'defend' || action.type === 'attack') return respond(state, id, action.type, !!action.use);
+    if (action.type === 'bid') return bid(state, id, action.count);
     const blocked = actionBlocked(state, id, action.type);
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
@@ -193,8 +193,9 @@
     if (action.type === 'reinforce') {
       p.resource -= RULES.cost.reinforce;
       p.defense += 1;
+      p.attack += 1;
       state.actionsLeft--;
-      addLog(state, `${p.name} が補強（防御トークン +1）`, 'reinforce');
+      addLog(state, `${p.name} が補強（防御トークン +1・攻撃トークン +1）`, 'reinforce');
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -223,49 +224,52 @@
       p.resource -= RULES.cost.destroy;
       state.actionsLeft--;
       addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}に破壊を宣言`, 'destroy');
-      state.pending = { attacker: id, defender: def.id, target: k, stage: 'defend', def: 0, atk: 0 };
-      if (def.defense <= 0) resolveDestroy(state, true);
+      // 攻撃側・防御側が、出すトークンの数を伏せて決める
+      state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null };
+      if (def.defense <= 0) resolveDestroy(state, 0, 0);           // 防御トークンがなければそのまま成功
+      else if (p.attack <= 0) state.pending.atk = 0;               // 攻撃トークンがなければ 0 個に決まる
     }
     return { ok: true };
   }
 
-  // 破壊の攻防：防御側が防御トークンを出す／出さない、攻撃側が攻撃トークンを出す／諦める
-  function respond(state, id, type, use) {
+  // 破壊の攻防：攻撃側と防御側が出す数を伏せて決め、そろったら同時に公開する。
+  // 攻撃トークン1個で防御トークン1個を破るので、攻撃 ≧ 防御なら破壊成功。出したトークンはすべてなくなる
+  function bid(state, id, count) {
     const pd = state.pending;
     if (state.over || !pd) return fail('いまは攻防中ではありません');
-    if (type === 'defend') {
-      if (pd.stage !== 'defend' || pd.defender !== id) return fail('いまはあなたが防御を選ぶ番ではありません');
-      const d = playerById(state, id);
-      if (!use || d.defense <= 0) { addLog(state, `${d.name} は防御トークンを出さなかった`, 'destroy'); resolveDestroy(state, true); return { ok: true }; }
-      d.defense -= 1;
-      pd.def += 1;
-      addLog(state, `${d.name} が防御トークンを出した（${pd.def} 個目）`, 'defend');
-      pd.stage = 'attack';
-      if (playerById(state, pd.attacker).attack <= 0) resolveDestroy(state, false);
-      return { ok: true };
-    }
-    if (pd.stage !== 'attack' || pd.attacker !== id) return fail('いまはあなたが攻撃を選ぶ番ではありません');
-    const a = playerById(state, id);
-    if (!use || a.attack <= 0) { addLog(state, `${a.name} は破壊を諦めた`, 'defend'); resolveDestroy(state, false); return { ok: true }; }
-    a.attack -= 1;
-    pd.atk += 1;
-    addLog(state, `${a.name} が攻撃トークンを出し、防御トークンを1個破壊（${pd.atk} 個目）`, 'destroy');
-    pd.stage = 'defend';
-    if (playerById(state, pd.defender).defense <= 0) resolveDestroy(state, true);
+    const side = pd.attacker === id ? 'atk' : pd.defender === id ? 'def' : null;
+    if (!side) return fail('この攻防には加わっていません');
+    if (pd[side] !== null) return fail('もう決めました');
+    const p = playerById(state, id);
+    const have = side === 'atk' ? p.attack : p.defense;
+    const n = Number(count);
+    if (!Number.isInteger(n) || n < 0 || n > have) return fail('出せる数ではありません');
+    pd[side] = n;
+    if (pd.atk !== null && pd.def !== null) resolveDestroy(state, pd.atk, pd.def);
     return { ok: true };
   }
 
-  function resolveDestroy(state, success) {
+  function resolveDestroy(state, atk, def) {
     const pd = state.pending;
     state.pending = null;
-    state.lastClash = { attacker: pd.attacker, defender: pd.defender, target: pd.target, def: pd.def, atk: pd.atk, success };
     const cell = state.board[pd.target];
     const a = playerById(state, pd.attacker), d = playerById(state, pd.defender);
-    if (!success) { addLog(state, `破壊失敗：${d.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}は守られた`, 'defend'); return; }
+    a.attack -= atk;
+    d.defense -= def;
+    const success = atk >= def;
+    state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, success };
+    const what = cell.core ? 'コア' : 'セル';
+    if (d.defense + def > 0) addLog(state, `攻防：${a.name} 攻撃トークン ${atk} 個 ／ ${d.name} 防御トークン ${def} 個`, 'clash');
+    if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
     const wasCore = cell.core;
     Object.assign(cell, { owner: null, strong: false, core: false });
-    addLog(state, `破壊成功：${a.name} が ${d.name} の${wasCore ? 'コア' : 'セル'}${cellLabel(cell)}を破壊`, 'destroy');
+    addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
+    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。山岳マスなら拡張と同じく防御トークン +1
+    Object.assign(cell, { owner: a.id, strong: false, core: false });
+    let extra = '';
+    if (cell.terrain === 'mountain') { a.defense += 1; extra = '（山岳：防御トークン +1）'; }
+    addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
   }
 
   function eliminate(state, p) {
@@ -328,16 +332,17 @@
     if (!state.over && wasTurn) advance(state);
   }
 
-  // 今だれの操作を待っているか
-  function waitingFor(state) {
-    if (state.over) return null;
-    if (state.pending) return state.pending.stage === 'defend' ? state.pending.defender : state.pending.attacker;
-    return current(state).id;
+  // 今だれの操作を待っているか（攻防中は、まだ数を決めていない人。2人のこともある）
+  function waiting(state) {
+    if (state.over) return [];
+    const pd = state.pending;
+    if (pd) return [pd.atk === null ? pd.attacker : null, pd.def === null ? pd.defender : null].filter(Boolean);
+    return [current(state).id];
   }
 
   return {
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
-    createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waitingFor, forfeit, current,
+    createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
   };
 });

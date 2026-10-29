@@ -338,3 +338,30 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
   .act { padding: 6px 2px; }
   .card { padding: 20px 16px; }
 }
+
+/* 持ち時間 */
+.pill.timer strong { font-variant-numeric: tabular-nums; }
+.pill.timer.low { border-color: rgba(255, 156, 148, 0.6); color: var(--bad); }
+.pill.timer.low strong { color: var(--bad); }
+.pill.timer.paused { opacity: .75; }
+
+/* 攻防：出す数を伏せて決める */
+.clash .small { font-size: 12px; margin-top: 2px; }
+.bid { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.bid .step { width: 40px; height: 40px; padding: 0; font-size: 20px; flex: none; }
+.bid-n { display: inline-flex; align-items: center; gap: 4px; min-width: 76px; justify-content: center; }
+.bid-n b { font-size: 24px; }
+.bid-n small { color: var(--muted); }
+.bid-n .tk { width: 24px; height: 24px; }
+.bid .primary { flex: 1; height: 40px; }
+.clash-status { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.clash-status .ready { color: var(--good); }
+.clash-status [data-left] { margin-left: auto; }
+.clash-count.reveal { justify-content: center; align-items: center; margin: 12px 0 2px; }
+.clash-count.reveal b { font-size: 26px; }
+.clash-count.reveal .tk { width: 24px; height: 24px; }
+.clash-count .vs { color: var(--muted); font-size: 13px; }
+.clash-result { text-align: center; font-weight: 700; font-size: 16px; margin: 4px 0 0 !important; }
+.clash-result.bad { color: var(--bad); }
+.clash-result.good { color: #A8D6FF; }
+.log .lg-clash { color: var(--text); font-weight: 600; }

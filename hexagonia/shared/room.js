@@ -13,7 +13,9 @@
   'use strict';
 
   const COLORS = ['red', 'blue', 'green', 'yellow'];
-  const GRACE_MS = 30000;   // 切断した人の操作待ちを、これだけ待ってから自動で進める
+  const TURN_MS = 120000;   // 1手番の持ち時間。切れたら自動で手番終了（攻防のあいだは止まる）
+  const BID_MS = 30000;     // 攻防で出す数を決める時間。切れたら 0 個
+  const GRACE_MS = 30000;   // 切断した人の手番は、これだけ待ってから自動で終える
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
   const CPU_REPLY_MS = 700;     // CPU が攻防で応答するまでの間
@@ -30,15 +32,21 @@
       this.rng = opts.rng || Math.random;
       this.setTimer = opts.setTimer || ((fn, ms) => setTimeout(fn, ms));
       this.clearTimer = opts.clearTimer || (id => clearTimeout(id));
+      this.now = opts.now || (() => Date.now());
       this.players = [];        // { id, token, name, color, connected, cpu }
       this.hostId = null;
       this.phase = 'lobby';
       this.game = null;
       this.seq = 0;
-      this.graceTimer = null;
+      this.timers = {};         // turn / bid / grace / cpu
+      this.turnKey = null;      // いまの手番（"ラウンド:何番目"）
+      this.turnDeadline = 0;
+      this.turnRemain = 0;      // 攻防で止めているときの残り時間
+      this.bidFor = null;       // 時間を計っている攻防
+      this.bidDeadline = 0;
       this.graceFor = null;
-      this.cpuTimer = null;
-      this.cpuSeq = 0;
+      this.graceDeadline = 0;
+      this.cpuAt = null;
       this.closed = false;
     }
 
@@ -154,102 +162,160 @@
       }
     }
 
-    // 状態が変わったら：切断した人を待っていないか確かめてから全員に配信
+    // 状態が変わったら：時間切れ・CPU の予約を見直してから全員に配信
     changed() {
-      this.checkGrace();
+      this.checkTimers();
       this.checkCpu();
       this.broadcast();
     }
 
-    // CPU の操作待ちなら、少し間をおいて CPU に1手打たせる
+    timer(name, fn, ms) {
+      this.stop(name);
+      this.timers[name] = this.setTimer(() => { this.timers[name] = null; fn(); }, ms);
+    }
+
+    stop(name) {
+      if (this.timers[name]) this.clearTimer(this.timers[name]);
+      this.timers[name] = null;
+    }
+
+    player(id) { return this.players.find(x => x.id === id); }
+
+    // 持ち時間（120秒）・攻防で数を決める時間（30秒）・切断した人の待ち時間（30秒）
+    checkTimers() {
+      const g = this.game;
+      const now = this.now();
+      if (!g || this.phase !== 'game' || g.over) {
+        ['turn', 'bid', 'grace'].forEach(n => this.stop(n));
+        this.turnKey = this.bidFor = this.graceFor = null;
+        return;
+      }
+      if (g.pending) {
+        // 攻防のあいだは持ち時間を止める
+        if (this.timers.turn) { this.turnRemain = Math.max(0, this.turnDeadline - now); this.stop('turn'); }
+        this.stop('grace');
+        this.graceFor = null;
+        if (this.bidFor !== g.pending) {
+          const pd = this.bidFor = g.pending;
+          this.bidDeadline = now + BID_MS;
+          this.timer('bid', () => this.bidTimeout(pd), BID_MS);
+        }
+        return;
+      }
+      this.stop('bid');
+      this.bidFor = null;
+      const key = `${g.round}:${g.turn}`;
+      if (key !== this.turnKey) {
+        this.turnKey = key;
+        this.turnRemain = TURN_MS;
+        this.stop('turn');
+      }
+      if (!this.timers.turn) {
+        this.turnDeadline = now + this.turnRemain;
+        this.timer('turn', () => this.turnTimeout(key, '持ち時間が切れました'), this.turnRemain);
+      }
+      // 手番の人が切断していたら、持ち時間より早く（30秒で）進める
+      const cur = E.current(g).id;
+      const p = this.player(cur);
+      const need = p && !p.connected && !p.cpu ? key : null;
+      if (need !== this.graceFor) {
+        this.stop('grace');
+        this.graceFor = need;
+        if (need) {
+          this.graceDeadline = now + GRACE_MS;
+          this.timer('grace', () => this.turnTimeout(key, '切断中のため手番を終えます'), GRACE_MS);
+        }
+      }
+    }
+
+    turnTimeout(key, why) {
+      const g = this.game;
+      if (this.closed || !g || g.over || g.pending || `${g.round}:${g.turn}` !== key) return;
+      const p = E.current(g);
+      this.note(`⏳ ${p.name}：${why}`);
+      E.apply(g, p.id, { type: 'endTurn' });
+      this.changed();
+    }
+
+    // 決めていない人は 0 個
+    bidTimeout(pd) {
+      const g = this.game;
+      if (this.closed || !g || g.pending !== pd) return;
+      for (const id of E.waiting(g)) {
+        this.note(`⏳ ${g.players.find(x => x.id === id).name}：時間切れのため 0 個`);
+        E.apply(g, id, { type: 'bid', count: 0 });
+      }
+      this.changed();
+    }
+
+    // CPU の操作待ちなら、少し間をおいて CPU に打たせる（攻防では2人とも CPU のこともある）
     checkCpu() {
       const g = this.game;
-      const wait = g && this.phase === 'game' && !g.over ? E.waitingFor(g) : null;
-      const p = wait && this.players.find(x => x.id === wait);
-      if (!p || !p.cpu) { this.stopCpu(); return; }
-      // 同じ局面（ログの番号と攻防の段階）にはすでに予約済み
-      const at = `${g.logSeq}:${g.pending ? g.pending.stage : ''}:${wait}`;
-      if (this.cpuTimer && this.cpuAt === at) return;
-      this.stopCpu();
+      const cpus = g && this.phase === 'game' && !g.over ? E.waiting(g).filter(id => (this.player(id) || {}).cpu) : [];
+      if (!cpus.length) { this.stop('cpu'); this.cpuAt = null; return; }
+      const pd = g.pending;
+      const at = `${g.logSeq}:${pd ? `${pd.atk}/${pd.def}` : ''}:${cpus.join(',')}`;
+      if (this.timers.cpu && this.cpuAt === at) return;   // 同じ局面にはすでに予約済み
       this.cpuAt = at;
-      this.cpuTimer = this.setTimer(() => this.cpuAct(wait), g.pending ? CPU_REPLY_MS : CPU_DELAY_MS);
+      this.timer('cpu', () => this.cpuAct(), pd ? CPU_REPLY_MS : CPU_DELAY_MS);
     }
 
-    stopCpu() {
-      if (this.cpuTimer) this.clearTimer(this.cpuTimer);
-      this.cpuTimer = null;
-      this.cpuAt = null;
-    }
-
-    cpuAct(id) {
-      this.cpuTimer = null;
+    cpuAct() {
       this.cpuAt = null;
       const g = this.game;
-      if (this.closed || !g || g.over || E.waitingFor(g) !== id) return;
-      const action = CPU.decide(g, id, this.rng);
-      const r = action ? E.apply(g, id, action) : { ok: false };
-      // 万一ルール上できない手を選んだら、手番を終える（止まらないように）
-      if (!r.ok && !g.pending) E.apply(g, id, { type: 'endTurn' });
+      if (this.closed || !g || g.over) return;
+      for (const id of E.waiting(g)) {
+        if (!(this.player(id) || {}).cpu || !E.waiting(g).includes(id)) continue;
+        const action = CPU.decide(g, id, this.rng);
+        const r = action ? E.apply(g, id, action) : { ok: false };
+        // 万一ルール上できない手を選んだら、止まらないように進める
+        if (!r.ok) E.apply(g, id, g.pending ? { type: 'bid', count: 0 } : { type: 'endTurn' });
+      }
       this.changed();
     }
 
-    checkGrace() {
-      const wait = this.game && this.phase === 'game' ? E.waitingFor(this.game) : null;
-      const p = wait && this.players.find(x => x.id === wait);
-      const need = p && !p.connected ? wait : null;
-      if (need === this.graceFor) return;
-      if (this.graceTimer) this.clearTimer(this.graceTimer);
-      this.graceTimer = null;
-      this.graceFor = need;
-      if (!need) return;
-      this.graceUntil = Date.now() + GRACE_MS;
-      this.graceTimer = this.setTimer(() => this.autoAct(need), GRACE_MS);
-    }
-
-    // 切断中の人の代わりに進める（暫定）：
-    // 防御は防御トークンがあれば出す・攻撃は諦める・手番は終了
-    autoAct(id) {
-      this.graceTimer = null;
-      this.graceFor = null;
+    // その人に見せてよい情報：攻防で相手が決めた数は、公開されるまで「決めたかどうか」だけ
+    view(forId) {
       const g = this.game;
-      if (this.closed || !g || g.over || E.waitingFor(g) !== id) return;
-      const p = this.players.find(x => x.id === id);
-      if (p && p.connected) return;
-      const gp = g.players.find(x => x.id === id);
-      let action;
-      if (g.pending && g.pending.stage === 'defend') action = { type: 'defend', use: gp.defense > 0 };
-      else if (g.pending) action = { type: 'attack', use: false };
-      else action = { type: 'endTurn' };
-      this.note(`⏳ ${gp.name} が切断中のため自動で進めます`);
-      E.apply(g, id, action);
-      this.changed();
-    }
-
-    view() {
-      const g = this.game;
+      const now = this.now();
+      let game = null;
+      if (g) {
+        game = Object.assign({}, g, { log: g.log.slice(-LOG_SEND) });
+        const pd = g.pending;
+        if (pd) {
+          game.pending = Object.assign({}, pd, {
+            atk: forId === pd.attacker ? pd.atk : null,
+            def: forId === pd.defender ? pd.def : null,
+            atkReady: pd.atk !== null,
+            defReady: pd.def !== null,
+          });
+        }
+      }
+      const live = g && !g.over && this.phase === 'game';
       return {
         code: this.code,
         phase: this.phase,
         hostId: this.hostId,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu })),
-        graceFor: this.graceFor,
-        graceLeftMs: this.graceFor ? Math.max(0, this.graceUntil - Date.now()) : 0,
-        game: g ? Object.assign({}, g, { log: g.log.slice(-LOG_SEND) }) : null,
+        turnLeftMs: live ? (g.pending ? this.turnRemain : Math.max(0, this.turnDeadline - now)) : 0,
+        turnPaused: !!(live && g.pending),
+        bidLeftMs: live && g.pending ? Math.max(0, this.bidDeadline - now) : 0,
+        graceFor: live && this.graceFor ? E.current(g).id : null,
+        graceLeftMs: live && this.graceFor ? Math.max(0, this.graceDeadline - now) : 0,
+        game,
       };
     }
 
     broadcast() {
       if (this.closed) return;
-      const room = this.view();
-      for (const p of this.players) if (p.connected && !p.cpu) this.sendFn(p.id, { type: 'state', you: p.id, room });
+      for (const p of this.players) if (p.connected && !p.cpu) this.sendFn(p.id, { type: 'state', you: p.id, room: this.view(p.id) });
     }
 
     close() {
       this.closed = true;
-      if (this.graceTimer) this.clearTimer(this.graceTimer);
-      this.stopCpu();
+      Object.keys(this.timers).forEach(n => this.stop(n));
     }
   }
 
-  return { Room, COLORS, GRACE_MS };
+  return { Room, COLORS, TURN_MS, BID_MS, GRACE_MS };
 });

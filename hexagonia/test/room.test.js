@@ -1,19 +1,53 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const E = require('../shared/engine');
-const { Room } = require('../shared/room');
+const { Room, TURN_MS, BID_MS, GRACE_MS } = require('../shared/room');
 
+// タイマーと時計は手で進める
 function makeRoom() {
   const inbox = {};
   const timers = [];
+  const clock = { t: 1000 };
   const room = new Room({
     code: 'TEST1',
     send: (id, msg) => { (inbox[id] = inbox[id] || []).push(msg); },
     setTimer: (fn, ms) => { const t = { fn, ms }; timers.push(t); return t; },
     clearTimer: t => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); },
+    now: () => clock.t,
   });
   const last = id => [...inbox[id]].reverse().find(m => m.type === 'state');
-  return { room, inbox, timers, last };
+  // その長さのタイマーを1つ取り出して動かす
+  const fire = ms => {
+    const i = timers.findIndex(t => t.ms === ms);
+    assert.ok(i >= 0, `${ms}ms のタイマーがない（${timers.map(t => t.ms).join(',')}）`);
+    const [t] = timers.splice(i, 1);
+    t.fn();
+  };
+  return { room, inbox, timers, last, clock, fire };
+}
+
+// 2人で始めて、h の手番にする
+function startTwo() {
+  const r = makeRoom();
+  const h = r.room.join('t1', 'A').id;
+  const g = r.room.join('t2', 'B').id;
+  r.room.handle(h, { type: 'start' });
+  if (E.current(r.room.game).id !== h) r.room.handle(g, { type: 'act', action: { type: 'endTurn' } });
+  return Object.assign(r, { h, g });
+}
+
+// h のセルを g のコアの隣に置いて、g のコアに破壊を宣言する
+function declareOnCore(r, gDefense, hAttack) {
+  const { room, h, g } = r;
+  const gp = room.game.players.find(p => p.id === g);
+  const hp = room.game.players.find(p => p.id === h);
+  gp.defense = gDefense;
+  hp.attack = hAttack;
+  const [cq, cr] = E.parseKey(gp.core);
+  const [nq, nr] = E.neighbors(cq, cr)[0];
+  Object.assign(room.game.board[E.key(nq, nr)], { owner: h });
+  room.handle(h, { type: 'act', action: { type: 'destroy', q: cq, r: cr } });
+  return { gp, hp };
 }
 
 test('参加・色・開始・状態の配信', () => {
@@ -49,37 +83,78 @@ test('行動はホストが検証して全員に配信', () => {
   assert.strictEqual(E.current(last(other).room.game).id, other);
 });
 
-test('切断中の人の番は30秒後に自動で進む・戻ってきたら続けられる', () => {
-  const { room, timers, last } = makeRoom();
-  const h = room.join('t1', 'A').id;
-  const g = room.join('t2', 'B').id;
-  room.handle(h, { type: 'start' });
-  if (E.current(room.game).id !== g) room.handle(h, { type: 'act', action: { type: 'endTurn' } });
+test('持ち時間120秒で自動で手番終了、攻防のあいだは止まる', () => {
+  const r = startTwo();
+  const { room, h, g, clock, last, fire } = r;
+  assert.strictEqual(last(h).room.turnLeftMs, TURN_MS);
+  clock.t += 50000;
+  // 攻防が始まると持ち時間は止まる
+  const { gp } = declareOnCore(r, 1, 1);
+  assert.ok(room.game.pending);
+  assert.strictEqual(last(h).room.turnPaused, true);
+  assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
+  clock.t += 20000;
+  room.handle(g, { type: 'act', action: { type: 'bid', count: 1 } });
+  room.handle(h, { type: 'act', action: { type: 'bid', count: 0 } });
+  assert.strictEqual(room.game.pending, null);
+  assert.ok(gp.alive);
+  // 攻防のあとは残り70秒から再開
+  assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
+  fire(TURN_MS - 50000);
+  assert.strictEqual(E.current(room.game).id, g);
+  assert.ok(room.game.log.some(l => l.text.includes('持ち時間が切れました')));
+  // 次の人は120秒から
+  assert.strictEqual(last(g).room.turnLeftMs, TURN_MS);
+});
+
+test('攻防で出す数は、公開されるまで相手には見えない', () => {
+  const r = startTwo();
+  const { room, h, g, last } = r;
+  declareOnCore(r, 2, 2);
+  room.handle(g, { type: 'act', action: { type: 'bid', count: 2 } });
+  const ph = last(h).room.game.pending, pg = last(g).room.game.pending;
+  assert.deepStrictEqual([ph.def, ph.defReady, ph.atk, ph.atkReady], [null, true, null, false]);
+  assert.deepStrictEqual([pg.def, pg.defReady], [2, true]);
+  assert.strictEqual(JSON.stringify(last(h).room).includes('"def":2'), false);
+  room.handle(h, { type: 'act', action: { type: 'bid', count: 1 } });
+  // 公開されたら両方の数が見える
+  const lc = last(h).room.game.lastClash;
+  assert.deepStrictEqual([lc.atk, lc.def, lc.success], [1, 2, false]);
+});
+
+test('攻防で30秒決めなければ 0 個', () => {
+  const r = startTwo();
+  const { room, h, g, fire } = r;
+  const { gp } = declareOnCore(r, 1, 0);
+  fire(BID_MS);
+  assert.strictEqual(room.game.pending, null);
+  assert.strictEqual(gp.alive, false);   // 防御トークンを出さなかったのでコアが破壊された
+  assert.ok(room.game.over);
+  assert.deepStrictEqual(room.game.winners, [h]);
+  assert.ok(room.game.log.some(l => l.text.includes('B：時間切れのため 0 個')));
+  assert.notStrictEqual(g, h);
+});
+
+test('切断中の人の番は30秒で終わる・戻ってきたら続けられる・ホストが脱落させられる', () => {
+  const r = startTwo();
+  const { room, h, g, last, fire } = r;
+  room.handle(h, { type: 'act', action: { type: 'endTurn' } });
   assert.strictEqual(E.current(room.game).id, g);
   room.disconnect(g);
-  assert.strictEqual(timers.length, 1);
   assert.strictEqual(last(h).room.graceFor, g);
-  timers.shift().fn();
+  assert.strictEqual(last(h).room.graceLeftMs, GRACE_MS);
+  fire(GRACE_MS);
   assert.strictEqual(E.current(room.game).id, h);
+  assert.ok(room.game.log.some(l => l.text.includes('切断中のため手番を終えます')));
   // 戻ってくる
   assert.strictEqual(room.join('t2', 'B').id, g);
   assert.strictEqual(last(g).room.players.find(p => p.id === g).connected, true);
-  // 切断中の防御側は、防御トークンがあれば自動で出す
-  const gp = room.game.players.find(p => p.id === g);
-  gp.defense = 1;
-  const [cq, cr] = E.parseKey(gp.core);
-  const [nq, nr] = E.neighbors(cq, cr)[0];
-  Object.assign(room.game.board[E.key(nq, nr)], { owner: h });
-  room.disconnect(g);
-  room.handle(h, { type: 'act', action: { type: 'destroy', q: cq, r: cr } });
-  assert.strictEqual(room.game.pending.defender, g);
-  timers.shift().fn();
-  assert.strictEqual(gp.defense, 0);
-  assert.ok(gp.alive);
   // ホストが脱落させる
+  room.disconnect(g);
   room.handle(h, { type: 'forfeit', target: g });
   assert.ok(room.game.over);
   assert.deepStrictEqual(room.game.winners, [h]);
+  assert.strictEqual(r.timers.length, 0); // 終わったらタイマーは残らない
   room.handle(h, { type: 'lobby' });
   assert.strictEqual(last(h).room.phase, 'lobby');
   assert.strictEqual(last(h).room.players.length, 1);

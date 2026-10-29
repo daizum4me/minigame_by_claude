@@ -63,12 +63,13 @@
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
         const foe = playerById(g, c.owner);
-        // 防御トークンを攻撃トークンで破りきれるか
+        // 相手が防御トークンを全部出しても破りきれるか（破りきれないときは出す数の読み合いになる）
         const canBreak = me.attack >= foe.defense;
         let s;
-        if (c.core) s = canBreak ? 30 : 3;
-        else if (foe.defense === 0) s = 4.2;
-        else s = canBreak ? 2.4 : -1;
+        if (c.core) s = canBreak ? 30 : me.attack > 0 ? 3 : 1;
+        else if (foe.defense === 0) s = 5;
+        else s = canBreak ? 3.2 : me.attack > 0 ? 0.8 : -1;
+        s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1;
         if (late) s += 1.5;
         // 自分のコアの隣にいる相手セルは優先して壊す
@@ -77,7 +78,8 @@
       }
     }
     if (!E.actionBlocked(g, id, 'reinforce')) {
-      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : (me.defense === 0 && g.round >= 3 ? 1.2 : -1);
+      // 補強は防御トークン +1 と攻撃トークン +1
+      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.attack === 0 && frontier(g, id) > 0 ? 2.6 : me.defense === 0 && g.round >= 3 ? 1.8 : 0.2;
       out.push({ s: s + noise(), a: { type: 'reinforce' } });
     }
     return out;
@@ -88,17 +90,26 @@
     const me = playerById(g, id);
     const pd = g.pending;
     if (pd) {
+      // 出す数を伏せて決める。相手が出せる最大数は見えている
       const target = g.board[pd.target];
-      if (pd.stage === 'defend' && pd.defender === id) {
-        // コアは必ず守る。ほかは、コアのために1個は残しつつ守る
-        const use = me.defense > 0 && (target.core || me.defense >= 2 || (target.strong && threat(g, me) === 0));
-        return { type: 'defend', use };
-      }
-      if (pd.stage === 'attack' && pd.attacker === id) {
+      if (pd.atk === null && pd.attacker === id) {
         const foe = playerById(g, pd.defender);
-        // 破りきれるとき・コアを狙っているときは攻撃トークンを出す
-        const use = me.attack > 0 && (target.core || me.attack >= foe.defense);
-        return { type: 'attack', use };
+        let n;
+        if (me.attack >= foe.defense) n = foe.defense;               // 相手が全部出しても破れる最小の数
+        else if (target.core) n = me.attack;                         // コアを狙うなら全部
+        else n = rng() < 0.6 ? me.attack : Math.floor(rng() * (me.attack + 1));
+        return { type: 'bid', count: n };
+      }
+      if (pd.def === null && pd.defender === id) {
+        const foe = playerById(g, pd.attacker);
+        const sure = foe.attack + 1;                                 // 相手が全部出しても守れる数
+        const keep = target.core ? 0 : threat(g, me) > 0 ? 1 : 0;    // コアのために残しておく数
+        let n;
+        if (me.defense - keep >= sure) n = sure;
+        else if (target.core) n = me.defense;
+        else if (me.defense - keep <= 0) n = 0;
+        else n = rng() < 0.5 ? 0 : 1 + Math.floor(rng() * (me.defense - keep));
+        return { type: 'bid', count: Math.min(n, me.defense) };
       }
       return null;
     }

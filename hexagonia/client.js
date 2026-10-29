@@ -312,7 +312,10 @@
     me: null,
     room: null,
     lastLogSeq: 0,
-    lastWaiting: null,
+    wasMyTurn: false,
+    prevCells: null,    // 前回の盤面（変化したマスを光らせるため）
+    clashResult: null,  // 公開された攻防の結果を少しのあいだ見せる { ...lastClash, until }
+    bid: null,          // 攻防で出す数の入力中の値 { key, n }
     tip: null,          // ツールチップを出しているマス { key, pinned }。pinned なら行動のボタンも出す
   };
 
@@ -354,6 +357,8 @@
     }
     if (!prev || prev.phase !== msg.room.phase) {
       app.lastLogSeq = 0;
+      app.prevCells = null;
+      app.clashResult = null;
       app.resultHidden = false;
       const b = $('#btn-show-result');
       if (b) b.remove();
@@ -468,6 +473,12 @@
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
     boardView().setData({ game: g, colors, patterns: settings.patterns, targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, me: app.me });
 
+    // 変化したマス（拡張・強化・破壊・脱落）を一瞬光らせる
+    const cells = {};
+    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.strong}|${c.core}`;
+    if (app.prevCells) view.flash(Object.keys(cells).filter(k => cells[k] !== app.prevCells[k]));
+    app.prevCells = cells;
+
     // 上部の表示
     $('#hud-round').textContent = `${g.round} / ${R.rounds}`;
     $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
@@ -481,7 +492,7 @@
 
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
-    $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御トークン +1</small></button>`
+    $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御 +1・攻撃 +1</small></button>`
       + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>資源 +${me ? E.income(g, app.me) : 0}</small></button>`;
 
     let hint = '';
@@ -510,57 +521,127 @@
     const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 30;
     logEl.innerHTML = g.log.map(l => `<li class="lg-${l.tone}">${esc(l.text)}</li>`).join('');
     if (atBottom || !app.lastLogSeq) logEl.scrollTop = logEl.scrollHeight;
-    const fresh = g.log.filter(l => l.seq > app.lastLogSeq);
-    if (app.lastLogSeq) for (const l of fresh) if (/^破壊(成功|失敗)/.test(l.text) || l.tone === 'out') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
+    const fresh = app.lastLogSeq ? g.log.filter(l => l.seq > app.lastLogSeq) : [];
+    for (const l of fresh) if (/^破壊(成功|失敗)/.test(l.text) || l.tone === 'out') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
+    playSounds(g, fresh);
     app.lastLogSeq = g.log.length ? g.log[g.log.length - 1].seq : 0;
 
+    // 公開された攻防の結果を少しのあいだ見せる
+    const lc = g.lastClash;
+    if (lc && fresh.some(l => l.tone === 'clash')) {   // 出し合いがあったときだけ
+      app.clashResult = Object.assign({}, lc, { until: Date.now() + 3500 });
+      setTimeout(() => { if (app.room && app.room.game) renderClash(app.room.game, id => app.room.game.players.find(p => p.id === id)); }, 3600);
+      if (!lc.success) view.flash([lc.target], '120,190,255');   // 守られたマスは青く光らせる
+    }
+
     // 自分の番が来たら知らせる
-    const waiting = E.waitingFor(g);
-    if (waiting === app.me && app.lastWaiting !== app.me && !g.pending) toast('あなたの手番です', 'good');
-    app.lastWaiting = waiting;
+    // 攻防のあいだも自分の手番は続いているので、攻防の前後では知らせない
+    const mine = !g.over && E.current(g).id === app.me && !!me && me.alive;
+    if (mine && !app.wasMyTurn) { toast('あなたの手番です', 'good'); window.HexSound.play('turn'); }
+    app.wasMyTurn = mine;
 
     renderClash(g, pl);
-    renderGrace(room, pl);
+    tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
   }
 
+  // 破壊の攻防：攻撃側と防御側が出す数を伏せて決める。そろったら同時に公開
   function renderClash(g, pl) {
     const el = $('#clash');
     const pd = g.pending;
-    if (!pd || g.over) { el.hidden = true; return; }
-    const a = pl(pd.attacker), d = pl(pd.defender);
-    const cell = g.board[pd.target];
-    const what = cell.core ? 'コア' : 'セル';
-    let body = '';
-    if (pd.stage === 'defend' && d.id === app.me) {
-      body = `<p class="ask">あなたの${what}が狙われています。防御トークンを出しますか？</p>
-        <div class="row"><button class="primary" data-clash="defend-yes" ${d.defense > 0 ? '' : 'disabled'}>${TOKEN_SVG.defense}防御トークンを出す（残り ${d.defense}）</button><button data-clash="defend-no">出さない</button></div>`;
-    } else if (pd.stage === 'attack' && a.id === app.me) {
-      body = `<p class="ask">${esc(d.name)} が防御しました。攻撃トークンを出して防御トークンを破りますか？</p>
-        <div class="row"><button class="primary danger" data-clash="attack-yes" ${a.attack > 0 ? '' : 'disabled'}>${TOKEN_SVG.attack}攻撃トークンを出す（残り ${a.attack}）</button><button data-clash="attack-no">諦める</button></div>`;
-    } else {
-      const who = pd.stage === 'defend' ? d : a;
-      body = `<p class="muted">${esc(who.name)} が${pd.stage === 'defend' ? '防御トークンを出すか' : '攻撃トークンを出すか'}選んでいます…</p>`;
+    const res = app.clashResult && app.clashResult.until > Date.now() ? app.clashResult : null;
+    if ((!pd && !res) || g.over) { el.hidden = true; return; }
+    const info = pd || res;
+    const a = pl(info.attacker), d = pl(info.defender);
+    const cell = g.board[info.target];
+    const what = pd ? (cell.core ? 'コア' : 'セル') : 'マス';
+    const head = `<div class="clash-head">${swatch(a.color)}<b>${esc(a.name)}</b><span class="arrow">→</span>${swatch(d.color)}<b>${esc(d.name)}</b><span class="muted">の${what} (${cell.q},${cell.r}) に破壊</span></div>`;
+    if (!pd) {
+      // 公開された結果
+      el.innerHTML = `${head}
+        <div class="clash-count reveal"><span>${TOKEN_SVG.attack}攻撃 <b>${res.atk}</b></span><span class="vs">vs</span><span>${TOKEN_SVG.defense}防御 <b>${res.def}</b></span></div>
+        <p class="clash-result ${res.success ? 'bad' : 'good'}">${res.success ? '破壊成功' : '破壊失敗（守られた）'}</p>`;
+      el.hidden = false;
+      return;
     }
-    el.innerHTML = `<div class="clash-head">${swatch(a.color)}<b>${esc(a.name)}</b><span class="arrow">→</span>${swatch(d.color)}<b>${esc(d.name)}</b><span class="muted">の${what} (${cell.q},${cell.r}) に破壊</span></div>
-      <div class="clash-count"><span>${TOKEN_SVG.defense}防御 <b>${pd.def}</b> 個</span><span>${TOKEN_SVG.attack}攻撃 <b>${pd.atk}</b> 個</span></div>${body}`;
+    const side = pd.attacker === app.me ? 'atk' : pd.defender === app.me ? 'def' : null;
+    const status = (name, ready) => `<span class="${ready ? 'ready' : ''}">${esc(name)}：${ready ? '決定済み' : '考え中…'}</span>`;
+    let body;
+    if (side && pd[side] === null) {
+      const me = side === 'atk' ? a : d;
+      const foe = side === 'atk' ? d : a;
+      const have = side === 'atk' ? me.attack : me.defense;
+      const foeHave = side === 'atk' ? foe.defense : foe.attack;
+      const key = `${pd.attacker}|${pd.target}|${g.round}|${g.turn}|${side}`;
+      if (!app.bid || app.bid.key !== key) app.bid = { key, n: Math.min(have, side === 'atk' ? foeHave : foeHave + 1) };
+      const n = app.bid.n;
+      const kind = side === 'atk' ? 'attack' : 'defense';
+      body = `<p class="ask">${side === 'atk'
+        ? `出す攻撃トークンの数を決めてください（${esc(foe.name)} の防御トークンは ${foeHave} 個）`
+        : `あなたの${what}が狙われています。出す防御トークンの数を決めてください（${esc(foe.name)} の攻撃トークンは ${foeHave} 個）`}</p>
+        <p class="muted small">相手には公開まで見えません。攻撃 ≧ 防御なら破壊成功。出したトークンはなくなります</p>
+        <div class="bid">
+          <button class="step" data-bid-step="-1" ${n <= 0 ? 'disabled' : ''} aria-label="1個減らす">−</button>
+          <span class="bid-n tk-${kind}">${TOKEN_SVG[kind]}<b>${n}</b><small>/ ${have}</small></span>
+          <button class="step" data-bid-step="1" ${n >= have ? 'disabled' : ''} aria-label="1個増やす">＋</button>
+          <button class="primary${side === 'atk' ? ' danger' : ''}" data-bid-ok>${n} 個で決定</button>
+        </div>`;
+    } else if (side) {
+      body = `<p class="muted">あなたは ${pd[side]} 個に決めました。相手を待っています…</p>`;
+    } else {
+      body = '<p class="muted">出す数を伏せて選んでいます…</p>';
+    }
+    el.innerHTML = `${head}${body}
+      <div class="clash-status">${status(a.name, pd.atkReady)}${status(d.name, pd.defReady)}<span class="muted" data-left="bid"></span></div>`;
     el.hidden = false;
+    tickTimers();
   }
 
-  let graceTimer = 0;
-  function renderGrace(room, pl) {
-    const el = $('#grace');
-    clearInterval(graceTimer);
-    if (!room.graceFor || !room.game || room.game.over) { el.hidden = true; return; }
-    const p = pl(room.graceFor);
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((room.graceLeftMs - (Date.now() - app.graceAt)) / 1000));
-      el.textContent = `${p ? p.name : ''} の接続が切れています。あと ${left} 秒で自動で進めます`;
-    };
-    tick();
-    graceTimer = setInterval(tick, 500);
+  // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
+  function playSounds(g, fresh) {
+    if (!fresh.length) return;
+    const order = ['win', 'out', 'success', 'fail', 'declare', 'strengthen', 'reinforce', 'expand', 'endTurn'];
+    const found = new Set();
+    for (const l of fresh) {
+      if (l.tone === 'win') found.add('win');
+      else if (l.tone === 'out') found.add('out');
+      else if (/^破壊成功/.test(l.text)) found.add('success');
+      else if (/^破壊失敗/.test(l.text)) found.add('fail');
+      else if (l.tone === 'destroy') found.add('declare');
+      else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1 }) found.add(l.tone);
+      else if (l.tone === 'income') found.add('endTurn');
+    }
+    const name = order.find(n => found.has(n));
+    if (name === 'win') window.HexSound.play(g.winners.includes(app.me) ? 'win' : 'lose');
+    else if (name) window.HexSound.play(name);
+  }
+
+  // 残り時間の表示（持ち時間・攻防・切断）。届いた時刻からの経過で数える
+  let lastTickSec = null;
+  function tickTimers() {
+    const room = app.room;
+    const g = room && room.game;
+    const el = $('#hud-timer');
+    if (!g || room.phase !== 'game' || g.over) { el.hidden = true; return; }
+    const pass = Date.now() - (app.graceAt || Date.now());
+    const sec = ms => Math.max(0, Math.ceil(ms / 1000));
+    const turnSec = room.turnPaused ? sec(room.turnLeftMs) : sec(room.turnLeftMs - pass);
+    const mm = `${Math.floor(turnSec / 60)}:${String(turnSec % 60).padStart(2, '0')}`;
     el.hidden = false;
+    el.className = 'pill timer' + (room.turnPaused ? ' paused' : turnSec <= 10 ? ' low' : '');
+    el.innerHTML = `<span class="muted">持ち時間</span> <strong>${mm}</strong>${room.turnPaused ? '<span class="muted">（攻防中は停止）</span>' : ''}`;
+    // 自分の手番の残り10秒は時計の音
+    if (myTurn(g) && !room.turnPaused && turnSec <= 10 && turnSec > 0 && turnSec !== lastTickSec) window.HexSound.play('tick');
+    lastTickSec = turnSec;
+    const bidEl = document.querySelector('[data-left="bid"]');
+    if (bidEl) bidEl.textContent = `あと ${sec(room.bidLeftMs - pass)} 秒`;
+    const grace = $('#grace');
+    if (room.graceFor) {
+      const p = g.players.find(x => x.id === room.graceFor);
+      grace.textContent = `${p ? p.name : ''} の接続が切れています。あと ${sec(room.graceLeftMs - pass)} 秒で手番を終えます`;
+    }
+    grace.hidden = !room.graceFor;
   }
 
   function renderResult(room, g) {
@@ -621,7 +702,7 @@
       type = 'destroy';
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
-      gain = `${foe.name} の防御トークン ${foe.defense} 個`;
+      gain = `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
     }
     let why = '';
     if (!E.targets(g, app.me, type).includes(key)) {
@@ -694,6 +775,7 @@
   function renderSettings() {
     $('#set-cb').checked = settings.cb;
     $('#set-pattern').checked = settings.patterns;
+    $('#set-sound').checked = window.HexSound.on;
     $('#set-preview').innerHTML = window.HexRoom.COLORS.map(c =>
       `<span>${swatch(c, 'big')}${colorOf(c).name}${settings.patterns ? `<small>${PATTERN_NAMES[PATTERNS[c]]}</small>` : ''}</span>`).join('');
   }
@@ -736,11 +818,17 @@
       if (type === 'destroy') hideTip();
     };
     $('#clash').onclick = e => {
-      const b = e.target.closest('[data-clash]');
-      if (!b || b.disabled) return;
-      const [kind, yes] = b.dataset.clash.split('-');
-      send({ type: 'act', action: { type: kind, use: yes === 'yes' } });
+      const b = e.target.closest('[data-bid-step], [data-bid-ok]');
+      if (!b || b.disabled || !app.bid) return;
+      if (b.dataset.bidStep) {
+        app.bid.n += Number(b.dataset.bidStep);
+        renderClash(app.room.game, id => app.room.game.players.find(p => p.id === id));
+        return;
+      }
+      window.HexSound.play('bid');
+      send({ type: 'act', action: { type: 'bid', count: app.bid.n } });
     };
+    setInterval(tickTimers, 250);
     $('#players').onclick = e => {
       const b = e.target.closest('[data-forfeit]');
       if (b && confirm('この人を脱落させますか？（セルはすべて空きマスに戻ります）')) send({ type: 'forfeit', target: b.dataset.forfeit });
@@ -759,6 +847,7 @@
     });
     $('#set-cb').onchange = e => { settings.cb = e.target.checked; store.set('cb', settings.cb ? '1' : '0'); renderSettings(); render(); };
     $('#set-pattern').onchange = e => { settings.patterns = e.target.checked; store.set('patterns', settings.patterns ? '1' : '0'); renderSettings(); render(); };
+    $('#set-sound').onchange = e => { window.HexSound.setOn(e.target.checked); if (e.target.checked) window.HexSound.play('expand'); };
 
     window.addEventListener('pagehide', () => { if (app.conn && app.conn.isHost) app.conn.close(); });
     window.addEventListener('beforeunload', e => {
