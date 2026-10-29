@@ -549,7 +549,10 @@
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
     $('#players').classList.toggle('compact', g.players.length > 6);
-    $('#players').innerHTML = g.players.map(p => {
+    // このラウンドの手番の順に並べる（ラウンドごとに最初の人が1人ずつずれる）
+    const n = g.players.length;
+    const roundOrder = g.players.map((_, k) => g.players[((g.roundStart || 0) + k) % n]);
+    $('#players').innerHTML = roundOrder.map(p => {
       const cells = E.cellsOf(g, p.id).length;
       const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
@@ -794,7 +797,7 @@
     plain: '維持費を数えるとき、平原のセルは半分として数える',
     mountain: `拡張コスト +1（資源 ${R.cost.expandMountain}）。拡張すると防御トークン +1、強化すると攻撃トークン +1 に加えて防御トークン +1`,
     mine: `強化しなくても手番終了時の資源 +${R.income.mine}、強化すると +${R.income.mineStrong}`,
-    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて川に戻る`,
+    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
@@ -808,7 +811,7 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて川を渡る' : '';
+      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
     } else if (c.owner === app.me) {
       if (c.fort) return { note: '防御済のセルです（攻撃が2回成功しないと落ちない）' };
       type = 'strengthen';
@@ -826,7 +829,7 @@
         : c.core
         ? `${foe.name} の防御トークン ${foe.defense} 個。成功するとコアを破壊（${foe.name} は脱落）`
         : c.terrain === 'river'
-          ? `${foe.name} の防御トークン ${foe.defense} 個。成功すると橋が落ちて川に戻る`
+          ? `${foe.name} の防御トークン ${foe.defense} 個。成功すると橋が落ちて河川に戻る`
           : `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
     }
     let why = '';
@@ -849,7 +852,7 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? (c.terrain === 'river' ? '川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.fort ? '防御済' : c.strong ? '強化済' : '未強化');
+    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.fort ? '防御済' : c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
       const a = cellAction(g, tip.key);

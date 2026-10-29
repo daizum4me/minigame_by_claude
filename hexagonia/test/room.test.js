@@ -138,14 +138,15 @@ test('攻防で30秒決めなければ 0 個', () => {
 test('切断中の人の番は30秒で終わる・戻ってきたら続けられる・ホストが脱落させられる', () => {
   const r = startTwo();
   const { room, h, g, last, fire } = r;
-  room.handle(h, { type: 'act', action: { type: 'endTurn' } });
-  assert.strictEqual(E.current(room.game).id, g);
+  // g の手番まで進める（ラウンドごとに最初の人がずれるので、h が続けて手番のこともある）
+  while (E.current(room.game).id !== g) room.handle(E.current(room.game).id, { type: 'act', action: { type: 'endTurn' } });
   room.disconnect(g);
   assert.strictEqual(last(h).room.graceFor, g);
   assert.strictEqual(last(h).room.graceLeftMs, GRACE_MS);
+  const before = `${room.game.round}:${room.game.turn}`;
   fire(GRACE_MS);
-  assert.strictEqual(E.current(room.game).id, h);
-  assert.ok(room.game.log.some(l => l.text.includes('切断中のため手番を終えます')));
+  assert.notStrictEqual(`${room.game.round}:${room.game.turn}`, before);   // 手番が進んだ
+  assert.ok(room.game.log.some(l => l.text.includes('B：切断中のため手番を終えます')));
   // 戻ってくる
   assert.strictEqual(room.join('t2', 'B').id, g);
   assert.strictEqual(last(g).room.players.find(p => p.id === g).connected, true);

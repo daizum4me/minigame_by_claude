@@ -341,7 +341,7 @@
             for (let i = -2; i <= 2; i++) { ctx.moveTo(x + i * s * 0.18, y - s * 0.22); ctx.lineTo(x + i * s * 0.18, y + s * 0.22); }
             ctx.stroke();
           } else {
-            // 川：波の線
+            // 河川：波の線
             ctx.strokeStyle = COL.wave;
             ctx.lineWidth = Math.max(1, s * 0.05);
             for (const dy of [-0.12, 0.12]) {
