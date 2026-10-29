@@ -114,14 +114,17 @@ test('行動は最大3回、資源不足は不可、他人の手番は不可', (
   assert.match(r.error, /資源/);
 });
 
-test('強化：攻撃+1、山岳なら防御+1も。強化済は再強化不可', () => {
+test('強化：攻撃+1、山岳なら防御+1も。強化済をもう一度強化すると防御済（トークンは増えない）', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
   P(g, me).resource = 10;
   assert.ok(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok);
   assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 0, 8]);
-  assert.strictEqual(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok, false);
+  assert.ok(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok);
+  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 0, 5]);
+  assert.strictEqual(g.board[P(g, me).core].fort, true);
+  g.actionsLeft = 3;
   const [nq, nr] = nb(g, cq, cr)[1];
   setCell(g, nq, nr, { owner: me, terrain: 'mountain' });
   assert.ok(E.apply(g, me, { type: 'strengthen', q: nq, r: nr }).ok);
@@ -222,7 +225,6 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   const [oq, or] = nb(g, ...bc).at(-1);
   setCell(g, oq, or, { owner: b, strong: true });
   P(g, b).resource = 5; P(g, b).attack = 2;
-  P(g, b).coreHp = 1;   // 残り耐久1
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
   assert.strictEqual(P(g, b).alive, false);
   assert.strictEqual(E.cellsOf(g, b).length, 0);
@@ -238,7 +240,6 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   const cc = E.parseKey(P(g, c).core);
   const [mq, mr] = nb(g, ...cc)[0];
   setCell(g, mq, mr, { owner: a });
-  P(g, c).coreHp = 1;
   E.apply(g, a, { type: 'destroy', q: cc[0], r: cc[1] });
   assert.ok(g.over);
   assert.deepStrictEqual(g.winners, [a]);
@@ -335,31 +336,42 @@ test('行動回数を使い切ったら、資源を払って行動 +1（6, 10, 1
   assert.strictEqual(g.actionsLeft, 3);
 });
 
-test('コアは攻撃が3回成功すると破壊される（耐久は手番をまたいでも戻らない）', () => {
+test('強化の3段階目「防御済」：資源3。攻撃が2回成功しないと落ちない（1回目で強化済に戻る）', () => {
+  const { g, a, b, t, tq, tr } = clashSetup();
+  // b のセルを防御済にしておく（b の手番で強化を2回）
+  E.apply(g, a, { type: 'endTurn' });
+  P(g, b).resource = 10;
+  assert.ok(E.apply(g, b, { type: 'strengthen', q: tq, r: tr }).ok);
+  assert.deepStrictEqual([g.board[t].strong, g.board[t].fort], [true, false]);
+  assert.strictEqual(P(g, b).resource, 8);
+  assert.ok(E.targets(g, b, 'strengthen').includes(t));        // 強化済はもう一度強化できる
+  assert.ok(E.apply(g, b, { type: 'strengthen', q: tq, r: tr }).ok);
+  assert.deepStrictEqual([g.board[t].strong, g.board[t].fort], [true, true]);
+  assert.strictEqual(P(g, b).resource, 5);
+  assert.ok(!E.targets(g, b, 'strengthen').includes(t));       // 防御済はそれ以上強化できない
+  E.apply(g, b, { type: 'endTurn' });
+  // 1回目の成功：落ちずに強化済に戻る
+  P(g, a).resource = 10;
+  assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
+  assert.deepStrictEqual([g.board[t].owner, g.board[t].strong, g.board[t].fort], [b, true, false]);
+  assert.ok(g.log.some(l => l.tone === 'hit'));
+  // 2回目の成功：破壊されて攻撃側のセルになる
+  assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
+  assert.deepStrictEqual([g.board[t].owner, g.board[t].strong, g.board[t].fort], [a, false, false]);
+});
+
+test('コアは1回の成功で破壊される。防御済のコアは2回', () => {
   const { g, a, b } = clashSetup();
   const bc = E.parseKey(P(g, b).core);
   setCell(g, ...nb(g, ...bc)[0], { owner: a });
-  P(g, a).resource = 20;
-  for (const left of [2, 1]) {
-    assert.ok(E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] }).ok);
-    assert.strictEqual(P(g, b).coreHp, left);
-    assert.ok(P(g, b).alive);
-    const core = g.board[E.key(...bc)];
-    assert.deepStrictEqual([core.owner, core.core], [b, true]);   // コアは残り、攻撃側のセルにもならない
-    E.apply(g, a, { type: 'endTurn' });
-    E.apply(g, b, { type: 'endTurn' });
-    P(g, a).resource = 20;
-  }
-  // 守られた攻撃は数えない
-  P(g, b).defense = 1;
+  Object.assign(g.board[E.key(...bc)], { strong: true, fort: true });
+  P(g, a).resource = 10;
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
-  E.apply(g, b, { type: 'bid', count: 1 });
-  assert.strictEqual(P(g, b).coreHp, 1);
-  // 3回目の成功で破壊
+  assert.ok(P(g, b).alive);
+  assert.deepStrictEqual([g.board[E.key(...bc)].core, g.board[E.key(...bc)].fort], [true, false]);
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
   assert.strictEqual(P(g, b).alive, false);
   assert.ok(g.over);
-  assert.ok(g.log.some(l => l.text.includes('残り耐久 1 / 3')));
 });
 
 test('もう何もできなくなったら自動で手番終了', () => {

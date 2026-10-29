@@ -125,7 +125,6 @@ test('攻防で出す数は、公開されるまで相手には見えない', ()
 test('攻防で30秒決めなければ 0 個', () => {
   const r = startTwo();
   const { room, h, g, fire } = r;
-  room.game.players.find(p => p.id === g).coreHp = 1;   // 残り耐久1
   const { gp } = declareOnCore(r, 1, 0);
   fire(BID_MS);
   assert.strictEqual(room.game.pending, null);

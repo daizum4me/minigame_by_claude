@@ -67,6 +67,14 @@
     if (!E.actionBlocked(g, id, 'strengthen')) {
       for (const k of E.targets(g, id, 'strengthen')) {
         const c = g.board[k];
+        if (c.strong) {
+          // 防御済にする：狙われそうなコアと前線のセルだけ（収入は増えない）
+          const exposed = E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id; });
+          let s = c.core ? (danger > 0 ? 6 : 1.5) : exposed ? 2 : -1;
+          if (c.terrain === 'river' && exposed) s += 1;     // 橋は落とされると分断される
+          out.push({ s: s + noise(), a: { type: 'strengthen', q: c.q, r: c.r } });
+          continue;
+        }
         // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
         if (c.core) s += 2.5;
@@ -83,11 +91,12 @@
         // 相手が防御トークンを全部出しても破りきれるか（破りきれないときは出す数の読み合いになる）
         const canBreak = me.attack >= foe.defense;
         let s;
-        // コアは耐久が残り1なら最優先。それまでは攻撃を重ねる価値がある
-        if (c.core) s = foe.coreHp <= 1 ? (canBreak ? 30 : me.attack > 0 ? 3 : 1) : (canBreak ? 7 + (R.coreHp - foe.coreHp) * 2 : me.attack > 0 ? 2 : 0.5);
+        // コアは最優先（防御済なら2回要るので、1回目もそれなりに価値がある）
+        if (c.core) s = c.fort ? (canBreak ? 9 : me.attack > 0 ? 2 : 0.5) : (canBreak ? 30 : me.attack > 0 ? 3 : 1);
         else if (foe.defense === 0) s = 5;
         else s = canBreak ? 3.2 : me.attack > 0 ? 0.8 : -1;
-        s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
+        if (c.fort && !c.core) s -= 1.5;                    // 防御済は1回目では取れない
+        else s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1;
         if (late) s += 1.5;
         if (late && leaderGroups.has(k)) s += 2;          // 首位のかたまりを削る
