@@ -21,11 +21,13 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：山岳：鉱山：農地：森林（河川は別に流す）。いまは山岳はお休み。平原 約57%・鉱山／農地／森林 約14%ずつ
-    terrainRatio: { plain: 12, mountain: 0, mine: 3, farm: 3, forest: 3 },
+    // 平原：山岳：鉱山：農地：森林（河川は別に流す）。いまは山岳はお休み。平原 約73%・鉱山／農地／森林 約9%ずつ
+    terrainRatio: { plain: 16, mountain: 0, mine: 2, farm: 2, forest: 2 },
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
+    // イベント：ラウンドの始まりに 1/3 の確率で、どれか1つが起きてそのラウンドの間続く。次のラウンドの分は1ラウンド前に予告する
+    eventChance: 1 / 3,
     startResource: 3,
     startDefense: 2,                    // 最初に防御トークンを2個配る
     // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
@@ -59,6 +61,18 @@
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
   const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
+  // イベント。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、actions：行動回数
+  const EVENTS = {
+    famine: { name: '不作', text: 'このラウンド、食料生産が0.5倍', food: 0.5 },
+    harvest: { name: '豊作', text: 'このラウンド、食料生産が1.5倍', food: 1.5 },
+    depletion: { name: '枯渇', text: 'このラウンド、資源生産が0.5倍', res: 0.5 },
+    discovery: { name: '発見', text: 'このラウンド、資源生産が1.5倍', res: 1.5 },
+    fishing: { name: '豊漁', text: 'このラウンド、河川の隣のセル1つにつき食料 +1', riverFood: 1 },
+    flood: { name: '洪水', text: 'このラウンド、河川の隣のセル1つにつき食料 −1', riverFood: -1 },
+    festival: { name: '祭事', text: 'このラウンド、行動可能回数 +1', actions: 1 },
+    plague: { name: '疫病', text: 'このラウンド、行動可能回数 −1', actions: -1 },
+  };
+
   const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '補強' };
 
   function shuffle(arr, rng) {
@@ -285,6 +299,9 @@
       turnNo: 1,             // 何回目の手番か（通し番号）
       round: 1,              // 0 は内側の人の先行
       preQueue: [],          // 先行で、このあと手番が来る人（players の何番目か）
+      eventPlan: [],         // ラウンドごとのイベント（ホストだけが持つ。ほかの人には今と次のラウンドの分だけ送る）
+      event: null,           // このラウンドのイベント
+      nextEvent: null,       // 次のラウンドのイベント（予告）
       roundStart: 0,         // このラウンドの最初の人（players の何番目か）。ラウンドごとに1人ずつずれる
       roundPos: 0,           // このラウンドで何人目の手番か
       actionsLeft: actions,
@@ -298,6 +315,10 @@
       logSeq: 0,
     };
     addLog(state, `ゲーム開始。手番順：${state.players.map(p => p.name).join(' → ')}（1手番 ${actions} 行動・${rounds} ラウンド）`, 'info');
+    // イベントを決めておく（ラウンドごとに 1/3 の確率）
+    const keys = Object.keys(EVENTS);
+    const withEvents = !(opts && opts.events === false);
+    for (let r = 1; r <= rounds; r++) state.eventPlan[r] = withEvents && rng() < RULES.eventChance ? keys[Math.floor(rng() * keys.length)] : null;
     // 内側にコアがある人は、ラウンド1の前に先に2手番ずつ動く
     const inner = state.players.map((p, i) => i).filter(i => dist(parseKey(state.players[i].core), [0, 0]) < radius);
     if (inner.length) {
@@ -305,8 +326,12 @@
       state.round = 0;
       state.turn = state.preQueue.shift();
       addLog(state, `先行：内側にコアがある人（${inner.map(i => state.players[i].name).join('・')}）が、ラウンド1の前に ${RULES.preTurns} 手番ずつ動く`, 'round');
+      state.nextEvent = state.eventPlan[1];
+      if (state.nextEvent) addLog(state, `予告：ラウンド1は「${EVENTS[state.nextEvent].name}」（${EVENTS[state.nextEvent].text}）`, 'event');
     } else {
       addLog(state, `ラウンド 1 / ${rounds}`, 'round');
+      startRoundEvent(state);
+      state.actionsLeft = actionsThisTurn(state);
     }
     return state;
   }
@@ -332,7 +357,33 @@
   }
 
   // ターン終了時に受け取る資源
+  // ラウンドが始まったら、このラウンドのイベントと次のラウンドの予告を決める
+  function startRoundEvent(state) {
+    state.event = state.eventPlan[state.round] || null;
+    state.nextEvent = state.eventPlan[state.round + 1] || null;
+    if (state.event) addLog(state, `イベント：${EVENTS[state.event].name}（${EVENTS[state.event].text}）`, 'event');
+    if (state.nextEvent) addLog(state, `予告：次のラウンドは「${EVENTS[state.nextEvent].name}」（${EVENTS[state.nextEvent].text}）`, 'event');
+  }
+
+  const eventOf = state => (state.round >= 1 && state.event ? EVENTS[state.event] : null);
+
+  // このラウンドの1手番の行動回数（祭事・疫病で増減。1回より少なくはならない）
+  function actionsThisTurn(state) {
+    const ev = eventOf(state);
+    return Math.max(1, state.actionsPerTurn + ((ev && ev.actions) || 0));
+  }
+
+  // 河川の隣にある自分のセルの数（橋は除く。豊漁・洪水で使う）
+  function riversideCells(state, id) {
+    return cellsOf(state, id).filter(c => c.terrain !== 'river' && neighbors(c.q, c.r).some(([q, r]) => { const n = state.board[key(q, r)]; return n && n.terrain === 'river'; })).length;
+  }
+
   function income(state, id) {
+    const ev = eventOf(state);
+    return Math.floor(baseIncome(state, id) * ((ev && ev.res) || 1));
+  }
+
+  function baseIncome(state, id) {
     const inc = RULES.income;
     let n = 0;
     for (const c of cellsOf(state, id)) {
@@ -560,6 +611,8 @@
     state.over = true;
     state.pending = null;
     state.abandon = null;
+    state.event = null;
+    state.nextEvent = null;
     state.winners = winners.map(p => p.id);
     state.endReason = reason;
     addLog(state, `🏆 ${winners.map(p => p.name).join('・')} の${winners.length > 1 ? '同率優勝' : '勝利'}（${reason}）`, 'win');
@@ -594,12 +647,17 @@
   // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +1、農地マスのセル1つにつき +1
   function foodMade(state, id) {
     const f = RULES.food;
-    return cellsOf(state, id).reduce((n, c) => n + (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
+    const ev = eventOf(state);
+    let n = cellsOf(state, id).reduce((k, c) => k + (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
+    if (ev && ev.riverFood > 0) n += riversideCells(state, id) * ev.riverFood;   // 豊漁
+    return Math.floor(n * ((ev && ev.food) || 1));                               // 不作・豊作
   }
 
-  // 手番終了時に食べる食料：セル1つにつき1
+  // 手番終了時に食べる食料：セル1つにつき1（洪水のときは河川の隣のセル1つにつきさらに1）
   function foodEaten(state, id) {
-    return cellsOf(state, id).length * RULES.food.perCell;
+    const ev = eventOf(state);
+    const flood = ev && ev.riverFood < 0 ? riversideCells(state, id) * -ev.riverFood : 0;
+    return cellsOf(state, id).length * RULES.food.perCell + flood;
   }
 
   // 捨てるセルを選ぶ（コアは捨てられない）
@@ -651,6 +709,7 @@
       state.roundStart = 0;
       state.roundPos = -1;
       addLog(state, `ラウンド 1 / ${state.rounds}`, 'round');
+      startRoundEvent(state);
     }
     let i;
     do {
@@ -661,6 +720,7 @@
         if (n > 2) do { state.roundStart = (state.roundStart + 1) % n; } while (!state.players[state.roundStart].alive);
         state.roundPos = 0;
         addLog(state, `ラウンド ${state.round} / ${state.rounds}${n > 2 ? `（最初は ${state.players[state.roundStart].name}）` : ''}`, 'round');
+        startRoundEvent(state);
       }
       i = (state.roundStart + state.roundPos) % n;
     } while (!state.players[i].alive);
@@ -670,7 +730,7 @@
   function setTurn(state, i) {
     state.turn = i;
     state.turnNo = (state.turnNo || 0) + 1;
-    state.actionsLeft = state.actionsPerTurn;
+    state.actionsLeft = actionsThisTurn(state);
     state.extraBought = 0;
   }
 
@@ -734,9 +794,9 @@
   }
 
   return {
-    RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
+    RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES, EVENTS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten,
+    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
   };
 });

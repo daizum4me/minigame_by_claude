@@ -346,6 +346,7 @@
         game = Object.assign({}, g, {
           log: g.log.slice(-LOG_SEND),
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { defense: null })),
+          eventPlan: undefined,   // 先のラウンドのイベントは送らない（今と次のラウンドの分だけ）
         });
         const pd = g.pending;
         if (pd) {

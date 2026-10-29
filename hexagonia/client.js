@@ -150,6 +150,7 @@
     'act-destroy': svg(`<path d="${HEX}" fill="rgba(255,120,120,.18)" stroke="#FF9C94" stroke-width="1.3"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" stroke="#FF9C94" stroke-width="2.2" stroke-linecap="round"/>`),
     'act-reinforce': svg('<rect x="3" y="7" width="10" height="10" rx="1" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.3"/><path d="M16 5 L17.5 8.6 L21.4 8.6 L18.3 11 L19.4 14.8 L16 12.6 L12.6 14.8" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.2" stroke-linejoin="round"/>'),
     group: svg(`<g fill="rgba(76,142,218,.45)" stroke="#9CC6F2" stroke-width="1"><path d="M7 3.5 L11 5.8 L11 10.2 L7 12.5 L3 10.2 L3 5.8 Z"/><path d="M15 3.5 L19 5.8 L19 10.2 L15 12.5 L11 10.2 L11 5.8 Z"/><path d="M11 10.5 L15 12.8 L15 17.2 L11 19.5 L7 17.2 L7 12.8 Z"/></g>`),
+    event: svg('<path d="M12 3 L13.8 8.6 L19.6 8.6 L14.9 12 L16.7 17.6 L12 14.2 L7.3 17.6 L9.1 12 L4.4 8.6 L10.2 8.6 Z" fill="rgba(255,211,107,.35)" stroke="#FFD36B" stroke-width="1.3" stroke-linejoin="round"/>'),
     clock: svg('<circle cx="12" cy="12" r="8.5" fill="none" stroke="#C9C6BC" stroke-width="1.6"/><path d="M12 7 V12 L15.5 14" fill="none" stroke="#C9C6BC" stroke-width="1.8" stroke-linecap="round"/>'),
     hand: svg('<path d="M9 12 V5.5 a1.5 1.5 0 0 1 3 0 V11 M12 10 V4.5 a1.5 1.5 0 0 1 3 0 V11 M15 10.5 V6 a1.5 1.5 0 0 1 3 0 V14 c0 4 -2.5 6.5 -6 6.5 c-2.6 0 -4.2 -1.3 -5.6 -3.4 L4 13 a1.5 1.5 0 0 1 2.5 -1.6 L9 14" fill="none" stroke="#C9C6BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
   };
@@ -565,6 +566,14 @@
 
     // 上部の表示
     $('#hud-round').textContent = g.round === 0 ? '先行' : `${g.round} / ${g.rounds}`;
+    // イベント（このラウンド）と予告（次のラウンド）
+    const EV = E.EVENTS;
+    const evNow = !g.over && g.round >= 1 && g.event ? EV[g.event] : null;
+    const evNext = !g.over && g.nextEvent ? EV[g.nextEvent] : null;
+    const good = k => ['harvest', 'discovery', 'fishing', 'festival'].includes(k);
+    $('#hud-event').hidden = !evNow && !evNext;
+    $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '')
+      + (evNext ? `<span class="muted next" title="${esc(evNext.text)}">${evNow ? '／' : ''}次：<b class="${good(g.nextEvent) ? 'k-good' : 'k-bad'}">${esc(evNext.name)}</b></span>` : '');
     $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
       : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}</span>`;
 
@@ -756,13 +765,14 @@
   // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
   function playSounds(g, fresh) {
     if (!fresh.length) return;
-    const order = ['win', 'out', 'success', 'fail', 'abandon', 'declare', 'buy', 'strengthen', 'reinforce', 'expand', 'endTurn'];
+    const order = ['win', 'out', 'success', 'fail', 'abandon', 'event', 'declare', 'buy', 'strengthen', 'reinforce', 'expand', 'endTurn'];
     const found = new Set();
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
       else if (l.tone === 'out') found.add('out');
       else if (/^破壊成功/.test(l.text) || l.tone === 'hit') found.add('success');
       else if (l.tone === 'abandon') found.add('abandon');
+      else if (l.tone === 'event' && l.text.startsWith('イベント：')) found.add('event');
       else if (/^破壊失敗/.test(l.text)) found.add('fail');
       else if (l.tone === 'destroy') found.add('declare');
       else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1, buy: 1 }) found.add(l.tone);
