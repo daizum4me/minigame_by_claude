@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -199,6 +199,7 @@
           <b>資源（手番終了時にもらう）</b>
           <ul class="r-list">
             <li><i class="ic" data-icon="cell-strong"></i>強化済セル <span class="k-res">+1</span></li>
+            <li><i class="ic" data-icon="hex-forest"></i>森林のセル <span class="k-res">+2</span>（強化とは別）</li>
             <li><i class="ic" data-icon="core"></i>コア <span class="k-res">+2</span>（強化済なら <span class="k-res">+3</span>）</li>
           </ul>
         </div>
@@ -231,10 +232,11 @@
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="hex-river"></i>地形</h3>
-      <p class="r-hint">平原が約70%、鉱山と農地が約15%ずつ。それに河川（山岳はお休み中）。</p>
+      <p class="r-hint">平原が約57%、鉱山・農地・森林が約14%ずつ。それに河川（山岳はお休み中）。</p>
       <div class="r-cards terrain">
         <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>効果なし</small></div>
-        <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山 ▲</b><small>拡張・強化したとき <span class="k-atk">攻撃 +1</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山 ◆</b><small>拡張・強化したとき <span class="k-atk">攻撃 +1</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-forest"></i><b>森林 ▲</b><small>このセルがあると手番終了時 <span class="k-res">資源 +2</span>（強化とは別）</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-farm"></i><b>農地 ●</b><small>このセルがあると手番終了時 <span class="k-food">食料 +1</span>（強化とは別）</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">4</span> で橋をかけて渡る</small></div>
         <div class="r-card"><i class="ic big" data-icon="bridge"></i><b>橋</b><small>強化できる。壊されると河川に戻る</small></div>
@@ -267,11 +269,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=15"></script>
-<script src="shared/cpu.js?v=15"></script>
-<script src="shared/room.js?v=15"></script>
-<script src="sound.js?v=15"></script>
-<script src="board.js?v=15"></script>
-<script src="client.js?v=15"></script>
+<script src="shared/engine.js?v=16"></script>
+<script src="shared/cpu.js?v=16"></script>
+<script src="shared/room.js?v=16"></script>
+<script src="sound.js?v=16"></script>
+<script src="board.js?v=16"></script>
+<script src="client.js?v=16"></script>
 </body>
 </html>

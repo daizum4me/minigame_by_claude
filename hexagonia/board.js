@@ -393,7 +393,17 @@
           ctx.fillStyle = COL.mark;
           ctx.fill();
         } else if (c.terrain === 'mine') {
-          // 鉱山：▲
+          // 鉱山：◆
+          ctx.beginPath();
+          ctx.moveTo(x, y - s * 0.27);
+          ctx.lineTo(x + s * 0.2, y);
+          ctx.lineTo(x, y + s * 0.27);
+          ctx.lineTo(x - s * 0.2, y);
+          ctx.closePath();
+          ctx.fillStyle = COL.mark;
+          ctx.fill();
+        } else if (c.terrain === 'forest') {
+          // 森林：▲
           ctx.beginPath();
           ctx.moveTo(x, y - s * 0.25);
           ctx.lineTo(x + s * 0.27, y + s * 0.2);

@@ -21,10 +21,11 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：山岳：鉱山：農地（河川は別に流す）。いまは山岳はお休み。平原70%・鉱山15%・農地15%
-    terrainRatio: { plain: 14, mountain: 0, mine: 3, farm: 3 },
+    // 平原：山岳：鉱山：農地：森林（河川は別に流す）。いまは山岳はお休み。平原 約57%・鉱山／農地／森林 約14%ずつ
+    terrainRatio: { plain: 12, mountain: 0, mine: 3, farm: 3, forest: 3 },
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
+    forestResource: 2,                  // 森林マス：このセルがあると手番終了時に資源 +2（強化の +1 とは別）
     startResource: 3,
     startDefense: 2,                    // 最初に防御トークンを2個配る
     // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
@@ -57,7 +58,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', farm: '農地マス', river: '河川マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
   const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '補強' };
 
   function shuffle(arr, rng) {
@@ -243,8 +244,9 @@
     river.forEach(k => { board[k].terrain = 'river'; });
     const free = Object.keys(board).filter(k => !fixed.has(k) && !river.has(k));
     const ratio = RULES.terrainRatio;
-    const total = ratio.plain + ratio.mountain + ratio.mine + (ratio.farm || 0);
-    const counts = ['mountain', 'mine', 'farm'].map(t => [t, Math.round(free.length * (ratio[t] || 0) / total)]);
+    const kinds = ['mountain', 'mine', 'farm', 'forest'];
+    const total = ratio.plain + kinds.reduce((n, t) => n + (ratio[t] || 0), 0);
+    const counts = kinds.map(t => [t, Math.round(free.length * (ratio[t] || 0) / total)]);
     shuffle(free, rng);
     let i = 0;
     for (const [t, n] of counts) for (let j = 0; j < n && i < free.length; j++) board[free[i++]].terrain = t;
@@ -337,6 +339,7 @@
       if (c.core) n += inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0);
       else if (c.terrain === 'mine') n += c.strong ? inc.mineStrong : inc.mine;
       else if (c.strong) n += inc.strong;
+      if (c.terrain === 'forest') n += RULES.forestResource;   // 森林は強化とは別に +2
     }
     return n;
   }
