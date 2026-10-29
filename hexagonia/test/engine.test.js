@@ -172,6 +172,7 @@ function clashSetup() {
   const [cq, cr] = E.parseKey(P(g, a).core);
   const [tq, tr] = nb(g, cq, cr)[0];
   setCell(g, tq, tr, { owner: b });
+  g.board[P(g, a).core].strong = true;   // 破壊できるのは、自分の強化済のセルに隣接するセルだけ
   P(g, a).resource = 10;
   P(g, a).attack = 1;   // 破壊には攻撃トークンが1個以上必要
   return { g, a, b, t: E.key(tq, tr), tq, tr };
@@ -232,12 +233,38 @@ test('破壊：防御トークンがなくても、攻撃側は出す数を選�
   assert.strictEqual(P(g, a).attack, 1);
 });
 
+test('拠点：破壊できるのは、自分の強化済のセルに隣接する相手のセルだけ', () => {
+  const { g, a, t } = clashSetup();
+  assert.ok(E.targets(g, a, 'destroy').includes(t));
+  g.board[P(g, a).core].strong = false;
+  assert.ok(!E.targets(g, a, 'destroy').includes(t));
+  assert.strictEqual(E.apply(g, a, { type: 'destroy', q: E.parseKey(t)[0], r: E.parseKey(t)[1] }).ok, false);
+});
+
+test('城壁：強化済のセルに隣接するセルが狙われたら、防御側に +1（攻撃 ≧ 防御 + 1 で成功）', () => {
+  for (const [atk, def, ok] of [[1, 0, true], [1, 1, false], [2, 1, true], [2, 2, false], [3, 2, true]]) {
+    const { g, a, b, t, tq, tr } = clashSetup();
+    // 狙われるマスの隣（a のセルではないところ）に、b の強化済のセルを置く
+    const [wq, wr] = nb(g, tq, tr).find(([q, r]) => !g.board[E.key(q, r)].owner);
+    setCell(g, wq, wr, { owner: b, strong: true });
+    assert.strictEqual(E.wallOf(g, g.board[t]), 1);
+    P(g, a).attack = 3;
+    P(g, b).defense = 2;
+    E.apply(g, a, { type: 'destroy', q: tq, r: tr });
+    assert.strictEqual(g.pending.wall, 1);
+    E.apply(g, b, { type: 'bid', count: def });
+    E.apply(g, a, { type: 'bid', count: atk });
+    assert.strictEqual(g.board[t].owner, ok ? a : b, `${atk} vs ${def}+1`);
+    assert.strictEqual(g.lastClash.wall, 1);
+  }
+});
+
 test('コアを破壊すると脱落、セルとトークンが消えて手番が飛ばされる、最後の1人が勝利', () => {
   const g = newGame(3);
   const [a, b, c] = g.players.map(p => p.id);
   const bc = E.parseKey(P(g, b).core);
   const [nq, nr] = nb(g, ...bc)[0];
-  setCell(g, nq, nr, { owner: a });
+  setCell(g, nq, nr, { owner: a, strong: true });
   const [oq, or] = nb(g, ...bc).at(-1);
   setCell(g, oq, or, { owner: b, strong: true });
   P(g, b).resource = 5; P(g, b).attack = 2; P(g, b).defense = 0;
@@ -260,7 +287,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   // c のコアも破壊
   const cc = E.parseKey(P(g, c).core);
   const [mq, mr] = nb(g, ...cc)[0];
-  setCell(g, mq, mr, { owner: a });
+  setCell(g, mq, mr, { owner: a, strong: true });
   P(g, c).defense = 0;
   P(g, a).resource = 10;
   E.apply(g, a, { type: 'destroy', q: cc[0], r: cc[1] });
@@ -293,7 +320,10 @@ test('対象マスの一覧', () => {
   const { g, a, t } = clashSetup();
   assert.ok(E.targets(g, a, 'destroy').includes(t));
   assert.ok(!E.targets(g, a, 'expand').includes(t));
+  assert.deepStrictEqual(E.targets(g, a, 'strengthen'), []);   // コアは強化済にしてある
+  g.board[P(g, a).core].strong = false;
   assert.deepStrictEqual(E.targets(g, a, 'strengthen'), [P(g, a).core]);
+  assert.deepStrictEqual(E.targets(g, a, 'destroy'), []);       // 強化済のセルに隣接していなければ破壊できない
   P(g, a).resource = 1;
   assert.deepStrictEqual(E.targets(g, a, 'strengthen'), []);
 });
@@ -460,7 +490,7 @@ test('橋：河川マスへの拡張は資源4。強化できる。破壊され�
   assert.strictEqual(g.board[rk].strong, true);
   // b が橋を破壊すると河川に戻る（b のセルにはならない）
   untilTurn(g, b);
-  setCell(g, ...nb(g, rq, rr).find(([q, r]) => !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river'), { owner: b });
+  setCell(g, ...nb(g, rq, rr).find(([q, r]) => !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river'), { owner: b, strong: true });
   P(g, b).resource = 5;
   P(g, b).attack = 1;
   P(g, a).defense = 0;

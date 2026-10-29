@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 
@@ -167,9 +167,14 @@
       <h3><i class="ic" data-icon="cell-strong"></i>セルの段階</h3>
       <div class="r-cards">
         <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
-        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span>。<b>拠点</b>と<b>城壁</b>になる</small></div>
         <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +5</span></small></div>
       </div>
+      <ul class="r-list">
+        <li><b>拠点</b>：破壊できるのは、<b>自分の強化済のセルに隣接する</b>相手のセルだけ。攻めたい方向に強化を置く</li>
+        <li><b>城壁</b>：<b>強化済のセルに隣接する</b>セルが狙われたら、防御側に <span class="k-def">防御 +1</span>（強化済のセル自身は、隣に強化済のセルがなければ守られない）</li>
+        <li>前線に強化すれば攻めと守りの要になるが狙われる。後方に強化すれば安全に稼げるが、攻めにも守りにも使えない</li>
+      </ul>
     </section>
 
     <section class="r-sec">
@@ -190,7 +195,7 @@
         <tr><th></th><th>行動</th><th>資源</th><th>内容</th></tr>
         <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>河川 4</small></td><td>自分のセルの隣の空きマスにセルを置く。河川には<b>橋をかける</b></td></tr>
         <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>・<i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>。以後、毎手番 <span class="k-res">資源 +1</span>・<span class="k-food">食料 +1</span></td></tr>
-        <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>攻撃トークン1個以上</small></td><td>隣の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
+        <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>攻撃トークン1個以上</small></td><td><b>自分の強化済のセルの隣</b>の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
         <tr><td><i class="ic" data-icon="defense"></i></td><td><b>生産</b><small>防御</small></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御トークン +1</span>。行動回数を使い切っていてもできる。ログには出ない</td></tr>
         <tr><td><i class="ic" data-icon="attack"></i></td><td><b>生産</b><small>攻撃</small></td><td><span class="cost"><i class="ic" data-icon="resource"></i>3</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="attack"></i><span class="k-atk">攻撃トークン +1</span>。行動回数を使い切っていてもできる。ログには出ない</td></tr>
       </table>
@@ -221,14 +226,14 @@
     <section class="r-sec">
       <h3><i class="ic" data-icon="act-destroy"></i>破壊の攻防</h3>
       <ol class="r-steps">
-        <li>攻撃側が<span class="k-res">資源2</span>を払って破壊を宣言（<span class="k-atk">攻撃トークン</span>が1個以上必要）</li>
+        <li>攻撃側が<span class="k-res">資源2</span>を払って、自分の強化済のセルの隣にある相手セルに破壊を宣言（<span class="k-atk">攻撃トークン</span>が1個以上必要）</li>
         <li>攻撃側は<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃トークン</span>を<b>1個以上</b>、防御側は<i class="ic" data-icon="defense"></i><span class="k-def">防御トークン</span>を0個以上、何個出すか<b>伏せて</b>決める（30秒。決めなければ攻撃1個・防御0個）</li>
         <li>そろったら判定。<b>結果（成功か失敗か）だけ</b>が全員に知らされ、出した数は当人にしかわからない</li>
       </ol>
       <div class="r-judge">
-        <span class="k-atk"><i class="ic" data-icon="attack"></i>攻撃</span> ≧ <span class="k-def"><i class="ic" data-icon="defense"></i>防御</span> → <b class="k-bad">破壊成功</b>
+        <span class="k-atk"><i class="ic" data-icon="attack"></i>攻撃</span> ≧ <span class="k-def"><i class="ic" data-icon="defense"></i>防御</span>（＋城壁1） → <b class="k-bad">破壊成功</b>
         <span class="sep">／</span>
-        <span class="k-atk">攻撃</span> ＜ <span class="k-def">防御</span> → <b class="k-good">守られた</b>
+        <span class="k-atk">攻撃</span> ＜ <span class="k-def">防御</span>（＋城壁1） → <b class="k-good">守られた</b>
       </div>
       <p class="r-hint">出したトークンはすべてなくなる（数は公開されない）。<b>防御トークンは最初に2個</b>配られ、<b>ほかの人の防御トークンの数は見えない</b>（攻撃トークンの数は見える）。</p>
     </section>
@@ -284,11 +289,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=20"></script>
-<script src="shared/cpu.js?v=20"></script>
-<script src="shared/room.js?v=20"></script>
-<script src="sound.js?v=20"></script>
-<script src="board.js?v=20"></script>
-<script src="client.js?v=20"></script>
+<script src="shared/engine.js?v=21"></script>
+<script src="shared/cpu.js?v=21"></script>
+<script src="shared/room.js?v=21"></script>
+<script src="sound.js?v=21"></script>
+<script src="board.js?v=21"></script>
+<script src="client.js?v=21"></script>
 </body>
 </html>

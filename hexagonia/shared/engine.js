@@ -50,6 +50,10 @@
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
     food: { start: 0, core: 5, strong: 1, perCell: 1 },
     strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
+    // 強化済のセルの役目（コアも強化すれば同じ）
+    //  拠点：破壊できるのは、自分の強化済のセルに隣接する相手のセルだけ
+    //  城壁：強化済のセルに隣接する（同じ持ち主の）セルが狙われたら、防御側に +wallBonus
+    wallBonus: 1,
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -357,6 +361,16 @@
     return neighbors(q, r).some(([nq, nr]) => { const c = state.board[key(nq, nr)]; return c && c.owner === id; });
   }
 
+  // 自分の強化済のセルに隣接しているか（破壊の拠点）
+  function adjacentToStrong(state, id, q, r) {
+    return neighbors(q, r).some(([nq, nr]) => { const c = state.board[key(nq, nr)]; return c && c.owner === id && c.strong; });
+  }
+
+  // 城壁：そのセルの隣に同じ持ち主の強化済のセルがあれば、防御側に +wallBonus
+  function wallOf(state, cell) {
+    return cell.owner && adjacentToStrong(state, cell.owner, cell.q, cell.r) ? RULES.wallBonus : 0;
+  }
+
   // ターン終了時に受け取る資源
   // ラウンドが始まったら、このラウンドのイベントと次のラウンドの予告を決める
   function startRoundEvent(state) {
@@ -439,7 +453,7 @@
       } else if (type === 'strengthen') {
         if (c.owner === id && !c.strong) out.push(k);
       } else if (type === 'destroy') {
-        if (c.owner && c.owner !== id && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
+        if (c.owner && c.owner !== id && adjacentToStrong(state, id, c.q, c.r)) out.push(k);
       }
     }
     return out;
@@ -530,7 +544,7 @@
       addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}に破壊を宣言`, 'destroy');
       // 攻撃側（攻撃トークン1個以上）・防御側が、出すトークンの数を伏せて決める。
       // 防御トークンの数は相手に見えないので、防御側が0個でも攻撃側は数を選ぶ
-      state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null };
+      state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null, wall: wallOf(state, cell) };
       if (def.defense <= 0) state.pending.def = 0;
       if (p.attack === 1) state.pending.atk = 1;                     // 1個しかなければ1個に決まる
       if (state.pending.atk !== null && state.pending.def !== null) resolveDestroy(state, state.pending.atk, state.pending.def);
@@ -539,7 +553,7 @@
   }
 
   // 破壊の攻防：攻撃側と防御側が出す数を伏せて決め、そろったら同時に公開する。
-  // 攻撃トークン1個で防御トークン1個を破るので、攻撃 ≧ 防御なら破壊成功。出したトークンはすべてなくなる
+  // 攻撃トークン1個で防御トークン1個を破るので、攻撃 ≧ 防御（＋城壁）なら破壊成功。出したトークンはすべてなくなる
   function bid(state, id, count) {
     const pd = state.pending;
     if (state.over || !pd) return fail('いまは攻防中ではありません');
@@ -565,13 +579,14 @@
     const a = playerById(state, pd.attacker), d = playerById(state, pd.defender);
     a.attack -= atk;
     d.defense -= def;
-    const success = atk >= def;
+    const wall = pd.wall || 0;
+    const success = atk >= def + wall;
     // 出した数は公開しない（成功か失敗かだけ）。数は当人にだけ見せる（room.js）
-    state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, success };
-    // 守られたなら、防御側は攻撃側より多く出したはず（攻撃トークンの数は見えるので、そこまではわかる）
-    if (!success) d.defenseSeen = Math.max(0, d.defenseSeen - (atk + 1));
+    state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, wall, success };
+    // 守られたなら、防御側は「攻撃 − 城壁」より多く出したはず（攻撃トークンの数は見えるので、そこまではわかる）
+    if (!success) d.defenseSeen = Math.max(0, d.defenseSeen - Math.max(0, atk - wall + 1));
     const what = cell.core ? 'コア' : 'セル';
-    if (d.defense + def > 0) addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
+    if (d.defense + def > 0 || wall > 0) addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
     const wasCore = cell.core;
     Object.assign(cell, { owner: null, strong: false, core: false });
@@ -781,6 +796,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
+    adjacentToStrong, wallOf, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
   };
 });
