@@ -527,3 +527,10 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
   .dock .actions .act { padding: 5px 4px; }
   .dock .actions .act small { display: none; }
 }
+
+/* イベント */
+.pill.event { display: inline-flex; gap: 4px; align-items: baseline; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pill.event small { font-size: 11.5px; }
+.pill.event .next { font-size: 12.5px; }
+.log .lg-event { color: var(--warn); font-weight: 600; }
+.r-table.events td { white-space: normal !important; }

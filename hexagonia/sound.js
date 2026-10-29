@@ -99,6 +99,10 @@
     abandon() {     // セルを捨てる：さらさら
       noise({ dur: 0.5, type: 'bandpass', freq: 1800, freqEnd: 500, q: 1.5, vol: 0.12, attack: 0.05 });
     },
+    event() {       // イベント：ぼーん（鐘）
+      tone({ freq: 392, dur: 0.9, vol: 0.1, type: 'triangle', attack: 0.01 });
+      tone({ freq: 588, t: 0.02, dur: 0.8, vol: 0.05, type: 'sine' });
+    },
     endTurn() {     // 手番終了：とん
       tone({ freq: 330, freqEnd: 260, dur: 0.1, vol: 0.1 });
     },

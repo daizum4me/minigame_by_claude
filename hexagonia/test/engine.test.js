@@ -16,7 +16,8 @@ const PLAYERS = [
   ...'efghijkl'.split('').map(id => ({ id, name: id.toUpperCase(), color: 'red' })),
 ];
 
-function newGame(n, seed) { return E.createGame(PLAYERS.slice(0, n), seeded(seed || 1)); }
+// イベントは結果がばらつくので、イベントのテスト以外は起こさない
+function newGame(n, seed) { return E.createGame(PLAYERS.slice(0, n), seeded(seed || 1), { events: false }); }
 const cur = g => E.current(g).id;
 const P = (g, id) => g.players.find(p => p.id === id);
 
@@ -62,16 +63,16 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形は平原・鉱山・農地・森林（平原 約57%、ほかは約14%ずつ）と河川。山岳はいまは置かない', () => {
+test('地形は平原・鉱山・農地・森林（平原 約73%、ほかは約9%ずつ）と河川。山岳はいまは置かない', () => {
   for (const n of [2, 4, 8]) {
     const g = newGame(n, 3);
     const cnt = {};
     Object.values(g.board).forEach(c => { cnt[c.terrain] = (cnt[c.terrain] || 0) + 1; });
     assert.ok(!cnt.mountain, JSON.stringify(cnt));
-    // コアとその周りは平原、河川は河川。残りのマスの 3/21 ずつ
+    // コアとその周りは平原、河川は河川。残りのマスの 2/22 ずつ
     const fixed = g.players.reduce((k, p) => k + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
     const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
-    const each = Math.round(free * 3 / 21);
+    const each = Math.round(free * 2 / 22);
     assert.deepStrictEqual([cnt.mine, cnt.farm, cnt.forest], [each, each, each], JSON.stringify(cnt));
   }
 });
@@ -322,7 +323,7 @@ test('途中で脱落させる（切断）', () => {
 });
 
 test('勝敗はセルの総数ではなく、つながっている一番大きなかたまりで決まる', () => {
-  const g = E.createGame(PLAYERS.slice(0, 2), seeded(4), { radius: 5 });
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(4), { radius: 5, events: false });
   const [a, b] = g.players.map(p => p.id);
   const ac = E.parseKey(P(g, a).core), bc = E.parseKey(P(g, b).core);
   // a：コアにつながる2マス＋離れた2マス（総数5・最大のかたまり3）
@@ -409,7 +410,7 @@ function withUpkeep(fn) {
 }
 
 test('維持費（有効にしたとき）：セルが多いほど割る数が小さくなる（6つまでは4つにつき1、7〜12は3つにつき1、それより多い分は2つにつき1）', withUpkeep(() => {
-  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g);
   const free = Object.values(g.board).filter(c => !c.owner);
   const own = n => { free.slice(0, n - 1).forEach(c => { c.owner = me; }); };
@@ -429,7 +430,7 @@ test('維持費（有効にしたとき）：セルが多いほど割る数が�
 }));
 
 test('維持費（有効にしたとき）が払えなければ、足りない資源1つにつきセルを1つ選んで捨てる（コアは捨てられない）', withUpkeep(() => {
-  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g), other = g.players.find(p => p.id !== me).id;
   const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 12);
   mine.forEach(c => { c.owner = me; });                 // 12＋コア = 13 → 維持費 1.5 + 2 + 0.5 = 4
@@ -454,7 +455,7 @@ test('維持費（有効にしたとき）が払えなければ、足りない�
   assert.strictEqual(g.abandon, null);
   assert.strictEqual(cur(g), other);
   // おすすめ：一番大きなかたまりから外れたセル・未強化・コアから遠いものから
-  const h = E.createGame(PLAYERS.slice(0, 2), seeded(2), { radius: 6 });
+  const h = E.createGame(PLAYERS.slice(0, 2), seeded(2), { radius: 6, events: false });
   const hm = cur(h);
   const hc = E.parseKey(P(h, hm).core);
   const near = nb(h, ...hc)[0];
@@ -584,7 +585,7 @@ test('内側にコアがある人は、ラウンド1の前に1手番ずつ先に
 });
 
 test('食料：手番終了時にコア +5・強化済のセル（コアも）+1 を作り、セル1つにつき1を食べる。余りは持ち越す', () => {
-  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g);
   assert.strictEqual(P(g, me).food, 0);
   const free = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain');
@@ -600,7 +601,7 @@ test('食料：手番終了時にコア +5・強化済のセル（コアも）+1
 });
 
 test('食料が足りなければ、足りない数だけセルを選んで捨てる（コアは捨てられない）', () => {
-  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g), other = g.players.find(p => p.id !== me).id;
   const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 7);
   mine.forEach(c => { c.owner = me; });                          // セル8つ：作る5・食べる8 → 3 足りない
@@ -658,4 +659,48 @@ test('森林マス：このセルがあると手番終了時に資源 +1（強�
   const before = P(g, me).resource;
   E.apply(g, me, { type: 'endTurn' });
   assert.strictEqual(P(g, me).resource, before + 4);
+});
+
+test('イベント：ラウンドの始まりに約1/3の確率で起き、そのラウンドの間続く。次のラウンドの分は予告される', () => {
+  let rounds = 0, withEvent = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const g = E.createGame(PLAYERS.slice(0, 2), seeded(seed));
+    for (let r = 1; r <= g.rounds; r++) { rounds++; if (g.eventPlan[r]) withEvent++; }
+    // ラウンド1のイベントと、ラウンド2の予告
+    assert.strictEqual(g.event, g.eventPlan[1]);
+    assert.strictEqual(g.nextEvent, g.eventPlan[2]);
+    // ラウンドが進むと入れ替わる
+    E.apply(g, cur(g), { type: 'endTurn' });
+    E.apply(g, cur(g), { type: 'endTurn' });
+    if (!g.over) assert.deepStrictEqual([g.round, g.event, g.nextEvent], [2, g.eventPlan[2], g.eventPlan[3]]);
+  }
+  assert.ok(withEvent / rounds > 0.25 && withEvent / rounds < 0.42, `${withEvent}/${rounds}`);
+  assert.ok(E.createGame(PLAYERS.slice(0, 2), seeded(1), { events: false }).eventPlan.every(e => !e));
+});
+
+test('イベントの効果：不作・豊作・枯渇・発見・豊漁・洪水・祭事・疫病', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const ns = nb(g, cq, cr);
+  setCell(g, ...ns[0], { owner: me, strong: true });            // 強化済：資源 +1・食料 +1
+  setCell(g, ...ns[1], { owner: me, terrain: 'farm' });         // 農地：食料 +1
+  const river = ns[2];
+  setCell(g, ...river, { terrain: 'river' });                   // コアと ns[0]・ns[1] のどれかが河川の隣になる
+  const side = E.riversideCells(g, me);
+  assert.ok(side >= 1);
+  const base = { food: E.foodMade(g, me), eat: E.foodEaten(g, me), res: E.income(g, me), act: E.actionsThisTurn(g) };
+  assert.deepStrictEqual(base, { food: 5 + 1 + 1, eat: 3, res: 2 + 1, act: 3 });
+  const as = ev => { g.event = ev; return { food: E.foodMade(g, me), eat: E.foodEaten(g, me), res: E.income(g, me), act: E.actionsThisTurn(g) }; };
+  assert.strictEqual(as('famine').food, Math.floor(7 * 0.5));
+  assert.strictEqual(as('harvest').food, Math.floor(7 * 1.5));
+  assert.strictEqual(as('depletion').res, Math.floor(3 * 0.5));
+  assert.strictEqual(as('discovery').res, Math.floor(3 * 1.5));
+  assert.strictEqual(as('fishing').food, 7 + side);
+  assert.deepStrictEqual([as('flood').food, as('flood').eat], [7, 3 + side]);
+  assert.strictEqual(as('festival').act, 4);
+  assert.strictEqual(as('plague').act, 2);
+  // 行動回数は1回より少なくならない
+  g.actionsPerTurn = 1;
+  assert.strictEqual(as('plague').act, 1);
 });

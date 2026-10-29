@@ -209,3 +209,10 @@ test('ホストは行動回数とラウンド数を設定できる（0 は人数
   room.handle(h, { type: 'start' });
   assert.deepStrictEqual([room.game.actionsPerTurn, room.game.rounds], [5, 8]);
 });
+
+test('イベントは今と次のラウンドの分だけ届く（先のラウンドの予定は届かない）', () => {
+  const r = startTwo();
+  const st = r.last(r.h).room.game;
+  assert.strictEqual(st.eventPlan, undefined);
+  assert.ok('event' in st && 'nextEvent' in st);
+});
