@@ -100,10 +100,11 @@ test('持ち時間120秒で自動で手番終了、攻防のあいだは止ま�
   assert.ok(gp.alive);
   // 攻防のあとは残り70秒から再開
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
+  const before = `${room.game.round}:${room.game.turn}`;
   fire(TURN_MS - 50000);
-  assert.strictEqual(E.current(room.game).id, g);
+  assert.notStrictEqual(`${room.game.round}:${room.game.turn}`, before);   // 手番が進んだ
   assert.ok(room.game.log.some(l => l.text.includes('持ち時間が切れました')));
-  // 次の人は120秒から
+  // 次の手番は120秒から（ラウンドが変わって同じ人が続けて手番になることもある）
   assert.strictEqual(last(g).room.turnLeftMs, TURN_MS);
 });
 
@@ -125,7 +126,6 @@ test('攻防で出す数は、公開されるまで相手には見えない', ()
 test('攻防で30秒決めなければ 0 個', () => {
   const r = startTwo();
   const { room, h, g, fire } = r;
-  room.game.players.find(p => p.id === g).coreHp = 1;   // 残り耐久1
   const { gp } = declareOnCore(r, 1, 0);
   fire(BID_MS);
   assert.strictEqual(room.game.pending, null);
@@ -139,14 +139,15 @@ test('攻防で30秒決めなければ 0 個', () => {
 test('切断中の人の番は30秒で終わる・戻ってきたら続けられる・ホストが脱落させられる', () => {
   const r = startTwo();
   const { room, h, g, last, fire } = r;
-  room.handle(h, { type: 'act', action: { type: 'endTurn' } });
-  assert.strictEqual(E.current(room.game).id, g);
+  // g の手番まで進める（ラウンドごとに最初の人がずれるので、h が続けて手番のこともある）
+  while (E.current(room.game).id !== g) room.handle(E.current(room.game).id, { type: 'act', action: { type: 'endTurn' } });
   room.disconnect(g);
   assert.strictEqual(last(h).room.graceFor, g);
   assert.strictEqual(last(h).room.graceLeftMs, GRACE_MS);
+  const before = `${room.game.round}:${room.game.turn}`;
   fire(GRACE_MS);
-  assert.strictEqual(E.current(room.game).id, h);
-  assert.ok(room.game.log.some(l => l.text.includes('切断中のため手番を終えます')));
+  assert.notStrictEqual(`${room.game.round}:${room.game.turn}`, before);   // 手番が進んだ
+  assert.ok(room.game.log.some(l => l.text.includes('B：切断中のため手番を終えます')));
   // 戻ってくる
   assert.strictEqual(room.join('t2', 'B').id, g);
   assert.strictEqual(last(g).room.players.find(p => p.id === g).connected, true);

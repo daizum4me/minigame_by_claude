@@ -44,7 +44,7 @@
 
   const COLOR_NAMES = {
     red: '赤', blue: '青', green: '緑', yellow: '黄', purple: '紫', orange: '橙',
-    cyan: '水色', pink: '桃', lime: '黄緑', brown: '茶', white: '白', indigo: '藍',
+    cyan: '水', pink: '桃', lime: '草', brown: '茶', white: '白', indigo: '藍',
   };
   const COLOR_SETS = {
     // 暗い背景で見分けやすい12色
@@ -121,6 +121,33 @@
     defense: `<svg viewBox="0 0 24 24" class="tk"><rect x="4.5" y="4.5" width="15" height="15" rx="1.2" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.6"/></svg>`,
   };
   const TOKEN_NAMES = { resource: '資源', attack: '攻撃', defense: '防御' };
+
+  // ルール説明のアイコン（盤面の見た目に合わせた小さな絵）
+  const HEX = 'M12 2 L20.7 7 L20.7 17 L12 22 L3.3 17 L3.3 7 Z';
+  const hexAt = r => { const k = r / 10; return `M12 ${12 - 10 * k} L${12 + 8.7 * k} ${12 - 5 * k} L${12 + 8.7 * k} ${12 + 5 * k} L12 ${12 + 10 * k} L${12 - 8.7 * k} ${12 + 5 * k} L${12 - 8.7 * k} ${12 - 5 * k} Z`; };
+  const svg = body => `<svg viewBox="0 0 24 24" class="tk">${body}</svg>`;
+  const tile = (fill, stroke, extra) => svg(`<path d="${HEX}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>${extra || ''}`);
+  const CELL_FILL = 'rgba(76,142,218,.45)', CELL_LINE = '#9CC6F2';
+  const ICONS = {
+    resource: TOKEN_SVG.resource,
+    attack: TOKEN_SVG.attack,
+    defense: TOKEN_SVG.defense,
+    cell: tile(CELL_FILL, CELL_LINE),
+    'cell-strong': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.2"/>`),
+    'cell-fort': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.6)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.1"/><path d="${hexAt(4)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.1"/>`),
+    core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
+    'hex-plain': tile('#3A3A38', '#6A695F'),
+    'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
+    'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.6 L13.2 10.6 L16.4 10.8 L13.9 12.8 L14.8 15.9 L12 14.1 L9.2 15.9 L10.1 12.8 L7.6 10.8 L10.8 10.6 Z" fill="#A3A198"/>'),
+    'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
+    bridge: tile('#2E4250', '#5B7A8C', '<path d="M6.5 9.6 H17.5 M6.5 14.4 H17.5 M8.5 9.6 V14.4 M10.8 9.6 V14.4 M13.2 9.6 V14.4 M15.5 9.6 V14.4" stroke="#B9A88C" stroke-width="1.2"/>'),
+    'act-expand': svg(`<path d="${HEX}" fill="none" stroke="#9CC6F2" stroke-width="1.4" stroke-dasharray="2.5 1.8"/><path d="M12 8 V16 M8 12 H16" stroke="#9CC6F2" stroke-width="2" stroke-linecap="round"/>`),
+    'act-destroy': svg(`<path d="${HEX}" fill="rgba(255,120,120,.18)" stroke="#FF9C94" stroke-width="1.3"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" stroke="#FF9C94" stroke-width="2.2" stroke-linecap="round"/>`),
+    'act-reinforce': svg('<rect x="3" y="7" width="10" height="10" rx="1" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.3"/><path d="M16 5 L17.5 8.6 L21.4 8.6 L18.3 11 L19.4 14.8 L16 12.6 L12.6 14.8" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.2" stroke-linejoin="round"/>'),
+    group: svg(`<g fill="rgba(76,142,218,.45)" stroke="#9CC6F2" stroke-width="1"><path d="M7 3.5 L11 5.8 L11 10.2 L7 12.5 L3 10.2 L3 5.8 Z"/><path d="M15 3.5 L19 5.8 L19 10.2 L15 12.5 L11 10.2 L11 5.8 Z"/><path d="M11 10.5 L15 12.8 L15 17.2 L11 19.5 L7 17.2 L7 12.8 Z"/></g>`),
+    clock: svg('<circle cx="12" cy="12" r="8.5" fill="none" stroke="#C9C6BC" stroke-width="1.6"/><path d="M12 7 V12 L15.5 14" fill="none" stroke="#C9C6BC" stroke-width="1.8" stroke-linecap="round"/>'),
+    hand: svg('<path d="M9 12 V5.5 a1.5 1.5 0 0 1 3 0 V11 M12 10 V4.5 a1.5 1.5 0 0 1 3 0 V11 M15 10.5 V6 a1.5 1.5 0 0 1 3 0 V14 c0 4 -2.5 6.5 -6 6.5 c-2.6 0 -4.2 -1.3 -5.6 -3.4 L4 13 a1.5 1.5 0 0 1 2.5 -1.6 L9 14" fill="none" stroke="#C9C6BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+  };
   const tokenChip = (kind, n, label) =>
     `<span class="tchip tk-${kind}" title="${TOKEN_NAMES[kind]}トークン">${TOKEN_SVG[kind]}<b>${n}</b>${label ? `<small>${TOKEN_NAMES[kind]}</small>` : ''}</span>`;
 
@@ -549,12 +576,15 @@
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
     $('#players').classList.toggle('compact', g.players.length > 6);
-    $('#players').innerHTML = g.players.map(p => {
+    // このラウンドの手番の順に並べる（ラウンドごとに最初の人が1人ずつずれる）
+    const n = g.players.length;
+    const roundOrder = g.players.map((_, k) => g.players[((g.roundStart || 0) + k) % n]);
+    $('#players').innerHTML = roundOrder.map(p => {
       const cells = E.cellsOf(g, p.id).length;
       const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
-        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}${p.alive && p.coreHp < R.coreHp ? `<span class="badge hp" title="コアの耐久">コア ${p.coreHp}/${R.coreHp}</span>` : ''}</div>
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -612,7 +642,7 @@
       // 公開された結果
       el.innerHTML = `${head}
         <div class="clash-count reveal"><span>${TOKEN_SVG.attack}攻撃 <b>${res.atk}</b></span><span class="vs">vs</span><span>${TOKEN_SVG.defense}防御 <b>${res.def}</b></span></div>
-        <p class="clash-result ${res.success ? 'bad' : 'good'}">${!res.success ? '破壊失敗（守られた）' : cell.core ? `コアに命中（残り耐久 ${d.coreHp} / ${R.coreHp}）` : '破壊成功'}</p>`;
+        <p class="clash-result ${res.success ? 'bad' : 'good'}">${!res.success ? '破壊失敗（守られた）' : cell.owner === res.defender ? '防御済に命中（強化済に戻った）' : '破壊成功'}</p>`;
       el.hidden = false;
       return;
     }
@@ -794,7 +824,7 @@
     plain: '維持費を数えるとき、平原のセルは半分として数える',
     mountain: `拡張コスト +1（資源 ${R.cost.expandMountain}）。拡張すると防御トークン +1、強化すると攻撃トークン +1 に加えて防御トークン +1`,
     mine: `強化しなくても手番終了時の資源 +${R.income.mine}、強化すると +${R.income.mineStrong}`,
-    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて川に戻る`,
+    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
@@ -808,21 +838,25 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて川を渡る' : '';
+      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
     } else if (c.owner === app.me) {
-      if (c.strong) return { note: '強化済のセルです' };
+      if (c.fort) return { note: '防御済のセルです（攻撃が2回成功しないと落ちない）' };
       type = 'strengthen';
-      cost = R.cost.strengthen;
+      cost = E.strengthenCost(c);
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
-      gain = '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
+      gain = c.strong
+        ? '防御済にする：攻撃が2回成功しないと落ちない（1回目で強化済に戻る）'
+        : '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
-      gain = c.core
-        ? `${foe.name} の防御トークン ${foe.defense} 個。コアの耐久 ${foe.coreHp} / ${R.coreHp}（攻撃が成功するたびに -1、0 で破壊）`
+      gain = c.fort
+        ? `${foe.name} の防御トークン ${foe.defense} 個。防御済なので、1回目の成功では強化済に戻るだけ`
+        : c.core
+        ? `${foe.name} の防御トークン ${foe.defense} 個。成功するとコアを破壊（${foe.name} は脱落）`
         : c.terrain === 'river'
-          ? `${foe.name} の防御トークン ${foe.defense} 個。成功すると橋が落ちて川に戻る`
+          ? `${foe.name} の防御トークン ${foe.defense} 個。成功すると橋が落ちて河川に戻る`
           : `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
     }
     let why = '';
@@ -845,13 +879,13 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? (c.terrain === 'river' ? '川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? `コア（耐久 ${owner.coreHp} / ${R.coreHp}）・` : '') + (c.strong ? '強化済' : '未強化');
+    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.fort ? '防御済' : c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
       const a = cellAction(g, tip.key);
       if (a && a.type) {
         acts = `<div class="tt-acts"><button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
-          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
+          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : a.type === 'strengthen' && c.strong ? '強化（防御済へ）' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
           ${a.why ? `<p class="tt-why">${esc(a.why)}</p>` : ''}</div>`;
       } else if (a && a.note) {
         acts = `<div class="tt-acts"><p class="tt-why">${esc(a.note)}</p></div>`;
@@ -904,7 +938,13 @@
 
   // ---------- イベント ----------
 
+  // ルール説明などの <i data-icon="…"> にアイコンを入れる
+  function fillIcons() {
+    document.querySelectorAll('[data-icon]').forEach(el => { if (ICONS[el.dataset.icon]) el.innerHTML = ICONS[el.dataset.icon]; });
+  }
+
   function init() {
+    fillIcons();
     const params = new URLSearchParams(location.search);
     $('#in-name').value = store.get('name') || '';
     const code = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
@@ -979,7 +1019,12 @@
     });
 
     document.querySelectorAll('[data-open]').forEach(b => {
-      b.addEventListener('click', () => { const d = $('#' + b.dataset.open); if (d.id === 'settings') renderSettings(); d.showModal(); });
+      b.addEventListener('click', () => {
+        const d = $('#' + b.dataset.open);
+        if (d.id === 'settings') renderSettings();
+        d.showModal();
+        d.scrollTop = 0;   // 「閉じる」ボタンに自動で移るフォーカスで、いちばん下から始まらないように
+      });
     });
     $('#set-cb').onchange = e => { settings.cb = e.target.checked; store.set('cb', settings.cb ? '1' : '0'); renderSettings(); render(); };
     $('#set-pattern').onchange = e => { settings.patterns = e.target.checked; store.set('patterns', settings.patterns ? '1' : '0'); renderSettings(); render(); };

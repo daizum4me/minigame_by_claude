@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -130,37 +130,107 @@
 </main>
 
 <!-- ルール -->
-<dialog id="rules" class="dialog">
+<dialog id="rules" class="dialog rules-dialog">
   <h2>ルール</h2>
   <div class="rules">
-    <p>六角形の盤面で、自分の<b>セル</b>を広げ・強化し、相手のセルを破壊して争います。各プレイヤーは<b>コア</b>（中心に円のあるセル。盤面の一番外側に置かれる）を1つ持ち、コアを破壊されると脱落です。コアは<b>攻撃が3回成功するまで破壊されません</b>（円の下の3つの点が残りの耐久）。</p>
-    <h3>手番</h3>
-    <p>自分の手番では行動を<b>最大3回</b>まで行い（使い切ったら、資源を払って行動 +1 できます。6個から始まり、同じ手番で買うたびに +4）、「手番終了」で資源を受け取って次の人へ。持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）で、切れると自動で手番終了になります（破壊の攻防のあいだは止まります）。資源が足りないなどで、もうできる行動がなくなったときも自動で手番終了になります。</p>
-    <table>
-      <tr><th>行動</th><th>資源</th><th>内容</th></tr>
-      <tr><td colspan="3" class="muted">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了は右（スマホでは下）のパネルから。</td></tr>
-      <tr><td>拡張</td><td>1<br><small>山岳は2</small></td><td>自分のセルに隣接する空きマスにセルを置く。山岳マスなら防御トークン +1</td></tr>
-      <tr><td>強化</td><td>2</td><td>未強化セルを強化済にする。攻撃トークン +1。山岳マスなら防御トークン +1 も</td></tr>
-      <tr><td>破壊</td><td>1</td><td>自分のセルに隣接する相手セルを破壊しようとする（下の攻防）。成功すると、そのマスがそのまま自分のセルになる</td></tr>
-      <tr><td>補強</td><td>2</td><td>防御トークン +1・攻撃トークン +1</td></tr>
-    </table>
-    <h3>手番終了時の資源</h3>
-    <p>強化済セル1つにつき +1。鉱山マスのセルは強化しなくても +1、強化すると +2。コアは常に +2（強化済ならさらに +1）。</p>
-    <h3>維持費</h3>
-    <p>手番終了時、資源を受け取ったあとに<b>維持費</b>を払います。維持費は「セルの数 ÷ 4（切り捨て）」で、<b>平原のセルは半分</b>として数えます。払えないときは、足りない資源1つにつきセルを1つ選んで捨てます（コアは捨てられません。30秒で決めなければ自動で選びます）。</p>
-    <h3>破壊の攻防</h3>
-    <ol>
-      <li>攻撃側が資源を1払って破壊を宣言する</li>
-      <li>攻撃側は攻撃トークンを、防御側は防御トークンを、それぞれ何個出すかを<b>伏せて</b>決める（30秒以内。決めなければ0個）</li>
-      <li>2人とも決めたら同時に公開。<b>攻撃 ≧ 防御なら破壊成功</b>、攻撃 ＜ 防御なら失敗</li>
-    </ol>
-    <p>出したトークンはすべてなくなります。防御側が防御トークンを1個も持っていなければ、そのまま成功します。破壊に成功したマスは、そのまま攻撃側の未強化セルになります（山岳マスなら防御トークン +1）。</p>
-    <h3>勝敗</h3>
-    <p>自分以外の全員が脱落したら勝利。12ラウンド終了時は、<b>つながっている一番大きなかたまり</b>（隣り合う自分のセルのまとまり）が最も大きい人の勝利（同じなら同率優勝）。セルの総数ではないので、分断されたセルは数に入りません。</p>
-    <h3>地形</h3>
-    <p>平原マス：維持費が半分。<br>▲ 山岳マス（約15%）：拡張コスト +1、拡張・強化で防御トークン +1。<br>★ 鉱山マス（約15%）：強化しなくても手番終了時の資源 +1、強化すると +2。<br>〜 川マス：資源4で<b>橋をかける</b>とセルを置ける。橋は強化できる。破壊されると橋が落ちて川に戻る。4人までは川が中心から外側まで流れて陣地を区切り、5人以上は外側の半分くらいだけ流れる。</p>
-    <h3>操作</h3>
-    <p>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。マスの情報：ホバー。マスを選ぶ（クリック／タップ）と、そのマスでできる行動のボタンが出ます。</p>
+
+    <section class="r-sec r-goal">
+      <h3><i class="ic" data-icon="group"></i>目的</h3>
+      <ul class="r-list">
+        <li>六角形の盤面で自分の<b>セル</b>を広げ、強化し、相手のセルを破壊して争います</li>
+        <li><b class="k-good">12ラウンド終了時</b>に、<b>つながっている一番大きなかたまり</b>（隣り合う自分のセルのまとまり）が最も大きい人の勝ち。同じなら同率優勝</li>
+        <li><i class="ic" data-icon="core"></i><b class="k-core">コア</b>を破壊されると脱落。自分以外の全員が脱落したら、その時点で勝ち</li>
+      </ul>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="cell-strong"></i>セルの段階</h3>
+      <div class="r-cards">
+        <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
+        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="cell-fort"></i><b>防御済</b><small>攻撃が<span class="k-atk">2回</span>成功しないと落ちない（1回目で強化済に戻る）</small></div>
+        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>（強化済なら +3）</small></div>
+      </div>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="clock"></i>手番</h3>
+      <ul class="r-list">
+        <li>自分の手番では行動を<b>最大3回</b>。使い切ったら<i class="ic" data-icon="resource"></i><span class="k-res">資源</span>を払って<b>行動 +1</b>できる（6 → 10 → 14…。手番が変わると6に戻る）</li>
+        <li>持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）。切れると自動で手番終了（破壊の攻防のあいだは止まる）</li>
+        <li>もうできる行動がなくなったときも、自動で手番終了</li>
+        <li>手番の順は、ラウンドごとに最初の人が1人ずつずれる（A B C → B C A → C A B…）</li>
+      </ul>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="act-expand"></i>行動</h3>
+      <p class="r-hint">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了はパネルから。</p>
+      <table class="r-table">
+        <tr><th></th><th>行動</th><th>資源</th><th>内容</th></tr>
+        <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>山岳 2・河川 4</small></td><td>自分のセルの隣の空きマスにセルを置く。山岳なら <i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>。河川には<b>橋をかける</b></td></tr>
+        <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>（山岳なら <span class="k-def">防御 +1</span> も）</td></tr>
+        <tr><td><i class="ic" data-icon="cell-fort"></i></td><td><b>強化</b><small>防御済へ</small></td><td><span class="cost"><i class="ic" data-icon="resource"></i>3</span></td><td>強化済 → 防御済。攻撃が2回成功しないと落ちなくなる</td></tr>
+        <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span></td><td>隣の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
+        <tr><td><i class="ic" data-icon="act-reinforce"></i></td><td><b>補強</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>・<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span></td></tr>
+      </table>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="resource"></i><span class="k-res">資源</span>と維持費</h3>
+      <div class="r-two">
+        <div class="r-box res">
+          <b>手番終了時にもらう</b>
+          <ul class="r-list">
+            <li><i class="ic" data-icon="cell-strong"></i>強化済セル <span class="k-res">+1</span></li>
+            <li><i class="ic" data-icon="hex-mine"></i>鉱山のセル <span class="k-res">+1</span>（強化済なら <span class="k-res">+2</span>）</li>
+            <li><i class="ic" data-icon="core"></i>コア <span class="k-res">+2</span>（強化済なら <span class="k-res">+3</span>）</li>
+          </ul>
+        </div>
+        <div class="r-box upkeep">
+          <b>そのあと払う：維持費</b>
+          <ul class="r-list">
+            <li>セルの数 ÷ 4（切り捨て）</li>
+            <li><i class="ic" data-icon="hex-plain"></i>平原のセルは<b>半分</b>として数える</li>
+            <li class="k-bad">払えないときは、足りない資源1つにつきセルを1つ捨てる（コアは不可・30秒で自動）</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="act-destroy"></i>破壊の攻防</h3>
+      <ol class="r-steps">
+        <li>攻撃側が<span class="k-res">資源1</span>を払って破壊を宣言</li>
+        <li>攻撃側は<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃トークン</span>、防御側は<i class="ic" data-icon="defense"></i><span class="k-def">防御トークン</span>を何個出すか<b>伏せて</b>決める（30秒。決めなければ0個）</li>
+        <li>同時に公開して判定</li>
+      </ol>
+      <div class="r-judge">
+        <span class="k-atk"><i class="ic" data-icon="attack"></i>攻撃</span> ≧ <span class="k-def"><i class="ic" data-icon="defense"></i>防御</span> → <b class="k-bad">破壊成功</b>
+        <span class="sep">／</span>
+        <span class="k-atk">攻撃</span> ＜ <span class="k-def">防御</span> → <b class="k-good">守られた</b>
+      </div>
+      <p class="r-hint">出したトークンはすべてなくなる。防御側が防御トークンを1個も持っていなければ、出し合いなしで成功。</p>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="hex-mountain"></i>地形</h3>
+      <div class="r-cards terrain">
+        <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>維持費が半分</small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-mountain"></i><b>山岳</b><small>拡張 <span class="k-res">2</span>。拡張・強化で <span class="k-def">防御 +1</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山</b><small>資源 <span class="k-res">+1</span>（強化済で <span class="k-res">+2</span>）</small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">4</span> で橋をかけて渡る</small></div>
+        <div class="r-card"><i class="ic big" data-icon="bridge"></i><b>橋</b><small>強化できる。壊されると河川に戻る</small></div>
+      </div>
+    </section>
+
+    <section class="r-sec">
+      <h3><i class="ic" data-icon="hand"></i>操作</h3>
+      <ul class="r-list">
+        <li>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。「全体表示」で元に戻す</li>
+        <li>マスを選ぶ（クリック／タップ）と、そのマスの情報とできる行動のボタンが出る</li>
+      </ul>
+    </section>
   </div>
   <form method="dialog"><button class="primary">閉じる</button></form>
 </dialog>
@@ -178,11 +248,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=7"></script>
-<script src="shared/cpu.js?v=7"></script>
-<script src="shared/room.js?v=7"></script>
-<script src="sound.js?v=7"></script>
-<script src="board.js?v=7"></script>
-<script src="client.js?v=7"></script>
+<script src="shared/engine.js?v=10"></script>
+<script src="shared/cpu.js?v=10"></script>
+<script src="shared/room.js?v=10"></script>
+<script src="sound.js?v=10"></script>
+<script src="board.js?v=10"></script>
+<script src="client.js?v=10"></script>
 </body>
 </html>
