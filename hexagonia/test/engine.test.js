@@ -645,17 +645,17 @@ test('農地マス：このセルがあると手番終了時に食料 +1（強�
   assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
 });
 
-test('森林マス：このセルがあると手番終了時に資源 +2（強化の +1 とは別）', () => {
+test('森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
   const [fq, fr] = nb(g, cq, cr)[0];
   assert.strictEqual(E.income(g, me), 2);
   setCell(g, fq, fr, { owner: me, terrain: 'forest' });
-  assert.strictEqual(E.income(g, me), 2 + 2);
+  assert.strictEqual(E.income(g, me), 2 + 1);
   g.board[E.key(fq, fr)].strong = true;
-  assert.strictEqual(E.income(g, me), 2 + 2 + 1);
+  assert.strictEqual(E.income(g, me), 2 + 1 + 1);
   const before = P(g, me).resource;
   E.apply(g, me, { type: 'endTurn' });
-  assert.strictEqual(P(g, me).resource, before + 5);
+  assert.strictEqual(P(g, me).resource, before + 4);
 });

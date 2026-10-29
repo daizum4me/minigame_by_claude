@@ -25,7 +25,7 @@
     terrainRatio: { plain: 12, mountain: 0, mine: 3, farm: 3, forest: 3 },
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
-    forestResource: 2,                  // 森林マス：このセルがあると手番終了時に資源 +2（強化の +1 とは別）
+    forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
     startResource: 3,
     startDefense: 2,                    // 最初に防御トークンを2個配る
     // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
@@ -339,7 +339,7 @@
       if (c.core) n += inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0);
       else if (c.terrain === 'mine') n += c.strong ? inc.mineStrong : inc.mine;
       else if (c.strong) n += inc.strong;
-      if (c.terrain === 'forest') n += RULES.forestResource;   // 森林は強化とは別に +2
+      if (c.terrain === 'forest') n += RULES.forestResource;   // 森林は強化とは別に +1
     }
     return n;
   }

@@ -50,7 +50,7 @@
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
         if (c.terrain === 'mine') s += me.attack <= 1 ? 2.5 : 1.2;   // 鉱山は取ると攻撃トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
-        if (c.terrain === 'forest') s += late ? 0.3 : 1.8;           // 森林は毎手番の資源 +2（終盤は元が取れない）
+        if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
         if (c.terrain === 'mountain') s += me.defense < 2 ? 0.8 : -0.3;
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
