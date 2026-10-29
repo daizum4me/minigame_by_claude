@@ -2,18 +2,21 @@
  * ヘキサゴニア（仮）— 部屋（ロビー・ゲーム進行・切断の扱い）
  * ホスト権威型：ホストのブラウザでこの Room を動かし、参加者からの要求を handle() で受けて
  * ルール上可能かを確かめてから状態を更新し、全員に最新の状態を配信する。
+ * CPU もここで動かす（ホストのブラウザの中で考えて行動する）。
  *
  * new Room({ code, send(playerId, msg), rng, now, setTimer, clearTimer })
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine'));
-  else root.HexRoom = factory(root.HexEngine);
-})(typeof self !== 'undefined' ? self : this, function (E) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine'), require('./cpu'));
+  else root.HexRoom = factory(root.HexEngine, root.HexCpu);
+})(typeof self !== 'undefined' ? self : this, function (E, CPU) {
   'use strict';
 
   const COLORS = ['red', 'blue', 'green', 'yellow'];
   const GRACE_MS = 30000;   // 切断した人の操作待ちを、これだけ待ってから自動で進める
   const LOG_SEND = 80;      // 配信するログの件数
+  const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
+  const CPU_REPLY_MS = 700;     // CPU が攻防で応答するまでの間
 
   function cleanName(s) {
     const t = Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, 12).join('').trim();
@@ -27,20 +30,22 @@
       this.rng = opts.rng || Math.random;
       this.setTimer = opts.setTimer || ((fn, ms) => setTimeout(fn, ms));
       this.clearTimer = opts.clearTimer || (id => clearTimeout(id));
-      this.players = [];        // { id, token, name, color, connected }
+      this.players = [];        // { id, token, name, color, connected, cpu }
       this.hostId = null;
       this.phase = 'lobby';
       this.game = null;
       this.seq = 0;
       this.graceTimer = null;
       this.graceFor = null;
+      this.cpuTimer = null;
+      this.cpuSeq = 0;
       this.closed = false;
     }
 
     // 戻り値 { id } または { error }
     join(token, name) {
       if (this.closed) return { error: '部屋が見つかりません' };
-      const back = this.players.find(p => p.token === token);
+      const back = this.players.find(p => !p.cpu && p.token === token);
       if (back) {
         back.connected = true;
         if (this.game) this.note(`🔌 ${back.name} が戻ってきました`);
@@ -49,13 +54,18 @@
       }
       if (this.phase !== 'lobby') return { error: 'ゲーム中のため参加できません' };
       if (this.players.length >= E.RULES.maxPlayers) return { error: `満員です（最大${E.RULES.maxPlayers}人）` };
-      let base = cleanName(name), n = base, i = 2;
-      while (this.players.some(p => p.name === n)) n = base + (i++);
-      const p = { id: 'p' + (++this.seq), token, name: n, color: COLORS.find(c => !this.players.some(x => x.color === c)), connected: true };
-      this.players.push(p);
+      const p = this.addPlayer({ token, name: cleanName(name), cpu: false });
       if (!this.hostId) this.hostId = p.id;
       this.changed();
       return { id: p.id };
+    }
+
+    addPlayer({ token, name, cpu }) {
+      let n = name, i = 2;
+      while (this.players.some(p => p.name === n)) n = name + (i++);
+      const p = { id: 'p' + (++this.seq), token, name: n, color: COLORS.find(c => !this.players.some(x => x.color === c)), connected: true, cpu };
+      this.players.push(p);
+      return p;
     }
 
     disconnect(id) {
@@ -86,6 +96,23 @@
           if (!COLORS.includes(msg.color)) return;
           if (this.players.some(x => x !== p && x.color === msg.color)) return err('その色はほかの人が使っています');
           p.color = msg.color;
+          this.changed();
+          return;
+        }
+        case 'addCpu': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          if (this.players.length >= E.RULES.maxPlayers) return err(`満員です（最大${E.RULES.maxPlayers}人）`);
+          let k = 1;
+          while (this.players.some(x => x.name === 'CPU ' + k)) k++;
+          this.addPlayer({ token: null, name: 'CPU ' + k, cpu: true });
+          this.changed();
+          return;
+        }
+        case 'removeCpu': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          const t = this.players.find(x => x.id === msg.target && x.cpu);
+          if (!t) return;
+          this.players = this.players.filter(x => x !== t);
           this.changed();
           return;
         }
@@ -130,7 +157,40 @@
     // 状態が変わったら：切断した人を待っていないか確かめてから全員に配信
     changed() {
       this.checkGrace();
+      this.checkCpu();
       this.broadcast();
+    }
+
+    // CPU の操作待ちなら、少し間をおいて CPU に1手打たせる
+    checkCpu() {
+      const g = this.game;
+      const wait = g && this.phase === 'game' && !g.over ? E.waitingFor(g) : null;
+      const p = wait && this.players.find(x => x.id === wait);
+      if (!p || !p.cpu) { this.stopCpu(); return; }
+      // 同じ局面（ログの番号と攻防の段階）にはすでに予約済み
+      const at = `${g.logSeq}:${g.pending ? g.pending.stage : ''}:${wait}`;
+      if (this.cpuTimer && this.cpuAt === at) return;
+      this.stopCpu();
+      this.cpuAt = at;
+      this.cpuTimer = this.setTimer(() => this.cpuAct(wait), g.pending ? CPU_REPLY_MS : CPU_DELAY_MS);
+    }
+
+    stopCpu() {
+      if (this.cpuTimer) this.clearTimer(this.cpuTimer);
+      this.cpuTimer = null;
+      this.cpuAt = null;
+    }
+
+    cpuAct(id) {
+      this.cpuTimer = null;
+      this.cpuAt = null;
+      const g = this.game;
+      if (this.closed || !g || g.over || E.waitingFor(g) !== id) return;
+      const action = CPU.decide(g, id, this.rng);
+      const r = action ? E.apply(g, id, action) : { ok: false };
+      // 万一ルール上できない手を選んだら、手番を終える（止まらないように）
+      if (!r.ok && !g.pending) E.apply(g, id, { type: 'endTurn' });
+      this.changed();
     }
 
     checkGrace() {
@@ -171,7 +231,7 @@
         code: this.code,
         phase: this.phase,
         hostId: this.hostId,
-        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected })),
+        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu })),
         graceFor: this.graceFor,
         graceLeftMs: this.graceFor ? Math.max(0, this.graceUntil - Date.now()) : 0,
         game: g ? Object.assign({}, g, { log: g.log.slice(-LOG_SEND) }) : null,
@@ -181,12 +241,13 @@
     broadcast() {
       if (this.closed) return;
       const room = this.view();
-      for (const p of this.players) if (p.connected) this.sendFn(p.id, { type: 'state', you: p.id, room });
+      for (const p of this.players) if (p.connected && !p.cpu) this.sendFn(p.id, { type: 'state', you: p.id, room });
     }
 
     close() {
       this.closed = true;
       if (this.graceTimer) this.clearTimer(this.graceTimer);
+      this.stopCpu();
     }
   }
 
