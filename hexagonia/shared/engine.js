@@ -21,7 +21,8 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
+    // 平原：山岳：鉱山（河川は別に流す）。いまは試しに山岳と鉱山をなくして、平原と河川だけ
+    terrainRatio: { plain: 1, mountain: 0, mine: 0 },
     startResource: 3,
     startDefense: 2,                    // 最初に防御トークンを2個配る
     // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
@@ -38,9 +39,12 @@
     // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。補強は行動回数を使わない
     cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2 },
     // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
-    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
+    // コアを強化しても資源は増えない（coreStrongBonus: false）
+    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: false },
+    strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
     // 維持費：セルが多いほど割る数が小さくなる（累進）。6つまでは4つにつき1、7〜12は3つにつき1、13より多い分は2つにつき1。合計を切り捨て
-    upkeep: { brackets: [[6, 4], [12, 3], [Infinity, 2]] },
+    // いまは試しに維持費なし（enabled: false）。戻すときは true にする
+    upkeep: { enabled: false, brackets: [[6, 4], [12, 3], [Infinity, 2]] },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -335,6 +339,7 @@
 
   // 手番終了時に払う維持費：セルが多いほど割る数が小さくなる（累進）
   function upkeep(state, id) {
+    if (!RULES.upkeep.enabled) return 0;
     const weight = cellsOf(state, id).length;
     let cost = 0, prev = 0;
     for (const [limit, per] of RULES.upkeep.brackets) {
@@ -443,7 +448,7 @@
       p.resource -= RULES.cost.reinforce;
       p.defense += 1;
       p.attack += 1;
-      addLog(state, `${p.name} が補強（防御トークン +1・攻撃トークン +1）`, 'reinforce');
+      // 補強はログに出さない（防御トークンの数を相手にわかりにくくするため）
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -463,8 +468,10 @@
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
-      p.attack += 1;
-      let extra = '攻撃トークン +1';
+      const gives = RULES.strengthenGives;
+      p.attack += gives.attack;
+      p.defense += gives.defense;
+      let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
       if (cell.terrain === 'mountain') { p.defense += 1; extra += '・山岳：防御トークン +1'; }
       state.actionsLeft--;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');

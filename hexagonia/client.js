@@ -858,7 +858,8 @@
       type = 'strengthen';
       cost = R.cost.strengthen;
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
-      gain = '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
+      const gives = R.strengthenGives;
+      gain = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? 1 : 0)}` + (inc ? `・手番終了時の資源 +${inc}` : '（コアは資源は増えない）');
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
@@ -994,6 +995,8 @@
     $('#actions').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b || b.disabled) return;
+      // 補強はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
+      if (b.dataset.act === 'reinforce') window.HexSound.play('reinforce');
       send({ type: 'act', action: { type: b.dataset.act } });
     };
     $('#tooltip').onclick = e => {

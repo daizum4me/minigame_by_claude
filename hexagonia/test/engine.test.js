@@ -62,14 +62,12 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形はおおよそ 70%：15%：15%', () => {
-  const g = newGame(4, 3);
-  const cnt = { plain: 0, mountain: 0, mine: 0 };
-  Object.values(g.board).forEach(c => cnt[c.terrain]++);
-  // コアとその周りのマスは平原、河川は河川。残りのマスの15%ずつ
-  const fixed = g.players.reduce((n, p) => n + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
-  const free = Object.keys(g.board).length - fixed - Object.values(g.board).filter(c => c.terrain === 'river').length;
-  assert.deepStrictEqual([cnt.mountain, cnt.mine], [Math.round(free * 0.15), Math.round(free * 0.15)], JSON.stringify(cnt));
+test('地形は平原と河川だけ（山岳と鉱山はいまは置かない）', () => {
+  for (const n of [2, 4, 8]) {
+    const g = newGame(n, 3);
+    const kinds = new Set(Object.values(g.board).map(c => c.terrain));
+    assert.deepStrictEqual([...kinds].sort(), ['plain', 'river']);
+  }
 });
 
 test('初期状態：資源3・攻撃0・防御2・コア未強化', () => {
@@ -117,10 +115,13 @@ test('行動は最大3回（補強は行動回数を使わない）、資源不�
   assert.strictEqual(g.actionsLeft, 0);
   const [q, r] = E.parseKey(E.targets(g, me, 'expand').length ? E.targets(g, me, 'expand')[0] : Object.keys(g.board).find(k => !g.board[k].owner));
   assert.strictEqual(E.apply(g, me, { type: 'expand', q, r }).ok, false);
-  // 補強は行動回数を使い切っていてもできる。防御トークン +1 と攻撃トークン +1
+  // 補強は行動回数を使い切っていてもできる。防御トークン +1 と攻撃トークン +1。ログには出ない
+  const logLen = g.log.length;
   assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
   assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
-  assert.deepStrictEqual([P(g, me).defense, P(g, me).attack], [4, 3]);
+  assert.strictEqual(g.log.length, logLen);
+  // 防御：最初の2 + 強化の1 + 補強の2、攻撃：強化の1 + 補強の2
+  assert.deepStrictEqual([P(g, me).defense, P(g, me).attack], [5, 3]);
   assert.strictEqual(g.actionsLeft, 0);
   E.apply(g, me, { type: 'endTurn' });
   P(g, other).resource = 1;
@@ -129,21 +130,21 @@ test('行動は最大3回（補強は行動回数を使わない）、資源不�
   assert.match(res.error, /資源/);
 });
 
-test('強化：攻撃+1、山岳なら防御+1も。強化済はもう強化できない', () => {
+test('強化：攻撃+1・防御+1（山岳ならさらに防御+1）。強化済はもう強化できない', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
   P(g, me).resource = 10;
   assert.ok(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok);
-  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 2, 8]);
+  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 3, 8]);
   assert.strictEqual(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok, false);
   const [nq, nr] = nb(g, cq, cr)[1];
   setCell(g, nq, nr, { owner: me, terrain: 'mountain' });
   assert.ok(E.apply(g, me, { type: 'strengthen', q: nq, r: nr }).ok);
-  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense], [2, 3]);
+  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense], [2, 5]);
 });
 
-test('ターン終了時の資源：強化済+1、鉱山は強化なしで+1・強化で+2、コア+2（強化済コアは+1も）', () => {
+test('ターン終了時の資源：強化済+1、鉱山は強化なしで+1・強化で+2、コア+2（強化してもコアは増えない）。維持費はいまはなし', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
@@ -155,12 +156,11 @@ test('ターン終了時の資源：強化済+1、鉱山は強化なしで+1・�
   setCell(g, 0, 0, { owner: me, terrain: 'mine' });          // 鉱山の未強化：+1
   assert.strictEqual(E.income(g, me), 2 + 1 + 2 + 1);
   g.board[P(g, me).core].strong = true;
-  assert.strictEqual(E.income(g, me), 3 + 1 + 2 + 1);
-  // 維持費：セル5つ → 5÷4 = 1
-  assert.strictEqual(E.upkeep(g, me), 1);
+  assert.strictEqual(E.income(g, me), 2 + 1 + 2 + 1);
+  assert.strictEqual(E.upkeep(g, me), 0);
   const before = P(g, me).resource;
   E.apply(g, me, { type: 'endTurn' });
-  assert.strictEqual(P(g, me).resource, before + 7 - 1);
+  assert.strictEqual(P(g, me).resource, before + 6);
   assert.notStrictEqual(cur(g), me);
 });
 
@@ -393,7 +393,16 @@ test('もう何もできなくなったら自動で手番終了', () => {
   assert.strictEqual(cur(k), km);      // まだできる
 });
 
-test('維持費：セルが多いほど割る数が小さくなる（6つまでは4つにつき1、7〜12は3つにつき1、それより多い分は2つにつき1）', () => {
+// 維持費はいまは無効。戻したときのために、有効にして確かめる
+function withUpkeep(fn) {
+  return () => {
+    const was = E.RULES.upkeep.enabled;
+    E.RULES.upkeep.enabled = true;
+    try { fn(); } finally { E.RULES.upkeep.enabled = was; }
+  };
+}
+
+test('維持費（有効にしたとき）：セルが多いほど割る数が小さくなる（6つまでは4つにつき1、7〜12は3つにつき1、それより多い分は2つにつき1）', withUpkeep(() => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
   const me = cur(g);
   const free = Object.values(g.board).filter(c => !c.owner);
@@ -411,13 +420,13 @@ test('維持費：セルが多いほど割る数が小さくなる（6つまで�
   const inc = E.income(g, me);
   E.apply(g, me, { type: 'endTurn' });
   assert.strictEqual(P(g, me).resource, 10 + inc - 7);
-});
+}));
 
-test('維持費が払えなければ、足りない資源1つにつきセルを1つ選んで捨てる（コアは捨てられない）', () => {
+test('維持費（有効にしたとき）が払えなければ、足りない資源1つにつきセルを1つ選んで捨てる（コアは捨てられない）', withUpkeep(() => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
   const me = cur(g), other = g.players.find(p => p.id !== me).id;
-  const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'mountain').slice(0, 12);
-  mine.forEach(c => { c.owner = me; });                 // 山岳12＋コア = 13 → 維持費 1.5 + 2 + 0.5 = 4
+  const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 12);
+  mine.forEach(c => { c.owner = me; });                 // 12＋コア = 13 → 維持費 1.5 + 2 + 0.5 = 4
   P(g, me).resource = 0;
   assert.strictEqual(E.income(g, me), 2);
   assert.strictEqual(E.upkeep(g, me), 4);
@@ -446,7 +455,7 @@ test('維持費が払えなければ、足りない資源1つにつきセルを1
   setCell(h, 0, 0, { owner: hm });                      // 離れたセル
   h.abandon = { player: hm, count: 1 };
   assert.deepStrictEqual(E.suggestAbandon(h, hm), ['0,0']);
-});
+}));
 
 test('河川：端から端へ流れる本流（大きい盤面は支流も）。コアの周りには流れず、どのコアも十分な土地を持てる', () => {
   for (const n of [2, 3, 4, 6, 8, 12]) {
