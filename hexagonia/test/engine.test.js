@@ -45,11 +45,12 @@ test('コアは外周寄りで等間隔、周囲1マスは平原', () => {
   }
 });
 
-test('地形はおおよそ 6:2:2', () => {
+test('地形はおおよそ 70%：15%：15%', () => {
   const g = newGame(4, 3);
   const cnt = { plain: 0, mountain: 0, mine: 0 };
   Object.values(g.board).forEach(c => cnt[c.terrain]++);
-  assert.ok(cnt.mountain >= 20 && cnt.mine >= 20, JSON.stringify(cnt));
+  // 127マスのうちコアの周り28マスは平原。残り99マスの15%
+  assert.deepStrictEqual([cnt.mountain, cnt.mine], [15, 15], JSON.stringify(cnt));
 });
 
 test('初期状態：資源3・攻撃防御0・コア未強化', () => {
@@ -89,7 +90,8 @@ test('行動は最大3回、資源不足は不可、他人の手番は不可', (
   assert.strictEqual(E.apply(g, other, { type: 'reinforce' }).ok, false);
   for (let i = 0; i < 3; i++) assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
   assert.strictEqual(E.apply(g, me, { type: 'reinforce' }).ok, false);
-  assert.strictEqual(P(g, me).defense, 3);
+  // 補強は防御トークン +1 と攻撃トークン +1
+  assert.deepStrictEqual([P(g, me).defense, P(g, me).attack], [3, 3]);
   assert.strictEqual(P(g, me).resource, 14);
   E.apply(g, me, { type: 'endTurn' });
   P(g, other).resource = 1;
@@ -142,62 +144,57 @@ function clashSetup() {
   return { g, a, b, t: E.key(tq, tr), tq, tr };
 }
 
-test('破壊：防御トークンがなければそのまま成功、空きマスに戻る', () => {
+test('破壊：防御トークンがなければそのまま成功、そのマスが攻撃側のセルになる', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.strictEqual(g.pending, null);
-  assert.strictEqual(g.board[t].owner, null);
+  assert.deepStrictEqual([g.board[t].owner, g.board[t].strong], [a, false]);
   assert.strictEqual(P(g, a).resource, 9);
+  assert.strictEqual(g.actionsLeft, 2); // そのまま拡張しても行動回数は減らない
   assert.ok(P(g, b).alive);
 });
 
-test('破壊：防御を出さなければ成功', () => {
-  const { g, a, b, t, tq, tr } = clashSetup();
-  P(g, b).defense = 2;
+test('破壊で取った山岳マスは防御トークン +1', () => {
+  const { g, a, t, tq, tr } = clashSetup();
+  g.board[t].terrain = 'mountain';
   E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-  assert.strictEqual(g.pending.stage, 'defend');
-  assert.strictEqual(E.waitingFor(g), b);
-  // 攻防中は他の行動はできない
-  assert.strictEqual(E.apply(g, a, { type: 'reinforce' }).ok, false);
-  assert.ok(E.apply(g, b, { type: 'defend', use: false }).ok);
-  assert.strictEqual(g.board[t].owner, null);
-  assert.strictEqual(P(g, b).defense, 2);
+  assert.strictEqual(g.board[t].owner, a);
+  assert.strictEqual(P(g, a).defense, 1);
 });
 
-test('破壊：防御→攻撃→防御→諦める、出したトークンはすべて消費', () => {
-  const { g, a, b, t, tq, tr } = clashSetup();
-  P(g, b).defense = 2;
-  P(g, a).attack = 3;
-  E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-  assert.strictEqual(E.apply(g, a, { type: 'attack', use: true }).ok, false); // まだ防御側の番
-  E.apply(g, b, { type: 'defend', use: true });
-  assert.strictEqual(g.pending.stage, 'attack');
-  E.apply(g, a, { type: 'attack', use: true });
-  assert.strictEqual(g.pending.stage, 'defend');
-  E.apply(g, b, { type: 'defend', use: true });
-  E.apply(g, a, { type: 'attack', use: false });
-  assert.strictEqual(g.pending, null);
-  assert.strictEqual(g.board[t].owner, b);
-  assert.deepStrictEqual([P(g, a).attack, P(g, b).defense], [2, 0]);
-  assert.deepStrictEqual([g.lastClash.def, g.lastClash.atk, g.lastClash.success], [2, 1, false]);
-  assert.strictEqual(P(g, a).resource, 9); // 失敗しても資源は戻らない
+test('破壊：出す数を伏せて決め、そろったら公開。攻撃 ≧ 防御なら成功', () => {
+  for (const [atk, def, ok] of [[2, 1, true], [1, 1, true], [0, 0, true], [1, 2, false], [0, 1, false]]) {
+    const { g, a, b, t, tq, tr } = clashSetup();
+    P(g, a).attack = 3;
+    P(g, b).defense = 2;
+    E.apply(g, a, { type: 'destroy', q: tq, r: tr });
+    assert.deepStrictEqual(E.waiting(g).sort(), [a, b].sort());
+    // 攻防中は他の行動はできない
+    assert.strictEqual(E.apply(g, a, { type: 'reinforce' }).ok, false);
+    // 持っている数より多くは出せない・2回は決められない
+    assert.strictEqual(E.apply(g, b, { type: 'bid', count: 3 }).ok, false);
+    assert.ok(E.apply(g, b, { type: 'bid', count: def }).ok);
+    assert.strictEqual(E.apply(g, b, { type: 'bid', count: 0 }).ok, false);
+    assert.deepStrictEqual(E.waiting(g), [a]);
+    assert.strictEqual(P(g, b).defense, 2); // 公開まではまだ減らない
+    assert.ok(E.apply(g, a, { type: 'bid', count: atk }).ok);
+    assert.strictEqual(g.pending, null);
+    assert.strictEqual(g.board[t].owner, ok ? a : b, `${atk} vs ${def}`);
+    // 出したトークンはすべてなくなる
+    assert.deepStrictEqual([P(g, a).attack, P(g, b).defense], [3 - atk, 2 - def]);
+    assert.deepStrictEqual([g.lastClash.atk, g.lastClash.def, g.lastClash.success], [atk, def, ok]);
+    assert.strictEqual(P(g, a).resource, 9); // 失敗しても資源は戻らない
+  }
 });
 
-test('破壊：攻撃トークンがなければ防御された時点で失敗、防御が尽きれば成功', () => {
+test('破壊：攻撃トークンがなければ攻撃側は 0 個に決まり、防御側だけが選ぶ', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
   P(g, b).defense = 1;
   E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-  E.apply(g, b, { type: 'defend', use: true });
-  assert.strictEqual(g.pending, null);
+  assert.deepStrictEqual(E.waiting(g), [b]);
+  E.apply(g, b, { type: 'bid', count: 1 });
   assert.strictEqual(g.board[t].owner, b);
-  // 2回目：攻撃トークンで防御を破り、防御が0なら自動で成功
-  P(g, b).defense = 1;
-  P(g, a).attack = 1;
-  E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-  E.apply(g, b, { type: 'defend', use: true });
-  E.apply(g, a, { type: 'attack', use: true });
-  assert.strictEqual(g.pending, null);
-  assert.strictEqual(g.board[t].owner, null);
+  assert.strictEqual(P(g, b).defense, 0);
 });
 
 test('コアを破壊すると脱落、セルとトークンが消えて手番が飛ばされる、最後の1人が勝利', () => {
@@ -212,6 +209,8 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
   assert.strictEqual(P(g, b).alive, false);
   assert.strictEqual(E.cellsOf(g, b).length, 0);
+  assert.strictEqual(g.board[E.key(...bc)].owner, a); // コアのマスも攻撃側のセルになる
+  assert.strictEqual(g.board[E.key(oq, or)].owner, null);
   assert.deepStrictEqual([P(g, b).resource, P(g, b).attack], [0, 0]);
   E.apply(g, a, { type: 'endTurn' });
   assert.strictEqual(cur(g), c);

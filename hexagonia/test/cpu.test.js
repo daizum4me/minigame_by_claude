@@ -20,10 +20,11 @@ test('CPU どうしで最後まで遊べる（ルール違反の手を選ばな�
     let steps = 0;
     while (!g.over) {
       assert.ok(++steps < 5000, `seed ${seed} で終わらない`);
-      const id = E.waitingFor(g);
-      const a = CPU.decide(g, id, rng);
-      const r = E.apply(g, id, a);
-      assert.ok(r.ok, `seed ${seed}: ${JSON.stringify(a)} → ${r.error}`);
+      for (const id of E.waiting(g)) {
+        const a = CPU.decide(g, id, rng);
+        const r = E.apply(g, id, a);
+        assert.ok(r.ok, `seed ${seed}: ${JSON.stringify(a)} → ${r.error}`);
+      }
     }
     if (g.endReason.includes('脱落')) stats.core++; else stats.rounds++;
   }
@@ -37,27 +38,30 @@ test('CPU は何もしない相手に勝つ', () => {
     const rng = seeded(seed);
     const g = E.createGame(PLAYERS.slice(0, 2), rng);
     while (!g.over) {
-      const id = E.waitingFor(g);
-      const a = id === 'a' ? (g.pending ? { type: 'defend', use: false } : { type: 'endTurn' }) : CPU.decide(g, id, rng);
-      E.apply(g, id, a);
+      for (const id of E.waiting(g)) {
+        const a = id === 'a' ? (g.pending ? { type: 'bid', count: 0 } : { type: 'endTurn' }) : CPU.decide(g, id, rng);
+        E.apply(g, id, a);
+      }
     }
     if (g.winners.length === 1 && g.winners[0] === 'b') wins++;
   }
   assert.strictEqual(wins, 10);
 });
 
-test('CPU はコアを守り、破りきれるときは攻撃トークンを出す', () => {
+test('CPU はコアを守れる数を出し、破りきれるときは必要な数だけ攻撃トークンを出す', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(3));
   const [a, b] = g.players;
   const [cq, cr] = E.parseKey(b.core);
   const [nq, nr] = E.neighbors(cq, cr)[0];
   Object.assign(g.board[E.key(nq, nr)], { owner: a.id });
-  b.defense = 1;
+  b.defense = 3;
   a.attack = 1;
   E.apply(g, a.id, { type: 'destroy', q: cq, r: cr });
-  assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'defend', use: true });
-  E.apply(g, b.id, { type: 'defend', use: true });
-  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'attack', use: true });
+  // 相手の攻撃トークンは1個なので、2個出せば必ず守れる
+  assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'bid', count: 2 });
+  // 攻撃トークンが相手の防御トークン以上なら、相手の防御トークンと同じ数を出す（相手が全部出しても破れる）
+  a.attack = 5; b.defense = 2;
+  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 2 });
 });
 
 test('部屋に CPU を入れて遊べる', () => {
@@ -83,13 +87,14 @@ test('部屋に CPU を入れて遊べる', () => {
   let steps = 0;
   while (!room.game.over) {
     assert.ok(++steps < 5000);
-    const w = E.waitingFor(room.game);
-    if (w === h) {
-      room.handle(h, { type: 'act', action: room.game.pending ? { type: 'defend', use: false } : { type: 'endTurn' } });
+    if (E.waiting(room.game).includes(h)) {
+      room.handle(h, { type: 'act', action: room.game.pending ? { type: 'bid', count: 0 } : { type: 'endTurn' } });
       continue;
     }
-    assert.strictEqual(timers.length, 1, 'CPU の行動が予約されている');
-    timers.shift().fn();
+    // CPU の行動の予約（持ち時間などのタイマーとは長さで見分ける）
+    const i = timers.findIndex(t => t.ms < 1000);
+    assert.ok(i >= 0, 'CPU の行動が予約されている');
+    timers.splice(i, 1)[0].fn();
   }
   // CPU には何も送らない
   assert.deepStrictEqual(Object.keys(inbox), [h]);

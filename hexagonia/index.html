@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜4人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -78,6 +78,7 @@
     <div class="hud">
       <div class="pill"><span class="muted">ラウンド</span> <strong id="hud-round">1 / 12</strong></div>
       <div class="pill" id="hud-turn"></div>
+      <div class="pill timer" id="hud-timer" hidden></div>
     </div>
     <div class="board-tools">
       <button id="btn-fit" class="tool" title="盤面全体を表示">⤢ 全体表示</button>
@@ -119,28 +120,28 @@
   <div class="rules">
     <p>六角形の盤面で、自分の<b>セル</b>を広げ・強化し、相手のセルを破壊して争います。各プレイヤーは<b>コア</b>（中心に円のあるセル）を1つ持ち、コアを破壊されると脱落です。</p>
     <h3>手番</h3>
-    <p>自分の手番では行動を<b>最大3回</b>まで行い、「手番終了」で資源を受け取って次の人へ。</p>
+    <p>自分の手番では行動を<b>最大3回</b>まで行い、「手番終了」で資源を受け取って次の人へ。持ち時間は<b>120秒</b>で、切れると自動で手番終了になります（破壊の攻防のあいだは止まります）。</p>
     <table>
       <tr><th>行動</th><th>資源</th><th>内容</th></tr>
       <tr><td colspan="3" class="muted">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了は右（スマホでは下）のパネルから。</td></tr>
       <tr><td>拡張</td><td>1<br><small>山岳は2</small></td><td>自分のセルに隣接する空きマスにセルを置く。山岳マスなら防御トークン +1</td></tr>
       <tr><td>強化</td><td>2</td><td>未強化セルを強化済にする。攻撃トークン +1。山岳マスなら防御トークン +1 も</td></tr>
-      <tr><td>破壊</td><td>1</td><td>自分のセルに隣接する相手セルを破壊しようとする（下の攻防）</td></tr>
-      <tr><td>補強</td><td>2</td><td>防御トークン +1</td></tr>
+      <tr><td>破壊</td><td>1</td><td>自分のセルに隣接する相手セルを破壊しようとする（下の攻防）。成功すると、そのマスがそのまま自分のセルになる</td></tr>
+      <tr><td>補強</td><td>2</td><td>防御トークン +1・攻撃トークン +1</td></tr>
     </table>
     <h3>手番終了時の資源</h3>
     <p>強化済セル1つにつき +1（鉱山マスならさらに +1）。コアは常に +2（強化済ならさらに +1）。</p>
     <h3>破壊の攻防</h3>
     <ol>
       <li>攻撃側が資源を1払って破壊を宣言する</li>
-      <li>防御側は防御トークンを1個出すか選ぶ。出さなければ破壊成功</li>
-      <li>出したら、攻撃側は攻撃トークンを1個出して防御トークンを破るか、諦めるかを選ぶ。出したら 2 に戻る</li>
+      <li>攻撃側は攻撃トークンを、防御側は防御トークンを、それぞれ何個出すかを<b>伏せて</b>決める（30秒以内。決めなければ0個）</li>
+      <li>2人とも決めたら同時に公開。<b>攻撃 ≧ 防御なら破壊成功</b>、攻撃 ＜ 防御なら失敗</li>
     </ol>
-    <p>出したトークンはすべてなくなります。破壊されたセルは空きマスに戻ります。</p>
+    <p>出したトークンはすべてなくなります。防御側が防御トークンを1個も持っていなければ、そのまま成功します。破壊に成功したマスは、そのまま攻撃側の未強化セルになります（山岳マスなら防御トークン +1）。</p>
     <h3>勝敗</h3>
     <p>自分以外の全員が脱落したら勝利。12ラウンド終了時はセルの数が最も多い人の勝利（同数は同率優勝）。</p>
     <h3>地形</h3>
-    <p>▲ 山岳マス：拡張コスト +1、拡張・強化で防御トークン +1。<br>★ 鉱山マス：そこのセルが強化済なら、手番終了時の資源 +1。</p>
+    <p>▲ 山岳マス（約15%）：拡張コスト +1、拡張・強化で防御トークン +1。<br>★ 鉱山マス（約15%）：そこのセルが強化済なら、手番終了時の資源 +1。</p>
     <h3>操作</h3>
     <p>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。マスの情報：ホバー。マスを選ぶ（クリック／タップ）と、そのマスでできる行動のボタンが出ます。</p>
   </div>
@@ -152,6 +153,7 @@
   <h2>設定</h2>
   <label class="check"><input type="checkbox" id="set-cb"> 色覚多様性に配慮した配色（Okabe-Ito）</label>
   <label class="check"><input type="checkbox" id="set-pattern"> 陣営ごとにセルの縁の模様を変える</label>
+  <label class="check"><input type="checkbox" id="set-sound"> 効果音を鳴らす</label>
   <div id="set-preview" class="color-preview"></div>
   <form method="dialog"><button class="primary">閉じる</button></form>
 </dialog>
@@ -159,10 +161,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=3"></script>
-<script src="shared/cpu.js?v=3"></script>
-<script src="shared/room.js?v=3"></script>
-<script src="board.js?v=3"></script>
-<script src="client.js?v=3"></script>
+<script src="shared/engine.js?v=4"></script>
+<script src="shared/cpu.js?v=4"></script>
+<script src="shared/room.js?v=4"></script>
+<script src="sound.js?v=4"></script>
+<script src="board.js?v=4"></script>
+<script src="client.js?v=4"></script>
 </body>
 </html>
