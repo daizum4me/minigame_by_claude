@@ -21,8 +21,10 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：山岳：鉱山（河川は別に流す）。いまは試しに山岳と鉱山をなくして、平原と河川だけ
-    terrainRatio: { plain: 1, mountain: 0, mine: 0 },
+    // 平原：山岳：鉱山：農地（河川は別に流す）。いまは山岳はお休み。平原70%・鉱山15%・農地15%
+    terrainRatio: { plain: 14, mountain: 0, mine: 3, farm: 3 },
+    mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
+    farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
     startResource: 3,
     startDefense: 2,                    // 最初に防御トークンを2個配る
     // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
@@ -38,9 +40,8 @@
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。補強は行動回数を使わない
     cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2 },
-    // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
-    // 手番終了時の資源。強化済のコアは +2 に加えて +1
-    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
+    // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）。鉱山は資源ではなく攻撃トークンをくれる
+    income: { strong: 1, mine: 0, mineStrong: 1, core: 2, coreStrongBonus: true },
     // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
     food: { start: 0, core: 5, strong: 1, perCell: 1 },
@@ -56,7 +57,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', river: '河川マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mountain: '山岳マス', mine: '鉱山マス', farm: '農地マス', river: '河川マス' };
   const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '補強' };
 
   function shuffle(arr, rng) {
@@ -242,11 +243,11 @@
     river.forEach(k => { board[k].terrain = 'river'; });
     const free = Object.keys(board).filter(k => !fixed.has(k) && !river.has(k));
     const ratio = RULES.terrainRatio;
-    const total = ratio.plain + ratio.mountain + ratio.mine;
-    const nMountain = Math.round(free.length * ratio.mountain / total);
-    const nMine = Math.round(free.length * ratio.mine / total);
+    const total = ratio.plain + ratio.mountain + ratio.mine + (ratio.farm || 0);
+    const counts = ['mountain', 'mine', 'farm'].map(t => [t, Math.round(free.length * (ratio[t] || 0) / total)]);
     shuffle(free, rng);
-    free.forEach((k, i) => { board[k].terrain = i < nMountain ? 'mountain' : i < nMountain + nMine ? 'mine' : 'plain'; });
+    let i = 0;
+    for (const [t, n] of counts) for (let j = 0; j < n && i < free.length; j++) board[free[i++]].terrain = t;
     return { radius, board, cores };
   }
 
@@ -464,6 +465,7 @@
       Object.assign(cell, { owner: id, strong: false, core: false });
       let extra = '';
       if (cell.terrain === 'mountain') { p.defense += 1; extra = '（山岳：防御トークン +1）'; }
+      if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
@@ -475,6 +477,7 @@
       p.defense += gives.defense;
       let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
       if (cell.terrain === 'mountain') { p.defense += 1; extra += '・山岳：防御トークン +1'; }
+      if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra += `・鉱山：攻撃トークン +${RULES.mineAttack}`; }
       state.actionsLeft--;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
     } else if (action.type === 'destroy') {
@@ -537,6 +540,7 @@
     Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = '';
     if (cell.terrain === 'mountain') { a.defense += 1; extra = '（山岳：防御トークン +1）'; }
+    if (cell.terrain === 'mine') { a.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
   }
 
@@ -584,10 +588,10 @@
     advance(state);
   }
 
-  // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +1
+  // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +1、農地マスのセル1つにつき +1
   function foodMade(state, id) {
     const f = RULES.food;
-    return cellsOf(state, id).reduce((n, c) => n + (c.core ? f.core : 0) + (c.strong ? f.strong : 0), 0);
+    return cellsOf(state, id).reduce((n, c) => n + (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
   }
 
   // 手番終了時に食べる食料：セル1つにつき1

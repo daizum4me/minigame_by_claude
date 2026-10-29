@@ -62,11 +62,16 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形は平原と河川だけ（山岳と鉱山はいまは置かない）', () => {
+test('地形は平原・鉱山・農地（それぞれ約15%）と河川。山岳はいまは置かない', () => {
   for (const n of [2, 4, 8]) {
     const g = newGame(n, 3);
-    const kinds = new Set(Object.values(g.board).map(c => c.terrain));
-    assert.deepStrictEqual([...kinds].sort(), ['plain', 'river']);
+    const cnt = {};
+    Object.values(g.board).forEach(c => { cnt[c.terrain] = (cnt[c.terrain] || 0) + 1; });
+    assert.ok(!cnt.mountain, JSON.stringify(cnt));
+    // コアとその周りは平原、河川は河川。残りのマスの15%ずつ
+    const fixed = g.players.reduce((k, p) => k + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
+    const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
+    assert.deepStrictEqual([cnt.mine, cnt.farm], [Math.round(free * 0.15), Math.round(free * 0.15)], JSON.stringify(cnt));
   }
 });
 
@@ -144,7 +149,7 @@ test('強化：攻撃+1・防御+1（山岳ならさらに防御+1）。強化�
   assert.deepStrictEqual([P(g, me).attack, P(g, me).defense], [2, 5]);
 });
 
-test('ターン終了時の資源：強化済+1、鉱山は強化なしで+1・強化で+2、コア+2（強化済のコアは+3）。維持費はいまはなし', () => {
+test('ターン終了時の資源：強化済+1（鉱山も同じ）、コア+2（強化済のコアは+3）。維持費はいまはなし', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
@@ -152,15 +157,15 @@ test('ターン終了時の資源：強化済+1、鉱山は強化なしで+1・�
   const ns = nb(g, cq, cr);
   setCell(g, ...ns[0], { owner: me });                       // 未強化：0
   setCell(g, ...ns[1], { owner: me, strong: true });         // 強化済：+1
-  setCell(g, ...ns[2], { owner: me, strong: true, terrain: 'mine' }); // 鉱山の強化済：+2
-  setCell(g, 0, 0, { owner: me, terrain: 'mine' });          // 鉱山の未強化：+1
-  assert.strictEqual(E.income(g, me), 2 + 1 + 2 + 1);
+  setCell(g, ...ns[2], { owner: me, strong: true, terrain: 'mine' }); // 鉱山の強化済：+1
+  setCell(g, 0, 0, { owner: me, terrain: 'mine' });          // 鉱山の未強化：0
+  assert.strictEqual(E.income(g, me), 2 + 1 + 1);
   g.board[P(g, me).core].strong = true;
-  assert.strictEqual(E.income(g, me), 3 + 1 + 2 + 1);
+  assert.strictEqual(E.income(g, me), 3 + 1 + 1);
   assert.strictEqual(E.upkeep(g, me), 0);
   const before = P(g, me).resource;
   E.apply(g, me, { type: 'endTurn' });
-  assert.strictEqual(P(g, me).resource, before + 7);
+  assert.strictEqual(P(g, me).resource, before + 5);
   assert.notStrictEqual(cur(g), me);
 });
 
@@ -606,4 +611,35 @@ test('食料が足りなければ、足りない数だけセルを選んで捨�
   const cells = mine.slice(0, 2).map(c => E.key(c.q, c.r));
   assert.ok(E.apply(g, me, { type: 'abandon', cells }).ok);
   assert.strictEqual(cur(g), other);
+});
+
+test('鉱山マス：拡張したとき・強化したとき・破壊で取ったときに攻撃トークン +1', () => {
+  const { g, a, b, t, tq, tr } = clashSetup();
+  const ac = E.parseKey(P(g, a).core);
+  const [mq, mr] = nb(g, ...ac).find(([q, r]) => !g.board[E.key(q, r)].owner);
+  setCell(g, mq, mr, { terrain: 'mine' });
+  P(g, a).attack = 0;
+  assert.ok(E.apply(g, a, { type: 'expand', q: mq, r: mr }).ok);
+  assert.strictEqual(P(g, a).attack, 1);
+  assert.ok(E.apply(g, a, { type: 'strengthen', q: mq, r: mr }).ok);
+  assert.strictEqual(P(g, a).attack, 1 + 1 + 1);       // 強化の +1 と鉱山の +1
+  // 破壊で鉱山マスを取ったときも +1
+  g.board[t].terrain = 'mine';
+  P(g, b).defense = 0;
+  assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
+  E.apply(g, a, { type: 'bid', count: 1 });
+  assert.strictEqual(g.board[t].owner, a);
+  assert.strictEqual(P(g, a).attack, 3 - 1 + 1);
+});
+
+test('農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const [fq, fr] = nb(g, cq, cr)[0];
+  assert.strictEqual(E.foodMade(g, me), 5);
+  setCell(g, fq, fr, { owner: me, terrain: 'farm' });
+  assert.strictEqual(E.foodMade(g, me), 5 + 1);
+  g.board[E.key(fq, fr)].strong = true;
+  assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
 });

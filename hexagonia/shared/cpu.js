@@ -48,7 +48,8 @@
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
-        if (c.terrain === 'mine') s += 2.2;           // 鉱山は取っただけで毎手番 +1
+        if (c.terrain === 'mine') s += me.attack <= 1 ? 2.5 : 1.2;   // 鉱山は取ると攻撃トークン +1
+        if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'mountain') s += me.defense < 2 ? 0.8 : -0.3;
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ

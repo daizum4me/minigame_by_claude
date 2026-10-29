@@ -52,17 +52,6 @@
     ctx.closePath();
   }
 
-  function starPath(ctx, cx, cy, outer, inner) {
-    ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const rad = i % 2 ? inner : outer;
-      const a = Math.PI / 5 * i - Math.PI / 2;
-      if (i === 0) ctx.moveTo(cx + rad * Math.cos(a), cy + rad * Math.sin(a));
-      else ctx.lineTo(cx + rad * Math.cos(a), cy + rad * Math.sin(a));
-    }
-    ctx.closePath();
-  }
-
   function rgba(hex, a) {
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
@@ -393,6 +382,18 @@
             }
           }
         } else if (c.terrain === 'mountain') {
+          // 山岳（いまはお休み）：山が2つ
+          ctx.beginPath();
+          ctx.moveTo(x - s * 0.32, y + s * 0.2);
+          ctx.lineTo(x - s * 0.1, y - s * 0.18);
+          ctx.lineTo(x + s * 0.04, y + s * 0.04);
+          ctx.lineTo(x + s * 0.14, y - s * 0.1);
+          ctx.lineTo(x + s * 0.32, y + s * 0.2);
+          ctx.closePath();
+          ctx.fillStyle = COL.mark;
+          ctx.fill();
+        } else if (c.terrain === 'mine') {
+          // 鉱山：▲
           ctx.beginPath();
           ctx.moveTo(x, y - s * 0.25);
           ctx.lineTo(x + s * 0.27, y + s * 0.2);
@@ -400,8 +401,10 @@
           ctx.closePath();
           ctx.fillStyle = COL.mark;
           ctx.fill();
-        } else if (c.terrain === 'mine') {
-          starPath(ctx, x, y + s * 0.02, s * 0.28, s * 0.12);
+        } else if (c.terrain === 'farm') {
+          // 農地：●
+          ctx.beginPath();
+          ctx.arc(x, y, s * 0.2, 0, Math.PI * 2);
           ctx.fillStyle = COL.mark;
           ctx.fill();
         }

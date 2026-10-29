@@ -140,8 +140,9 @@
     'cell-strong': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.2"/>`),
     core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
     'hex-plain': tile('#3A3A38', '#6A695F'),
-    'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
-    'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.6 L13.2 10.6 L16.4 10.8 L13.9 12.8 L14.8 15.9 L12 14.1 L9.2 15.9 L10.1 12.8 L7.6 10.8 L10.8 10.6 Z" fill="#A3A198"/>'),
+    'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M7.5 15 L10 9.5 L12 12.5 L13.5 10.5 L16.5 15 Z" fill="#A3A198"/>'),
+    'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
+    'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
     'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
     bridge: tile('#2E4250', '#5B7A8C', '<path d="M6.5 9.6 H17.5 M6.5 14.4 H17.5 M8.5 9.6 V14.4 M10.8 9.6 V14.4 M13.2 9.6 V14.4 M15.5 9.6 V14.4" stroke="#B9A88C" stroke-width="1.2"/>'),
     'act-expand': svg(`<path d="${HEX}" fill="none" stroke="#9CC6F2" stroke-width="1.4" stroke-dasharray="2.5 1.8"/><path d="M12 8 V16 M8 12 H16" stroke="#9CC6F2" stroke-width="2" stroke-linecap="round"/>`),
@@ -844,7 +845,8 @@
   const TERRAIN_EFFECTS = {
     plain: '効果なし',
     mountain: `拡張コスト +1（資源 ${R.cost.expandMountain}）。拡張すると防御トークン +1、強化すると攻撃トークン +1 に加えて防御トークン +1`,
-    mine: `強化しなくても手番終了時の資源 +${R.income.mine}、強化すると +${R.income.mineStrong}`,
+    mine: `拡張したとき（破壊で取ったときも）と強化したときに、攻撃トークン +${R.mineAttack}`,
+    farm: `このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
@@ -859,7 +861,7 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
+      gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `攻撃トークン +${R.mineAttack}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
     } else if (c.owner === app.me) {
       if (c.strong) return { note: '強化済のセルです' };
       type = 'strengthen';
@@ -867,7 +869,7 @@
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
       const gives = R.strengthenGives;
       const foodNote = `・食料 +${R.food.strong}`;
-      gain = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? 1 : 0)}・手番終了時の資源 +${inc}${foodNote}`;
+      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? 1 : 0)}・手番終了時の資源 +${inc}${foodNote}`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
@@ -912,7 +914,7 @@
       }
     }
     const el = $('#tooltip');
-    el.innerHTML = `<div class="tt-head">${{ plain: '', mountain: '▲ ', mine: '★ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    el.innerHTML = `<div class="tt-head">${{ plain: '', mountain: '⛰ ', mine: '▲ ', farm: '● ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
