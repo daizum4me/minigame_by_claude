@@ -100,10 +100,11 @@ test('持ち時間120秒で自動で手番終了、攻防のあいだは止ま�
   assert.ok(gp.alive);
   // 攻防のあとは残り70秒から再開
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
+  const before = `${room.game.round}:${room.game.turn}`;
   fire(TURN_MS - 50000);
-  assert.strictEqual(E.current(room.game).id, g);
+  assert.notStrictEqual(`${room.game.round}:${room.game.turn}`, before);   // 手番が進んだ
   assert.ok(room.game.log.some(l => l.text.includes('持ち時間が切れました')));
-  // 次の人は120秒から
+  // 次の手番は120秒から（ラウンドが変わって同じ人が続けて手番になることもある）
   assert.strictEqual(last(g).room.turnLeftMs, TURN_MS);
 });
 
