@@ -1,0 +1,12 @@
+{
+  "name": "hexagonia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ヘキサゴニア（仮）— 六角形のマスで争う2〜4人のオンライン陣取りゲーム（PeerJS による P2P 対戦）",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
