@@ -365,3 +365,41 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 .clash-result.bad { color: var(--bad); }
 .clash-result.good { color: #A8D6FF; }
 .log .lg-clash { color: var(--text); font-weight: 600; }
+
+/* 行動回数を使い切ったとき（画面中央） */
+.extra { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 6; pointer-events: none; }
+.extra-card {
+  pointer-events: auto;
+  width: min(380px, 100%);
+  background: rgba(42, 42, 40, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .45);
+  text-align: center;
+}
+.extra-card h3 { margin: 0 0 12px; color: var(--text); font-size: 16px; letter-spacing: 0; }
+.extra-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.extra-btns button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; }
+.extra-btns b { font-size: 16px; }
+.extra-btns small { display: inline-flex; align-items: center; gap: 2px; color: var(--muted); font-size: 12px; }
+.extra-btns .tk { width: 15px; height: 15px; }
+.extra-card .small { font-size: 12px; margin: 10px 0 2px; }
+.actions .act.buy { grid-column: 1 / -1; background: rgba(255, 184, 104, 0.12); border-color: rgba(255, 184, 104, 0.45); }
+
+/* セルの数（一番大きなかたまり / 総数） */
+.cells small { color: var(--muted); font-size: 11px; }
+
+/* ロビーの選択 */
+.select {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-line);
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: var(--text);
+  font: inherit;
+}
+.select:disabled { opacity: .7; }
+h3 #diameter-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }

@@ -92,6 +92,10 @@
       tone({ freq: 1760, dur: 0.2, vol: 0.05, type: 'square' });
       noise({ dur: 0.08, type: 'highpass', freq: 4000, vol: 0.1 });
     },
+    buy() {         // 行動 +1：ちゃりん
+      tone({ freq: 1568, dur: 0.12, vol: 0.08, type: 'triangle' });
+      tone({ freq: 2093, t: 0.08, dur: 0.3, vol: 0.08, type: 'triangle' });
+    },
     endTurn() {     // 手番終了：とん
       tone({ freq: 330, freqEnd: 260, dur: 0.1, vol: 0.1 });
     },

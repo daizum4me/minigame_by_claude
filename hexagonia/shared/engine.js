@@ -16,10 +16,12 @@
   const RULES = {
     minPlayers: 2,
     maxPlayers: 4,
-    radius: { 2: 4, 3: 5, 4: 6 },       // 人数ごとの盤面の半径
+    radius: { 2: 3, 3: 4, 4: 5 },       // 人数ごとの盤面の半径（直径 7・9・11 マス）。部屋の設定で変えられる
+    radiusRange: [3, 7],                // 設定できる半径（直径 7〜15 マス）
     terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
     startResource: 3,
     actionsPerTurn: 3,
+    extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     rounds: 12,
     cost: { expand: 1, expandMountain: 2, strengthen: 2, destroy: 1, reinforce: 2 },
     income: { strong: 1, mineBonus: 1, core: 2, coreStrongBonus: true }, // 要確認：強化済コアは +1 も得る（暫定：得る）
@@ -62,8 +64,8 @@
     return Array.from({ length: count }, (_, i) => cells[Math.round(i * cells.length / count) % cells.length]);
   }
 
-  function generateBoard(count, rng) {
-    const radius = RULES.radius[count];
+  function generateBoard(count, rng, radius) {
+    radius = radius || RULES.radius[count];
     const cores = corePositions(radius, count);
     const board = {};
     for (let q = -radius; q <= radius; q++) {
@@ -86,12 +88,16 @@
 
   /*
    * players: [{ id, name, color }]（2〜4人）
+   * opts.radius：盤面の半径（省略すると人数に合わせる）
    * 手番順はランダム。盤面上の配置も手番順に並べる。
    */
-  function createGame(players, rng) {
+  function createGame(players, rng, opts) {
     rng = rng || Math.random;
     if (players.length < RULES.minPlayers || players.length > RULES.maxPlayers) throw new Error('人数が正しくありません');
-    const { radius, board, cores } = generateBoard(players.length, rng);
+    let radius = opts && opts.radius;
+    if (radius && (radius < RULES.radiusRange[0] || radius > RULES.radiusRange[1])) throw new Error('盤面の大きさが正しくありません');
+    const { board, cores } = generateBoard(players.length, rng, radius);
+    radius = radius || RULES.radius[players.length];
     const order = shuffle(players.slice(), rng);
     const state = {
       radius,
@@ -104,6 +110,7 @@
       turn: 0,               // players の何番目の手番か
       round: 1,
       actionsLeft: RULES.actionsPerTurn,
+      extraBought: 0,        // この手番で行動 +1 を買った回数
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
       over: false,
       winners: [],
@@ -152,6 +159,11 @@
     if (!p || p.id !== id) return 'あなたの手番ではありません';
     if (state.pending) return '破壊の攻防が終わるまで待ってください';
     if (type === 'endTurn') return '';
+    if (type === 'buyAction') {
+      if (state.actionsLeft > 0) return 'まだ行動回数が残っています';
+      if (p.resource < extraActionCost(state)) return '資源トークンが足りません';
+      return '';
+    }
     if (!(type in ACTION_NAMES)) return '不明な行動です';
     if (state.actionsLeft <= 0) return 'この手番の行動回数を使い切りました';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
@@ -190,6 +202,14 @@
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
     if (action.type === 'endTurn') { endTurn(state); return { ok: true }; }
+    if (action.type === 'buyAction') {
+      const cost = extraActionCost(state);
+      p.resource -= cost;
+      state.actionsLeft = 1;
+      state.extraBought++;
+      addLog(state, `${p.name} が資源トークン ${cost} 個を払って行動 +1`, 'buy');
+      return { ok: true };
+    }
     if (action.type === 'reinforce') {
       p.resource -= RULES.cost.reinforce;
       p.defense += 1;
@@ -305,20 +325,50 @@
       if (i >= state.players.length) {
         i = 0;
         state.round++;
-        if (state.round > RULES.rounds) { finishByCells(state); return; }
+        if (state.round > RULES.rounds) { finishByGroup(state); return; }
         addLog(state, `ラウンド ${state.round} / ${RULES.rounds}`, 'round');
       }
     } while (!state.players[i].alive);
     state.turn = i;
     state.actionsLeft = RULES.actionsPerTurn;
+    state.extraBought = 0;
   }
 
-  function finishByCells(state) {
+  // 12ラウンド終了：つながっている一番大きなかたまりが大きい人の勝利
+  function finishByGroup(state) {
     state.round = RULES.rounds;
     const alive = state.players.filter(p => p.alive);
-    const counts = alive.map(p => cellsOf(state, p.id).length);
-    const best = Math.max(...counts);
-    finish(state, alive.filter((p, i) => counts[i] === best), `${RULES.rounds}ラウンド終了・セル ${best} 個`);
+    const sizes = alive.map(p => largestGroup(state, p.id).length);
+    const best = Math.max(...sizes);
+    finish(state, alive.filter((p, i) => sizes[i] === best), `${RULES.rounds}ラウンド終了・最大のかたまり ${best} セル`);
+  }
+
+  // つながっている自分のセルのかたまりのうち、一番大きいもの（マスのキーの配列）
+  function largestGroup(state, id) {
+    const seen = new Set();
+    let best = [];
+    for (const c of cellsOf(state, id)) {
+      const k0 = key(c.q, c.r);
+      if (seen.has(k0)) continue;
+      const group = [], stack = [k0];
+      seen.add(k0);
+      while (stack.length) {
+        const k = stack.pop();
+        group.push(k);
+        const [q, r] = parseKey(k);
+        for (const [nq, nr] of neighbors(q, r)) {
+          const nk = key(nq, nr), n = state.board[nk];
+          if (n && n.owner === id && !seen.has(nk)) { seen.add(nk); stack.push(nk); }
+        }
+      }
+      if (group.length > best.length) best = group;
+    }
+    return best;
+  }
+
+  // 次に行動 +1 を買うのに必要な資源
+  function extraActionCost(state) {
+    return RULES.extraAction.base + RULES.extraAction.step * (state.extraBought || 0);
   }
 
   // 脱落させる（切断したまま戻らないときなどに使う）
@@ -344,5 +394,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
+    largestGroup, extraActionCost,
   };
 });

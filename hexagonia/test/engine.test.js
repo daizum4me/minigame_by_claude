@@ -22,12 +22,18 @@ const P = (g, id) => g.players.find(p => p.id === id);
 // 盤面を空にして、自分で決めた配置にする
 function setCell(g, q, r, props) { Object.assign(g.board[E.key(q, r)], { owner: null, strong: false, core: false, terrain: 'plain' }, props); }
 
-test('人数ごとの盤面の大きさ', () => {
-  for (const [n, cells] of [[2, 61], [3, 91], [4, 127]]) {
+test('人数ごとの盤面の大きさ（直径 7・9・11）と、大きさの指定', () => {
+  for (const [n, cells] of [[2, 37], [3, 61], [4, 91]]) {
     const g = newGame(n);
     assert.strictEqual(Object.keys(g.board).length, cells);
     assert.strictEqual(g.radius, E.RULES.radius[n]);
   }
+  // 直径 15（半径 7）を指定
+  const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 7 });
+  assert.strictEqual(Object.keys(g.board).length, 169);
+  assert.strictEqual(g.radius, 7);
+  assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 2 }));
+  assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 8 }));
 });
 
 test('コアは外周寄りで等間隔、周囲1マスは平原', () => {
@@ -49,8 +55,8 @@ test('地形はおおよそ 70%：15%：15%', () => {
   const g = newGame(4, 3);
   const cnt = { plain: 0, mountain: 0, mine: 0 };
   Object.values(g.board).forEach(c => cnt[c.terrain]++);
-  // 127マスのうちコアの周り28マスは平原。残り99マスの15%
-  assert.deepStrictEqual([cnt.mountain, cnt.mine], [15, 15], JSON.stringify(cnt));
+  // 91マスのうちコアの周り28マスは平原。残り63マスの15%
+  assert.deepStrictEqual([cnt.mountain, cnt.mine], [9, 9], JSON.stringify(cnt));
 });
 
 test('初期状態：資源3・攻撃防御0・コア未強化', () => {
@@ -227,7 +233,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   assert.strictEqual(E.apply(g, a, { type: 'endTurn' }).ok, false);
 });
 
-test('12ラウンド終了でセルの多い人の勝利、同数は同率優勝', () => {
+test('12ラウンド終了で一番大きなかたまりが大きい人の勝利、同じなら同率優勝', () => {
   const g = newGame(2);
   const [a, b] = g.players.map(p => p.id);
   for (let i = 0; i < 24; i++) {
@@ -261,5 +267,58 @@ test('途中で脱落させる（切断）', () => {
   E.forfeit(g, a);
   assert.strictEqual(P(g, a).alive, false);
   assert.strictEqual(cur(g), b);
+  assert.strictEqual(g.actionsLeft, 3);
+});
+
+test('勝敗はセルの総数ではなく、つながっている一番大きなかたまりで決まる', () => {
+  const g = newGame(2, 4);
+  const [a, b] = g.players.map(p => p.id);
+  const ac = E.parseKey(P(g, a).core), bc = E.parseKey(P(g, b).core);
+  // a：コアにつながる2マス＋離れた2マスずつ（総数5・最大のかたまり3）
+  const an = E.neighbors(...ac);
+  setCell(g, ...an[0], { owner: a });
+  setCell(g, ...an[3], { owner: a });
+  setCell(g, 0, 0, { owner: a });
+  setCell(g, 1, 0, { owner: a, terrain: 'plain' });
+  // b：コアにつながる3マス（総数4・最大のかたまり4）
+  const bn = E.neighbors(...bc);
+  setCell(g, ...bn[0], { owner: b });
+  setCell(g, ...bn[1], { owner: b });
+  setCell(g, ...bn[2], { owner: b });
+  assert.strictEqual(E.cellsOf(g, a).length, 5);
+  assert.strictEqual(E.largestGroup(g, a).length, 3);
+  assert.strictEqual(E.largestGroup(g, b).length, 4);
+  g.round = 12;
+  E.apply(g, cur(g), { type: 'endTurn' });
+  E.apply(g, cur(g), { type: 'endTurn' });
+  assert.ok(g.over);
+  assert.deepStrictEqual(g.winners, [b]);
+  assert.match(g.endReason, /最大のかたまり 4 セル/);
+});
+
+test('行動回数を使い切ったら、資源を払って行動 +1（6, 10, 14…、手番が変わると 6 に戻る）', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  P(g, me).resource = 50;
+  // まだ行動が残っているうちは買えない
+  assert.strictEqual(E.apply(g, me, { type: 'buyAction' }).ok, false);
+  for (let i = 0; i < 3; i++) E.apply(g, me, { type: 'reinforce' });
+  assert.strictEqual(g.actionsLeft, 0);
+  assert.strictEqual(P(g, me).resource, 44);
+  for (const cost of [6, 10, 14]) {
+    assert.strictEqual(E.extraActionCost(g), cost);
+    assert.ok(E.apply(g, me, { type: 'buyAction' }).ok);
+    assert.strictEqual(g.actionsLeft, 1);
+    assert.strictEqual(E.apply(g, me, { type: 'buyAction' }).ok, false); // 1回ずつ
+    E.apply(g, me, { type: 'reinforce' });
+  }
+  assert.strictEqual(P(g, me).resource, 44 - 6 - 10 - 14 - 2 * 3);
+  // 資源が足りなければ買えない
+  P(g, me).resource = 17;
+  const r = E.apply(g, me, { type: 'buyAction' });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.error, /資源/);
+  E.apply(g, me, { type: 'endTurn' });
+  assert.strictEqual(E.extraActionCost(g), 6);
   assert.strictEqual(g.actionsLeft, 3);
 });

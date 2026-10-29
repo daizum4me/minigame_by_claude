@@ -65,7 +65,7 @@ test('参加・色・開始・状態の配信', () => {
   room.handle(h, { type: 'start' });
   const st = last(g).room;
   assert.strictEqual(st.phase, 'game');
-  assert.strictEqual(Object.keys(st.game.board).length, 61);
+  assert.strictEqual(Object.keys(st.game.board).length, 37);
   // 5人目は入れない・ゲーム中は新規参加できない
   assert.ok(room.join('t3', 'x').error);
 });
@@ -166,4 +166,21 @@ test('ロビーで切断した人は外れる', () => {
   const g = room.join('t2', 'B').id;
   room.disconnect(g);
   assert.strictEqual(last(h).room.players.length, 1);
+});
+
+test('ホストは盤面の直径を設定できる', () => {
+  const { room, inbox, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(g, { type: 'settings', diameter: 13 });   // ホスト以外は変えられない
+  assert.strictEqual(last(h).room.settings.diameter, 0);
+  room.handle(h, { type: 'settings', diameter: 8 });    // 偶数は不可
+  assert.strictEqual(inbox[h].at(-1).type, 'error');
+  room.handle(h, { type: 'settings', diameter: 17 });   // 範囲外
+  assert.strictEqual(inbox[h].at(-1).type, 'error');
+  room.handle(h, { type: 'settings', diameter: 13 });
+  assert.strictEqual(last(g).room.settings.diameter, 13);
+  room.handle(h, { type: 'start' });
+  assert.strictEqual(room.game.radius, 6);
+  assert.strictEqual(Object.keys(room.game.board).length, 127);
 });
