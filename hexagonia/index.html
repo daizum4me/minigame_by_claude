@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜4人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -129,9 +129,9 @@
 <dialog id="rules" class="dialog">
   <h2>ルール</h2>
   <div class="rules">
-    <p>六角形の盤面で、自分の<b>セル</b>を広げ・強化し、相手のセルを破壊して争います。各プレイヤーは<b>コア</b>（中心に円のあるセル）を1つ持ち、コアを破壊されると脱落です。</p>
+    <p>六角形の盤面で、自分の<b>セル</b>を広げ・強化し、相手のセルを破壊して争います。各プレイヤーは<b>コア</b>（中心に円のあるセル。盤面の一番外側に置かれる）を1つ持ち、コアを破壊されると脱落です。コアは<b>攻撃が3回成功するまで破壊されません</b>（円の下の3つの点が残りの耐久）。</p>
     <h3>手番</h3>
-    <p>自分の手番では行動を<b>最大3回</b>まで行い（使い切ったら、資源を払って行動 +1 できます。6個から始まり、同じ手番で買うたびに +4）、「手番終了」で資源を受け取って次の人へ。持ち時間は<b>120秒</b>で、切れると自動で手番終了になります（破壊の攻防のあいだは止まります）。</p>
+    <p>自分の手番では行動を<b>最大3回</b>まで行い（使い切ったら、資源を払って行動 +1 できます。6個から始まり、同じ手番で買うたびに +4）、「手番終了」で資源を受け取って次の人へ。持ち時間は<b>120秒</b>で、切れると自動で手番終了になります（破壊の攻防のあいだは止まります）。資源が足りないなどで、もうできる行動がなくなったときも自動で手番終了になります。</p>
     <table>
       <tr><th>行動</th><th>資源</th><th>内容</th></tr>
       <tr><td colspan="3" class="muted">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了は右（スマホでは下）のパネルから。</td></tr>
@@ -172,11 +172,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=5"></script>
-<script src="shared/cpu.js?v=5"></script>
-<script src="shared/room.js?v=5"></script>
-<script src="sound.js?v=5"></script>
-<script src="board.js?v=5"></script>
-<script src="client.js?v=5"></script>
+<script src="shared/engine.js?v=6"></script>
+<script src="shared/cpu.js?v=6"></script>
+<script src="shared/room.js?v=6"></script>
+<script src="sound.js?v=6"></script>
+<script src="board.js?v=6"></script>
+<script src="client.js?v=6"></script>
 </body>
 </html>

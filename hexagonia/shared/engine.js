@@ -20,6 +20,7 @@
     radiusRange: [3, 7],                // 設定できる半径（直径 7〜15 マス）
     terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
     startResource: 3,
+    coreHp: 3,                          // コアは攻撃が3回成功すると破壊される
     actionsPerTurn: 3,
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     rounds: 12,
@@ -58,10 +59,22 @@
     return out;
   }
 
-  // コアの位置：外周の1つ内側の輪に、人数で等間隔に並べる
+  // コアの位置：盤面の一番外側の輪に、人数で等間隔に並べる。
+  // 全員が同じ条件になるよう、全員が角（隣のマス3つ）か、全員が辺（隣のマス4つ）になる置き方を選ぶ
   function corePositions(radius, count) {
-    const cells = ring(radius - 1);
-    return Array.from({ length: count }, (_, i) => cells[Math.round(i * cells.length / count) % cells.length]);
+    const cells = ring(radius);
+    const n = cells.length;
+    let best = null;
+    for (let o = 0; o < radius; o++) {
+      const idx = Array.from({ length: count }, (_, i) => Math.round(o + i * n / count) % n);
+      const corners = idx.filter(i => i % radius === 0).length;
+      if (corners !== 0 && corners !== count) continue;
+      const pos = idx.map(i => cells[i]);
+      let gap = Infinity;
+      for (let i = 0; i < count; i++) for (let j = i + 1; j < count; j++) gap = Math.min(gap, dist(pos[i], pos[j]));
+      if (!best || gap > best.gap) best = { pos, gap };
+    }
+    return best.pos;
   }
 
   function generateBoard(count, rng, radius) {
@@ -105,7 +118,7 @@
       players: order.map((p, i) => {
         const [q, r] = cores[i];
         Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: 0, alive: true, core: key(q, r) };
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: 0, alive: true, core: key(q, r), coreHp: RULES.coreHp };
       }),
       turn: 0,               // players の何番目の手番か
       round: 1,
@@ -196,6 +209,25 @@
    *         { type: 'bid', count }（破壊の攻防で、攻撃側・防御側が出すトークンの数を伏せて決める）
    */
   function apply(state, id, action) {
+    const r = applyAction(state, id, action);
+    if (r.ok) autoEndIfStuck(state);
+    return r;
+  }
+
+  // 手番の人が資源を使い切るなどして、もう何もできなければ自動で手番終了
+  function autoEndIfStuck(state) {
+    while (!state.over && !state.pending && !canAct(state, current(state).id)) {
+      addLog(state, `${current(state).name} はもう行動できないため、自動で手番終了`, 'info');
+      endTurn(state);
+    }
+  }
+
+  function canAct(state, id) {
+    if (!actionBlocked(state, id, 'reinforce') || !actionBlocked(state, id, 'buyAction')) return true;
+    return ['expand', 'strengthen', 'destroy'].some(t => targets(state, id, t).length > 0);
+  }
+
+  function applyAction(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
     if (action.type === 'bid') return bid(state, id, action.count);
     const blocked = actionBlocked(state, id, action.type);
@@ -282,6 +314,14 @@
     if (d.defense + def > 0) addLog(state, `攻防：${a.name} 攻撃トークン ${atk} 個 ／ ${d.name} 防御トークン ${def} 個`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
     const wasCore = cell.core;
+    if (wasCore) {
+      // コアは耐久が 0 になるまで残る
+      d.coreHp--;
+      if (d.coreHp > 0) {
+        addLog(state, `コアに命中：${a.name} が ${d.name} のコア${cellLabel(cell)}への攻撃に成功（残り耐久 ${d.coreHp} / ${RULES.coreHp}）`, 'hit');
+        return;
+      }
+    }
     Object.assign(cell, { owner: null, strong: false, core: false });
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
@@ -380,6 +420,7 @@
     eliminate(state, p);
     // 手番の人が抜けたら次へ（資源は受け取らない）
     if (!state.over && wasTurn) advance(state);
+    autoEndIfStuck(state);
   }
 
   // 今だれの操作を待っているか（攻防中は、まだ数を決めていない人。2人のこともある）

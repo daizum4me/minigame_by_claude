@@ -403,3 +403,6 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 }
 .select:disabled { opacity: .7; }
 h3 #diameter-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
+
+.badge.hp { color: var(--bad); border-color: rgba(255, 156, 148, 0.45); }
+.log .lg-hit { color: var(--bad); font-weight: 600; }
