@@ -26,6 +26,10 @@
     return E.cellsOf(g, id).filter(c => E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id; })).length;
   }
 
+  // 相手の防御トークンの数の見積もり（実際の数は見ない）。
+  // 見えている増減（最初の2個・強化・山岳、守られた攻防）に、見えない生産の分を1個ぶん足しておく
+  const estDefense = foe => Math.max(0, foe.defenseSeen == null ? foe.defense : foe.defenseSeen) + 1;
+
   function scoreActions(g, id, rng) {
     const me = playerById(g, id);
     const foes = g.players.filter(p => p.alive && p.id !== id);
@@ -88,12 +92,12 @@
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
         const foe = playerById(g, c.owner);
-        // 相手が防御トークンを全部出しても破りきれるか（破りきれないときは出す数の読み合いになる）。
-        // 防御トークンの数は画面には出ないが、増減はすべてログに出るので、覚えている前提で数える
-        const canBreak = me.attack >= foe.defense;
+        // 相手が防御トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
+        const est = estDefense(foe);
+        const canBreak = me.attack >= est;
         let s;
         if (c.core) s = canBreak ? 30 : 3;                  // コアは最優先
-        else if (foe.defense === 0) s = 5;
+        else if (est <= 1) s = 5;
         else s = canBreak ? 3.2 : 0.8;
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1;
@@ -104,6 +108,12 @@
         if (E.dist([c.q, c.r], E.parseKey(me.core)) <= 1) s += 3;
         out.push({ s: s + noise(), a: { type: 'destroy', q: c.q, r: c.r } });
       }
+    }
+    if (!E.actionBlocked(g, id, 'produceAttack')) {
+      // 生産（攻撃トークン）：攻撃トークンがないと破壊できない
+      const front = frontier(g, id) > 0;
+      const s = me.attack === 0 && front ? 3.5 : me.attack < 2 && front ? 1.2 : 0.1;
+      out.push({ s: s + noise(), a: { type: 'produceAttack' } });
     }
     if (!E.actionBlocked(g, id, 'reinforce')) {
       // 補強は防御トークン +1 だけ（行動回数は使わない）
@@ -124,7 +134,8 @@
       if (pd.atk === null && pd.attacker === id) {
         const foe = playerById(g, pd.defender);
         let n;
-        if (me.attack >= foe.defense) n = Math.max(1, foe.defense);  // 相手が全部出しても破れる最小の数（1個以上）
+        const est = estDefense(foe);
+        if (me.attack >= est) n = Math.max(1, est);                  // 相手が全部出しても破れそうな最小の数（1個以上）
         else if (target.core) n = me.attack;                         // コアを狙うなら全部
         else n = rng() < 0.6 ? me.attack : 1 + Math.floor(rng() * me.attack);
         return { type: 'bid', count: n };

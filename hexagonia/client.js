@@ -583,9 +583,11 @@
     $('#me-actions').textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
     $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('attack', me.attack, true) + tokenChip('defense', me.defense, true) + tokenChip('food', me.food, true) : '';
 
-    // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
+    // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない生産と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
-    $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御 +1（行動回数を使わない）</small></button>`
+    // 生産：資源でトークンを作る（行動回数を使わない）
+    const prod = (type, kind, label) => `<button class="act prod" data-act="${type}" ${canAct && !E.actionBlocked(g, app.me, type) ? '' : 'disabled'} title="生産：資源 ${R.cost[type]} で${label}トークン +1（行動回数を使わない・ログに出ない）">${TOKEN_SVG[kind]}<b>生産</b><small>資源 ${R.cost[type]} → ${label} +1</small></button>`;
+    $('#actions').innerHTML = prod('reinforce', 'defense', '防御') + prod('produceAttack', 'attack', '攻撃')
       + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
       + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
@@ -668,8 +670,8 @@
     if (!pd) {
       // 公開された結果
       el.innerHTML = `${head}
-        <div class="clash-count reveal"><span>${TOKEN_SVG.attack}攻撃 <b>${res.atk}</b></span><span class="vs">vs</span><span>${TOKEN_SVG.defense}防御 <b>${res.def}</b></span></div>
-        <p class="clash-result ${res.success ? 'bad' : 'good'}">${!res.success ? '破壊失敗（守られた）' : cell.owner === res.defender ? '防御済に命中（強化済に戻った）' : '破壊成功'}</p>`;
+        <p class="clash-result ${res.success ? 'bad' : 'good'}">${res.success ? '破壊成功' : '破壊失敗（守られた）'}</p>
+        <p class="muted small" style="text-align:center">${res.atk != null ? `あなたは攻撃トークンを ${res.atk} 個出しました。` : res.def != null ? `あなたは防御トークンを ${res.def} 個出しました。` : ''}出した数はほかの人には公開されません</p>`;
       el.hidden = false;
       return;
     }
@@ -900,7 +902,7 @@
       else if (g.abandon) why = '捨てるセルを選んでいるところです';
       else if (g.actionsLeft <= 0) why = '行動回数を使い切りました';
       else if (me.resource < cost) why = `資源トークンが足りません（あと ${cost - me.resource}）`;
-      else if (type === 'destroy' && me.attack < 1) why = '攻撃トークンが1個以上必要です（強化か補強で増やせる）';
+      else if (type === 'destroy' && me.attack < 1) why = '攻撃トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
       else why = '自分のセルに隣接していません';
     }
     return { type, cost, gain, why };
@@ -1026,8 +1028,8 @@
     $('#actions').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b || b.disabled) return;
-      // 補強はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
-      if (b.dataset.act === 'reinforce') window.HexSound.play('reinforce');
+      // 生産はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
+      if (b.dataset.act === 'reinforce' || b.dataset.act === 'produceAttack') window.HexSound.play('reinforce');
       send({ type: 'act', action: { type: b.dataset.act } });
     };
     $('#tooltip').onclick = e => {

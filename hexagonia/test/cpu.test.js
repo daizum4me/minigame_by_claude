@@ -58,7 +58,7 @@ test('CPU は何もしない相手に勝つ', () => {
   assert.strictEqual(wins, 10);
 });
 
-test('CPU はコアを守れる数を出し、破りきれるときは必要な数だけ攻撃トークンを出す', () => {
+test('CPU はコアを守れる数を出し、攻撃では相手の防御トークンを（実際の数を見ずに）見積もって出す', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(3));
   const [a, b] = g.players;
   const [cq, cr] = E.parseKey(b.core);
@@ -70,9 +70,9 @@ test('CPU はコアを守れる数を出し、破りきれるときは必要な�
   E.apply(g, a.id, { type: 'destroy', q: cq, r: cr });
   // 相手の攻撃トークンは2個なので、3個出せば必ず守れる
   assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'bid', count: 3 });
-  // 攻撃トークンが相手の防御トークン以上なら、相手の防御トークンと同じ数を出す（相手が全部出しても破れる）
-  a.attack = 5; b.defense = 2;
-  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 2 });
+  // 攻撃側は相手の防御トークンの実際の数は見ない。見えている数（最初の2個）＋見えない生産の分1個 = 3個と見積もって出す
+  a.attack = 5; b.defense = 0;
+  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 3 });
 });
 
 test('部屋に CPU を入れて遊べる', () => {

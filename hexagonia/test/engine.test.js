@@ -704,3 +704,32 @@ test('イベントの効果：不作・豊作・枯渇・発見・豊漁・洪�
   g.actionsPerTurn = 1;
   assert.strictEqual(as('plague').act, 1);
 });
+
+test('生産：資源2で防御トークン +1、資源3で攻撃トークン +1。行動回数を使わず、ログに出ない', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  P(g, me).resource = 10;
+  g.actionsLeft = 0;
+  const logLen = g.log.length;
+  assert.ok(E.apply(g, me, { type: 'produceAttack' }).ok);
+  assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
+  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 3, 5]);
+  assert.strictEqual(g.log.length, logLen);
+  P(g, me).resource = 2;
+  assert.strictEqual(E.apply(g, me, { type: 'produceAttack' }).ok, false);
+});
+
+test('攻防の結果は成功か失敗かだけがログに出る（出した数は出ない）。守られたら、防御側の見える数の目安が減る', () => {
+  const { g, a, b, tq, tr } = clashSetup();
+  P(g, a).attack = 2;
+  P(g, b).defense = 3;
+  assert.strictEqual(P(g, b).defenseSeen, 2);
+  E.apply(g, a, { type: 'destroy', q: tq, r: tr });
+  E.apply(g, b, { type: 'bid', count: 3 });
+  E.apply(g, a, { type: 'bid', count: 1 });
+  assert.strictEqual(g.lastClash.success, false);
+  assert.ok(!g.log.some(l => /トークン \d+ 個/.test(l.text)));
+  assert.ok(g.log.some(l => l.text.includes('出した数は非公開')));
+  // 攻撃1で守られた → 防御側は2個以上出したはず
+  assert.strictEqual(P(g, b).defenseSeen, 0);
+});

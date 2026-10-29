@@ -347,6 +347,11 @@
           log: g.log.slice(-LOG_SEND),
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { defense: null })),
           eventPlan: undefined,   // 先のラウンドのイベントは送らない（今と次のラウンドの分だけ）
+          // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）
+          lastClash: g.lastClash && Object.assign({}, g.lastClash, {
+            atk: forId === g.lastClash.attacker ? g.lastClash.atk : null,
+            def: forId === g.lastClash.defender ? g.lastClash.def : null,
+          }),
         });
         const pd = g.pending;
         if (pd) {

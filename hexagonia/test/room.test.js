@@ -118,9 +118,11 @@ test('攻防で出す数は、公開されるまで相手には見えない', ()
   assert.deepStrictEqual([pg.def, pg.defReady], [2, true]);
   assert.strictEqual(JSON.stringify(last(h).room).includes('"def":2'), false);
   room.handle(h, { type: 'act', action: { type: 'bid', count: 1 } });
-  // 公開されたら両方の数が見える
-  const lc = last(h).room.game.lastClash;
-  assert.deepStrictEqual([lc.atk, lc.def, lc.success], [1, 2, false]);
+  // 結果は成功か失敗かだけ。出した数は当人にしか見えない
+  const lh = last(h).room.game.lastClash, lg = last(g).room.game.lastClash;
+  assert.deepStrictEqual([lh.atk, lh.def, lh.success], [1, null, false]);
+  assert.deepStrictEqual([lg.atk, lg.def, lg.success], [null, 2, false]);
+  assert.ok(!last(h).room.game.log.some(l => /防御トークン 2 個/.test(l.text)));
 });
 
 test('攻防で30秒決めなければ、出せる最小の数（攻撃側は1個・防御側は0個）', () => {
