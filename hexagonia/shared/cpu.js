@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア（仮）— CPU の考え方
+ * ヘキサゴニア — CPU の考え方
  * 人間と同じ公開情報（盤面・全員のトークン数）だけで、次の1手を決める。
  * 手番では「できる行動に点数を付けて一番高いもの」を選び、よい行動がなければ手番終了。
  *
@@ -27,7 +27,7 @@
   }
 
   // 相手の防御トークンの数の見積もり（実際の数は見ない）。
-  // 見えている増減（最初の2個・強化・山岳、守られた攻防）に、見えない生産の分を1個ぶん足しておく
+  // 見えている増減（最初の2個・強化、守られた攻防）に、見えない生産の分を1個ぶん足しておく
   const estDefense = foe => Math.max(0, foe.defenseSeen == null ? foe.defense : foe.defenseSeen) + 1;
 
   function scoreActions(g, id, rng) {
@@ -40,7 +40,6 @@
     const leaderGroups = new Set(foes.map(p => E.largestGroup(g, p.id)).sort((a, b) => b.length - a.length)[0] || []);
     const touchesMine = c => E.neighbors(c.q, c.r).some(([q, r]) => myGroup.has(E.key(q, r)));
     const danger = threat(g, me);
-    const net = E.income(g, id) - E.upkeep(g, id);      // 毎手番の資源の増え方（維持費を引いたあと）
     // 食料：手番終了時に「貯え + 作る量 − 食べる量」が足りないとセルを捨てることになる
     const foodLeft = (me.food || 0) + E.foodMade(g, id) - E.foodEaten(g, id);
     const out = [];
@@ -55,7 +54,6 @@
         if (c.terrain === 'mine') s += me.attack <= 1 ? 2.5 : 1.2;   // 鉱山は取ると攻撃トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
-        if (c.terrain === 'mountain') s += me.defense < 2 ? 0.8 : -0.3;
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
           const beyond = E.neighbors(c.q, c.r).filter(([q, r]) => {
@@ -64,8 +62,6 @@
           }).length;
           s += beyond ? beyond * 0.5 - 1.5 : -3;
         }
-        // 維持費で資源が増えなくなってきたら、広げるのを控える（平原は維持費が半分）
-        if (net <= 1) s -= c.terrain === 'plain' ? 0.4 : 0.8;
         // 広げると食料を1つ多く食べる。食べさせきれないなら広げない
         if (foodLeft - 1 < 0) s -= 6;
         else if (foodLeft - 1 < 2) s -= 1.5;
@@ -83,7 +79,6 @@
         if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
-        if (c.terrain === 'mountain') s += 0.8;
         if (me.attack === 0 && frontier(g, id) > 0) s += 1.5;
         out.push({ s: s + noise(), a: { type: 'strengthen', q: c.q, r: c.r } });
       }

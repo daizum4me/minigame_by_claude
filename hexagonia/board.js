@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア（仮）— 盤面の描画と操作（canvas）
+ * ヘキサゴニア — 盤面の描画と操作（canvas）
  * 拡大・縮小（ホイール／ピンチ）、移動（ドラッグ）、マスの選択（クリック／タップ）、
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
@@ -381,17 +381,6 @@
               ctx.stroke();
             }
           }
-        } else if (c.terrain === 'mountain') {
-          // 山岳（いまはお休み）：山が2つ
-          ctx.beginPath();
-          ctx.moveTo(x - s * 0.32, y + s * 0.2);
-          ctx.lineTo(x - s * 0.1, y - s * 0.18);
-          ctx.lineTo(x + s * 0.04, y + s * 0.04);
-          ctx.lineTo(x + s * 0.14, y - s * 0.1);
-          ctx.lineTo(x + s * 0.32, y + s * 0.2);
-          ctx.closePath();
-          ctx.fillStyle = COL.mark;
-          ctx.fill();
         } else if (c.terrain === 'mine') {
           // 鉱山：◆
           ctx.beginPath();

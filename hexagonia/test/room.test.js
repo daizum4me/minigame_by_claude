@@ -218,3 +218,12 @@ test('イベントは今と次のラウンドの分だけ届く（先のラウ�
   assert.strictEqual(st.eventPlan, undefined);
   assert.ok('event' in st && 'nextEvent' in st);
 });
+
+test('イベントを起こさない設定（チュートリアル用）', () => {
+  const { room } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  room.handle(h, { type: 'addCpu' });
+  room.events = false;
+  room.handle(h, { type: 'start' });
+  assert.ok(room.game.eventPlan.every(e => !e));
+});
