@@ -62,16 +62,17 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形は平原・鉱山・農地（それぞれ約15%）と河川。山岳はいまは置かない', () => {
+test('地形は平原・鉱山・農地・森林（平原 約57%、ほかは約14%ずつ）と河川。山岳はいまは置かない', () => {
   for (const n of [2, 4, 8]) {
     const g = newGame(n, 3);
     const cnt = {};
     Object.values(g.board).forEach(c => { cnt[c.terrain] = (cnt[c.terrain] || 0) + 1; });
     assert.ok(!cnt.mountain, JSON.stringify(cnt));
-    // コアとその周りは平原、河川は河川。残りのマスの15%ずつ
+    // コアとその周りは平原、河川は河川。残りのマスの 3/21 ずつ
     const fixed = g.players.reduce((k, p) => k + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
     const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
-    assert.deepStrictEqual([cnt.mine, cnt.farm], [Math.round(free * 0.15), Math.round(free * 0.15)], JSON.stringify(cnt));
+    const each = Math.round(free * 3 / 21);
+    assert.deepStrictEqual([cnt.mine, cnt.farm, cnt.forest], [each, each, each], JSON.stringify(cnt));
   }
 });
 
@@ -642,4 +643,19 @@ test('農地マス：このセルがあると手番終了時に食料 +1（強�
   assert.strictEqual(E.foodMade(g, me), 5 + 1);
   g.board[E.key(fq, fr)].strong = true;
   assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
+});
+
+test('森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const [fq, fr] = nb(g, cq, cr)[0];
+  assert.strictEqual(E.income(g, me), 2);
+  setCell(g, fq, fr, { owner: me, terrain: 'forest' });
+  assert.strictEqual(E.income(g, me), 2 + 1);
+  g.board[E.key(fq, fr)].strong = true;
+  assert.strictEqual(E.income(g, me), 2 + 1 + 1);
+  const before = P(g, me).resource;
+  E.apply(g, me, { type: 'endTurn' });
+  assert.strictEqual(P(g, me).resource, before + 4);
 });
