@@ -30,7 +30,7 @@
     const me = playerById(g, id);
     const foes = g.players.filter(p => p.alive && p.id !== id);
     const foeCores = foes.map(p => E.parseKey(p.core));
-    const late = g.round >= R.rounds - 2;               // 終盤は一番大きなかたまりを重視
+    const late = g.round >= g.rounds - 2;               // 終盤は一番大きなかたまりを重視
     const myGroup = new Set(E.largestGroup(g, id));
     // 一番大きなかたまりが最大の相手（12ラウンド終了の勝敗に効く）
     const leaderGroups = new Set(foes.map(p => E.largestGroup(g, p.id)).sort((a, b) => b.length - a.length)[0] || []);
@@ -67,14 +67,6 @@
     if (!E.actionBlocked(g, id, 'strengthen')) {
       for (const k of E.targets(g, id, 'strengthen')) {
         const c = g.board[k];
-        if (c.strong) {
-          // 防御済にする：狙われそうなコアと前線のセルだけ（収入は増えない）
-          const exposed = E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id; });
-          let s = c.core ? (danger > 0 ? 6 : 1.5) : exposed ? 2 : -1;
-          if (c.terrain === 'river' && exposed) s += 1;     // 橋は落とされると分断される
-          out.push({ s: s + noise(), a: { type: 'strengthen', q: c.q, r: c.r } });
-          continue;
-        }
         // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
         if (c.core) s += 2.5;
@@ -88,15 +80,14 @@
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
         const foe = playerById(g, c.owner);
-        // 相手が防御トークンを全部出しても破りきれるか（破りきれないときは出す数の読み合いになる）
+        // 相手が防御トークンを全部出しても破りきれるか（破りきれないときは出す数の読み合いになる）。
+        // 防御トークンの数は画面には出ないが、増減はすべてログに出るので、覚えている前提で数える
         const canBreak = me.attack >= foe.defense;
         let s;
-        // コアは最優先（防御済なら2回要るので、1回目もそれなりに価値がある）
-        if (c.core) s = c.fort ? (canBreak ? 9 : me.attack > 0 ? 2 : 0.5) : (canBreak ? 30 : me.attack > 0 ? 3 : 1);
+        if (c.core) s = canBreak ? 30 : 3;                  // コアは最優先
         else if (foe.defense === 0) s = 5;
-        else s = canBreak ? 3.2 : me.attack > 0 ? 0.8 : -1;
-        if (c.fort && !c.core) s -= 1.5;                    // 防御済は1回目では取れない
-        else s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
+        else s = canBreak ? 3.2 : 0.8;
+        s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1;
         if (late) s += 1.5;
         if (late && leaderGroups.has(k)) s += 2;          // 首位のかたまりを削る
@@ -107,8 +98,8 @@
       }
     }
     if (!E.actionBlocked(g, id, 'reinforce')) {
-      // 補強は防御トークン +1 と攻撃トークン +1
-      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.attack === 0 && frontier(g, id) > 0 ? 2.6 : me.defense === 0 && g.round >= 3 ? 1.8 : 0.2;
+      // 補強は防御トークン +1 と攻撃トークン +1（行動回数は使わない）。攻撃トークンがないと破壊できない
+      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.attack === 0 && frontier(g, id) > 0 ? 4 : me.defense <= 1 && g.round >= 3 ? 1.8 : 0.2;
       out.push({ s: s + noise(), a: { type: 'reinforce' } });
     }
     return out;
@@ -125,9 +116,9 @@
       if (pd.atk === null && pd.attacker === id) {
         const foe = playerById(g, pd.defender);
         let n;
-        if (me.attack >= foe.defense) n = foe.defense;               // 相手が全部出しても破れる最小の数
+        if (me.attack >= foe.defense) n = Math.max(1, foe.defense);  // 相手が全部出しても破れる最小の数（1個以上）
         else if (target.core) n = me.attack;                         // コアを狙うなら全部
-        else n = rng() < 0.6 ? me.attack : Math.floor(rng() * (me.attack + 1));
+        else n = rng() < 0.6 ? me.attack : 1 + Math.floor(rng() * me.attack);
         return { type: 'bid', count: n };
       }
       if (pd.def === null && pd.defender === id) {
@@ -146,6 +137,8 @@
     if (E.current(g).id !== id || g.over) return null;
     // 行動回数を使い切ったら、資源を払ってでもやりたい行動があれば行動 +1 を買う
     if (g.actionsLeft <= 0) {
+      // 補強は行動回数を使わないので、狙われていれば先に補強
+      if (!E.actionBlocked(g, id, 'reinforce') && threat(g, me) > 0 && me.defense < 3) return { type: 'reinforce' };
       const cost = E.extraActionCost(g);
       if (me.resource < cost + 1) return { type: 'endTurn' };
       g.actionsLeft = 1; me.resource -= cost;           // 買ったつもりで考えてみる

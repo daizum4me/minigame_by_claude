@@ -55,10 +55,11 @@ test('CPU はコアを守れる数を出し、破りきれるときは必要な�
   const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => g.board[E.key(q, r)]);
   Object.assign(g.board[E.key(nq, nr)], { owner: a.id });
   b.defense = 3;
-  a.attack = 1;
+  a.attack = 2;
+  a.resource = 10;
   E.apply(g, a.id, { type: 'destroy', q: cq, r: cr });
-  // 相手の攻撃トークンは1個なので、2個出せば必ず守れる
-  assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'bid', count: 2 });
+  // 相手の攻撃トークンは2個なので、3個出せば必ず守れる
+  assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'bid', count: 3 });
   // 攻撃トークンが相手の防御トークン以上なら、相手の防御トークンと同じ数を出す（相手が全部出しても破れる）
   a.attack = 5; b.defense = 2;
   assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 2 });

@@ -14,6 +14,7 @@
   const DRAG_PX = 6;          // これ以上動いたらドラッグ扱い
   const LONG_PRESS_MS = 450;
   const FLASH_MS = 900;       // 変化したマスを光らせる時間
+  const FOCUS_MS = 450;       // 行動があったマスへ視点を動かす時間
   const MIN_HEX_PX = 9;       // 拡大率の下限・上限（マスの半径のピクセル数）
   const MAX_HEX_PX = 140;
   const FIT_MAX_HEX_PX = 90;  // 全体表示のときの上限（小さい画面以外で大きくなりすぎないように）
@@ -129,6 +130,35 @@
       const t = performance.now();
       for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255' });
       if (keys.length) this.animate();
+    }
+
+    // 行動があったマスへ、なめらかに視点を動かす（全体表示のときは少し拡大する）
+    focusOn(keys) {
+      if (!keys.length || this.pointers.size || !this.dpr) return;
+      let sx = 0, sy = 0;
+      for (const k of keys) { const [q, r] = E.parseKey(k); const [x, y] = toWorld(q, r); sx += x; sy += y; }
+      const wx = sx / keys.length, wy = sy / keys.length;
+      const [, hi] = this.limits();
+      const scale = this.moved ? this.scale : Math.min(hi, this.fitScale() * 1.8);
+      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      this.focusAnim = {
+        t0: performance.now(),
+        from: { ox: this.ox, oy: this.oy, scale: this.scale },
+        to: { ox: w / 2 - wx * scale, oy: h / 2 - wy * scale, scale },
+      };
+      this.moved = true;
+      this.animate();
+    }
+
+    stepFocus(t) {
+      const f = this.focusAnim;
+      if (!f) return;
+      const k = Math.min(1, (t - f.t0) / FOCUS_MS);
+      const e = 1 - Math.pow(1 - k, 3);
+      this.ox = f.from.ox + (f.to.ox - f.from.ox) * e;
+      this.oy = f.from.oy + (f.to.oy - f.from.oy) * e;
+      this.scale = f.from.scale + (f.to.scale - f.from.scale) * e;
+      if (k >= 1) { this.focusAnim = null; this.clamp(); }
     }
 
     setSelected(key) {
@@ -285,7 +315,7 @@
       if (this.anim) return;
       const loop = () => {
         const d = this.data;
-        const need = d && (d.targets.length || (d.game.pending && !d.game.over) || this.flashes.size);
+        const need = d && (d.targets.length || (d.game.pending && !d.game.over) || this.flashes.size || this.focusAnim);
         if (!need) { this.anim = 0; this.draw(); return; }
         this.draw();
         this.anim = requestAnimationFrame(loop);
@@ -303,6 +333,7 @@
       ctx.fillStyle = COL.page;
       ctx.fillRect(0, 0, w, h);
       if (!d) return;
+      this.stepFocus(performance.now());
       const s = this.scale, g = d.game;
       const t = performance.now();
       const pulse = 0.55 + 0.45 * Math.sin(t / 260);
@@ -388,13 +419,6 @@
           ctx.lineWidth = Math.max(1.2, s * 0.05);
           ctx.strokeStyle = col.light;
           ctx.setLineDash([]);
-          ctx.stroke();
-        }
-        if (c.fort) {
-          // 防御済：さらに内側にもう一つ六角形の線
-          hexPath(ctx, x, y, s * 0.44);
-          ctx.lineWidth = Math.max(1.2, s * 0.05);
-          ctx.strokeStyle = col.light;
           ctx.stroke();
         }
         if (c.core) {

@@ -21,16 +21,30 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
+    // 平原：山岳：鉱山（河川は別に流す）。いまは試しに山岳と鉱山をなくして、平原と河川だけ
+    terrainRatio: { plain: 1, mountain: 0, mine: 0 },
     startResource: 3,
-    actionsPerTurn: 3,
+    startDefense: 2,                    // 最初に防御トークンを2個配る
+    // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
+    auto: [ // [この人数まで, 行動回数, ラウンド数]
+      [4, 3, 12],
+      [6, 4, 10],
+      [8, 4, 8],
+      [12, 5, 6],
+    ],
+    actionsRange: [1, 6],
+    roundsRange: [4, 20],
+    preTurns: 1,                        // 内側にコアがある人は、ラウンド1の前に1手番ずつ先に動く
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
-    rounds: 12,
-    // fortify：強化済のセルをもう一度強化して「防御済」にする（攻撃が2回成功しないと落ちない）
-    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, fortify: 3, destroy: 1, reinforce: 2 },
+    // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。補強は行動回数を使わない
+    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2 },
     // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
-    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
-    upkeep: { per: 4, plainWeight: 0.5 },  // 維持費 = セルの数 ÷ 4（切り捨て）。平原のセルは半分として数える
+    // コアを強化しても資源は増えない（coreStrongBonus: false）
+    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: false },
+    strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
+    // 維持費：セルが多いほど割る数が小さくなる（累進）。6つまでは4つにつき1、7〜12は3つにつき1、13より多い分は2つにつき1。合計を切り捨て
+    // いまは試しに維持費なし（enabled: false）。戻すときは true にする
+    upkeep: { enabled: false, brackets: [[6, 4], [12, 3], [Infinity, 2]] },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -215,7 +229,7 @@
     const board = {};
     for (let q = -radius; q <= radius; q++) {
       for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
-        board[key(q, r)] = { q, r, terrain: 'plain', owner: null, strong: false, fort: false, core: false };
+        board[key(q, r)] = { q, r, terrain: 'plain', owner: null, strong: false, core: false };
       }
     }
     // 公平さの補正：コアのマスとその周囲1マスは平原に固定
@@ -235,7 +249,7 @@
 
   /*
    * players: [{ id, name, color }]（2〜12人）
-   * opts.radius：盤面の半径（省略すると人数に合わせる）
+   * opts.radius：盤面の半径、opts.actions：1手番の行動回数、opts.rounds：ラウンド数（省略すると人数に合わせる）
    * 手番順はランダム。盤面上の配置も手番順に並べる。
    */
   function createGame(players, rng, opts) {
@@ -246,19 +260,28 @@
     const { board, cores } = generateBoard(players.length, rng, radius);
     radius = radius || RULES.radius[players.length];
     const order = shuffle(players.slice(), rng);
+    const auto = autoSettings(players.length);
+    const actions = (opts && opts.actions) || auto.actions;
+    const rounds = (opts && opts.rounds) || auto.rounds;
+    if (actions < RULES.actionsRange[0] || actions > RULES.actionsRange[1]) throw new Error('行動回数が正しくありません');
+    if (rounds < RULES.roundsRange[0] || rounds > RULES.roundsRange[1]) throw new Error('ラウンド数が正しくありません');
     const state = {
       radius,
       board,
       players: order.map((p, i) => {
         const [q, r] = cores[i];
         Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: 0, alive: true, core: key(q, r) };
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: RULES.startDefense, alive: true, core: key(q, r) };
       }),
+      actionsPerTurn: actions,
+      rounds,
       turn: 0,               // players の何番目の手番か
-      round: 1,
+      turnNo: 1,             // 何回目の手番か（通し番号）
+      round: 1,              // 0 は内側の人の先行
+      preQueue: [],          // 先行で、このあと手番が来る人（players の何番目か）
       roundStart: 0,         // このラウンドの最初の人（players の何番目か）。ラウンドごとに1人ずつずれる
       roundPos: 0,           // このラウンドで何人目の手番か
-      actionsLeft: RULES.actionsPerTurn,
+      actionsLeft: actions,
       extraBought: 0,        // この手番で行動 +1 を買った回数
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
       abandon: null,         // 維持費が払えず、セルを捨てる途中： { player, count }
@@ -268,9 +291,24 @@
       log: [],
       logSeq: 0,
     };
-    addLog(state, `ゲーム開始。手番順：${state.players.map(p => p.name).join(' → ')}`, 'info');
-    addLog(state, `ラウンド 1 / ${RULES.rounds}`, 'round');
+    addLog(state, `ゲーム開始。手番順：${state.players.map(p => p.name).join(' → ')}（1手番 ${actions} 行動・${rounds} ラウンド）`, 'info');
+    // 内側にコアがある人は、ラウンド1の前に先に2手番ずつ動く
+    const inner = state.players.map((p, i) => i).filter(i => dist(parseKey(state.players[i].core), [0, 0]) < radius);
+    if (inner.length) {
+      for (let t = 0; t < RULES.preTurns; t++) state.preQueue.push(...inner);
+      state.round = 0;
+      state.turn = state.preQueue.shift();
+      addLog(state, `先行：内側にコアがある人（${inner.map(i => state.players[i].name).join('・')}）が、ラウンド1の前に ${RULES.preTurns} 手番ずつ動く`, 'round');
+    } else {
+      addLog(state, `ラウンド 1 / ${rounds}`, 'round');
+    }
     return state;
+  }
+
+  // 人数に合わせた行動回数とラウンド数
+  function autoSettings(count) {
+    const row = RULES.auto.find(([n]) => count <= n) || RULES.auto[RULES.auto.length - 1];
+    return { actions: row[1], rounds: row[2] };
   }
 
   function addLog(state, text, tone) {
@@ -299,16 +337,18 @@
     return n;
   }
 
-  // 手番終了時に払う維持費：セルの数 ÷ 4（切り捨て）。平原のセルは半分として数える
+  // 手番終了時に払う維持費：セルが多いほど割る数が小さくなる（累進）
   function upkeep(state, id) {
-    const u = RULES.upkeep;
-    const weight = cellsOf(state, id).reduce((n, c) => n + (c.terrain === 'plain' ? u.plainWeight : 1), 0);
-    return Math.floor(weight / u.per + 1e-9);
-  }
-
-  // 強化に必要な資源：未強化なら強化済へ、強化済なら防御済へ
-  function strengthenCost(cell) {
-    return cell.strong ? RULES.cost.fortify : RULES.cost.strengthen;
+    if (!RULES.upkeep.enabled) return 0;
+    const weight = cellsOf(state, id).length;
+    let cost = 0, prev = 0;
+    for (const [limit, per] of RULES.upkeep.brackets) {
+      const part = Math.min(weight, limit) - prev;
+      if (part <= 0) break;
+      cost += part / per;
+      prev = limit;
+    }
+    return Math.floor(cost + 1e-9);
   }
 
   function expandCost(cell) {
@@ -337,9 +377,11 @@
       return '';
     }
     if (!(type in ACTION_NAMES)) return '不明な行動です';
-    if (state.actionsLeft <= 0) return 'この手番の行動回数を使い切りました';
+    // 補強は行動回数を使わない
+    if (type !== 'reinforce' && state.actionsLeft <= 0) return 'この手番の行動回数を使い切りました';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
     if (p.resource < min) return '資源トークンが足りません';
+    if (type === 'destroy' && p.attack < 1) return '破壊には攻撃トークンが1個以上必要です';
     return '';
   }
 
@@ -352,8 +394,7 @@
       if (type === 'expand') {
         if (!c.owner && p.resource >= expandCost(c) && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
       } else if (type === 'strengthen') {
-        // 未強化 → 強化済（資源2）、強化済 → 防御済（資源3）
-        if (c.owner === id && !c.fort && p.resource >= strengthenCost(c)) out.push(k);
+        if (c.owner === id && !c.strong) out.push(k);
       } else if (type === 'destroy') {
         if (c.owner && c.owner !== id && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
       }
@@ -407,8 +448,7 @@
       p.resource -= RULES.cost.reinforce;
       p.defense += 1;
       p.attack += 1;
-      state.actionsLeft--;
-      addLog(state, `${p.name} が補強（防御トークン +1・攻撃トークン +1）`, 'reinforce');
+      // 補強はログに出さない（防御トークンの数を相手にわかりにくくするため）
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -419,23 +459,19 @@
     if (action.type === 'expand') {
       const cost = expandCost(cell);
       p.resource -= cost;
-      Object.assign(cell, { owner: id, strong: false, fort: false, core: false });
+      Object.assign(cell, { owner: id, strong: false, core: false });
       let extra = '';
       if (cell.terrain === 'mountain') { p.defense += 1; extra = '（山岳：防御トークン +1）'; }
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
-    } else if (action.type === 'strengthen' && cell.strong) {
-      // 3段階目：防御済（攻撃が2回成功しないと落ちない）
-      p.resource -= RULES.cost.fortify;
-      cell.fort = true;
-      state.actionsLeft--;
-      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を防御済にした`, 'strengthen');
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
-      p.attack += 1;
-      let extra = '攻撃トークン +1';
+      const gives = RULES.strengthenGives;
+      p.attack += gives.attack;
+      p.defense += gives.defense;
+      let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
       if (cell.terrain === 'mountain') { p.defense += 1; extra += '・山岳：防御トークン +1'; }
       state.actionsLeft--;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
@@ -444,10 +480,12 @@
       p.resource -= RULES.cost.destroy;
       state.actionsLeft--;
       addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}に破壊を宣言`, 'destroy');
-      // 攻撃側・防御側が、出すトークンの数を伏せて決める
+      // 攻撃側（攻撃トークン1個以上）・防御側が、出すトークンの数を伏せて決める。
+      // 防御トークンの数は相手に見えないので、防御側が0個でも攻撃側は数を選ぶ
       state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null };
-      if (def.defense <= 0) resolveDestroy(state, 0, 0);           // 防御トークンがなければそのまま成功
-      else if (p.attack <= 0) state.pending.atk = 0;               // 攻撃トークンがなければ 0 個に決まる
+      if (def.defense <= 0) state.pending.def = 0;
+      if (p.attack === 1) state.pending.atk = 1;                     // 1個しかなければ1個に決まる
+      if (state.pending.atk !== null && state.pending.def !== null) resolveDestroy(state, state.pending.atk, state.pending.def);
     }
     return { ok: true };
   }
@@ -463,11 +501,14 @@
     const p = playerById(state, id);
     const have = side === 'atk' ? p.attack : p.defense;
     const n = Number(count);
-    if (!Number.isInteger(n) || n < 0 || n > have) return fail('出せる数ではありません');
+    if (!Number.isInteger(n) || n < minBid(side) || n > have) return fail(side === 'atk' && n < 1 ? '攻撃トークンは1個以上出してください' : '出せる数ではありません');
     pd[side] = n;
     if (pd.atk !== null && pd.def !== null) resolveDestroy(state, pd.atk, pd.def);
     return { ok: true };
   }
+
+  // 攻防で出す数の下限：攻撃側は1個以上、防御側は0個から
+  function minBid(side) { return side === 'atk' ? 1 : 0; }
 
   function resolveDestroy(state, atk, def) {
     const pd = state.pending;
@@ -481,14 +522,8 @@
     const what = cell.core ? 'コア' : 'セル';
     if (d.defense + def > 0) addLog(state, `攻防：${a.name} 攻撃トークン ${atk} 個 ／ ${d.name} 防御トークン ${def} 個`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
-    if (cell.fort) {
-      // 防御済は1回目の成功では落ちず、強化済に戻る
-      cell.fort = false;
-      addLog(state, `防御済に命中：${a.name} の攻撃で ${d.name} の${what}${cellLabel(cell)}が強化済に戻った`, 'hit');
-      return;
-    }
     const wasCore = cell.core;
-    Object.assign(cell, { owner: null, strong: false, fort: false, core: false });
+    Object.assign(cell, { owner: null, strong: false, core: false });
     if (cell.terrain === 'river') {
       // 橋は破壊されると落ちて、河川に戻る（攻撃側のセルにはならない）
       addLog(state, `破壊成功：${a.name} が ${d.name} の橋${cellLabel(cell)}を落とした（河川に戻る）`, 'destroy');
@@ -497,7 +532,7 @@
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
     // 破壊したマスはそのまま攻撃側のセル（未強化）になる。山岳マスなら拡張と同じく防御トークン +1
-    Object.assign(cell, { owner: a.id, strong: false, fort: false, core: false });
+    Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = '';
     if (cell.terrain === 'mountain') { a.defense += 1; extra = '（山岳：防御トークン +1）'; }
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
@@ -505,7 +540,7 @@
 
   function eliminate(state, p) {
     p.alive = false;
-    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, fort: false, core: false });
+    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
     p.resource = 0; p.attack = 0; p.defense = 0;
     addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
@@ -553,7 +588,7 @@
       if (!c || c.owner !== id) return fail('自分のセルを選んでください');
       if (c.core) return fail('コアは捨てられません');
     }
-    for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, fort: false, core: false });
+    for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, core: false });
     const p = playerById(state, id);
     addLog(state, `${p.name} がセル ${keys.map(k => cellLabel(state.board[k])).join(' ')} を捨てた`, 'abandon');
     state.abandon = null;
@@ -575,34 +610,50 @@
       .map(x => x.k);
   }
 
-  // 次の生きているプレイヤーの手番へ。一周したらラウンドが進む
-  // ラウンドが一周したら、次のラウンドは最初の人を1人ずらす（脱落した人は飛ばす）
+  // 次の生きているプレイヤーの手番へ。
+  // 先行（内側の人が先に動く）が終わったらラウンド1。ラウンドが一周したら、
+  // 次のラウンドは最初の人を1人ずらす（2人戦はずらさない。脱落した人は飛ばす）
   function advance(state) {
     const n = state.players.length;
+    if (state.round === 0) {
+      while (state.preQueue.length) {
+        const i = state.preQueue.shift();
+        if (state.players[i].alive) { setTurn(state, i); return; }
+      }
+      state.round = 1;
+      state.roundStart = 0;
+      state.roundPos = -1;
+      addLog(state, `ラウンド 1 / ${state.rounds}`, 'round');
+    }
     let i;
     do {
       state.roundPos++;
       if (state.roundPos >= n) {
         state.round++;
-        if (state.round > RULES.rounds) { finishByGroup(state); return; }
-        do { state.roundStart = (state.roundStart + 1) % n; } while (!state.players[state.roundStart].alive);
+        if (state.round > state.rounds) { finishByGroup(state); return; }
+        if (n > 2) do { state.roundStart = (state.roundStart + 1) % n; } while (!state.players[state.roundStart].alive);
         state.roundPos = 0;
-        addLog(state, `ラウンド ${state.round} / ${RULES.rounds}（最初は ${state.players[state.roundStart].name}）`, 'round');
+        addLog(state, `ラウンド ${state.round} / ${state.rounds}${n > 2 ? `（最初は ${state.players[state.roundStart].name}）` : ''}`, 'round');
       }
       i = (state.roundStart + state.roundPos) % n;
     } while (!state.players[i].alive);
+    setTurn(state, i);
+  }
+
+  function setTurn(state, i) {
     state.turn = i;
-    state.actionsLeft = RULES.actionsPerTurn;
+    state.turnNo = (state.turnNo || 0) + 1;
+    state.actionsLeft = state.actionsPerTurn;
     state.extraBought = 0;
   }
 
   // 12ラウンド終了：つながっている一番大きなかたまりが大きい人の勝利
   function finishByGroup(state) {
-    state.round = RULES.rounds;
+    state.round = state.rounds;
     const alive = state.players.filter(p => p.alive);
     const sizes = alive.map(p => largestGroup(state, p.id).length);
     const best = Math.max(...sizes);
-    finish(state, alive.filter((p, i) => sizes[i] === best), `${RULES.rounds}ラウンド終了・最大のかたまり ${best} セル`);
+    finish(state, alive.filter((p, i) => sizes[i] === best), `${state.rounds}ラウンド終了・最大のかたまり ${best} セル`);
   }
 
   // つながっている自分のセルのかたまりのうち、一番大きいもの（マスのキーの配列）
@@ -659,6 +710,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, strengthenCost,
+    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid,
   };
 });

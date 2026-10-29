@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -71,6 +71,21 @@
       <option value="21">21マス</option>
     </select>
 
+    <h3>1手番の行動回数とラウンド数 <span id="play-note" class="muted"></span></h3>
+    <div class="row settings-row">
+      <select id="set-actions" class="select" aria-label="1手番の行動回数">
+        <option value="0">行動回数：自動</option>
+        <option value="1">1回</option><option value="2">2回</option><option value="3">3回</option>
+        <option value="4">4回</option><option value="5">5回</option><option value="6">6回</option>
+      </select>
+      <select id="set-rounds" class="select" aria-label="ラウンド数">
+        <option value="0">ラウンド数：自動</option>
+        <option value="4">4ラウンド</option><option value="6">6ラウンド</option><option value="8">8ラウンド</option>
+        <option value="10">10ラウンド</option><option value="12">12ラウンド</option><option value="14">14ラウンド</option>
+        <option value="16">16ラウンド</option><option value="20">20ラウンド</option>
+      </select>
+    </div>
+
     <h3>自分の陣営色</h3>
     <div id="color-pick" class="color-pick"></div>
 
@@ -94,6 +109,7 @@
       <div class="pill timer" id="hud-timer" hidden></div>
     </div>
     <div class="board-tools">
+      <button id="btn-focus" class="tool" title="ほかの人の行動があったマスに視点を動かす" aria-pressed="false">◎ フォーカス</button>
       <button id="btn-fit" class="tool" title="盤面全体を表示">⤢ 全体表示</button>
       <button class="tool" data-open="rules" title="ルール">？</button>
       <button class="tool" data-open="settings" title="設定">⚙</button>
@@ -138,7 +154,7 @@
       <h3><i class="ic" data-icon="group"></i>目的</h3>
       <ul class="r-list">
         <li>六角形の盤面で自分の<b>セル</b>を広げ、強化し、相手のセルを破壊して争います</li>
-        <li><b class="k-good">12ラウンド終了時</b>に、<b>つながっている一番大きなかたまり</b>（隣り合う自分のセルのまとまり）が最も大きい人の勝ち。同じなら同率優勝</li>
+        <li><b class="k-good">最後のラウンドが終わったとき</b>に、<b>つながっている一番大きなかたまり</b>（隣り合う自分のセルのまとまり）が最も大きい人の勝ち。同じなら同率優勝</li>
         <li><i class="ic" data-icon="core"></i><b class="k-core">コア</b>を破壊されると脱落。自分以外の全員が脱落したら、その時点で勝ち</li>
       </ul>
     </section>
@@ -147,19 +163,19 @@
       <h3><i class="ic" data-icon="cell-strong"></i>セルの段階</h3>
       <div class="r-cards">
         <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
-        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span></small></div>
-        <div class="r-card"><i class="ic big" data-icon="cell-fort"></i><b>防御済</b><small>攻撃が<span class="k-atk">2回</span>成功しないと落ちない（1回目で強化済に戻る）</small></div>
-        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>（強化済なら +3）</small></div>
+        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>（コアは除く）</small></div>
+        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>（強化しても増えない）</small></div>
       </div>
     </section>
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="clock"></i>手番</h3>
       <ul class="r-list">
-        <li>自分の手番では行動を<b>最大3回</b>。使い切ったら<i class="ic" data-icon="resource"></i><span class="k-res">資源</span>を払って<b>行動 +1</b>できる（6 → 10 → 14…。手番が変わると6に戻る）</li>
+        <li>自分の手番では行動を<b>決まった回数</b>まで（2〜4人は3回・12ラウンド。人数が多いほどラウンドが少なく、行動回数が多い。ロビーで変えられる）。使い切ったら<i class="ic" data-icon="resource"></i><span class="k-res">資源</span>を払って<b>行動 +1</b>できる（6 → 10 → 14…。手番が変わると6に戻る）</li>
         <li>持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）。切れると自動で手番終了（破壊の攻防のあいだは止まる）</li>
         <li>もうできる行動がなくなったときも、自動で手番終了</li>
-        <li>手番の順は、ラウンドごとに最初の人が1人ずつずれる（A B C → B C A → C A B…）</li>
+        <li>手番の順は、ラウンドごとに最初の人が1人ずつずれる（A B C → B C A → C A B…）。<b>2人戦はずらさない</b></li>
+        <li>7人以上で内側にコアがある人は、ラウンド1の前に<b>1手番ずつ先に</b>動ける</li>
       </ul>
     </section>
 
@@ -168,41 +184,26 @@
       <p class="r-hint">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。補強と手番終了はパネルから。</p>
       <table class="r-table">
         <tr><th></th><th>行動</th><th>資源</th><th>内容</th></tr>
-        <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>山岳 2・河川 4</small></td><td>自分のセルの隣の空きマスにセルを置く。山岳なら <i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>。河川には<b>橋をかける</b></td></tr>
-        <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>（山岳なら <span class="k-def">防御 +1</span> も）</td></tr>
-        <tr><td><i class="ic" data-icon="cell-fort"></i></td><td><b>強化</b><small>防御済へ</small></td><td><span class="cost"><i class="ic" data-icon="resource"></i>3</span></td><td>強化済 → 防御済。攻撃が2回成功しないと落ちなくなる</td></tr>
-        <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span></td><td>隣の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
-        <tr><td><i class="ic" data-icon="act-reinforce"></i></td><td><b>補強</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>・<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span></td></tr>
+        <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>河川 4</small></td><td>自分のセルの隣の空きマスにセルを置く。河川には<b>橋をかける</b></td></tr>
+        <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>・<i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span></td></tr>
+        <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>攻撃トークン1個以上</small></td><td>隣の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
+        <tr><td><i class="ic" data-icon="act-reinforce"></i></td><td><b>補強</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>・<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>。行動回数を使い切っていてもできる</td></tr>
       </table>
     </section>
 
     <section class="r-sec">
-      <h3><i class="ic" data-icon="resource"></i><span class="k-res">資源</span>と維持費</h3>
-      <div class="r-two">
-        <div class="r-box res">
-          <b>手番終了時にもらう</b>
-          <ul class="r-list">
-            <li><i class="ic" data-icon="cell-strong"></i>強化済セル <span class="k-res">+1</span></li>
-            <li><i class="ic" data-icon="hex-mine"></i>鉱山のセル <span class="k-res">+1</span>（強化済なら <span class="k-res">+2</span>）</li>
-            <li><i class="ic" data-icon="core"></i>コア <span class="k-res">+2</span>（強化済なら <span class="k-res">+3</span>）</li>
-          </ul>
-        </div>
-        <div class="r-box upkeep">
-          <b>そのあと払う：維持費</b>
-          <ul class="r-list">
-            <li>セルの数 ÷ 4（切り捨て）</li>
-            <li><i class="ic" data-icon="hex-plain"></i>平原のセルは<b>半分</b>として数える</li>
-            <li class="k-bad">払えないときは、足りない資源1つにつきセルを1つ捨てる（コアは不可・30秒で自動）</li>
-          </ul>
-        </div>
-      </div>
+      <h3><i class="ic" data-icon="resource"></i><span class="k-res">資源</span></h3>
+      <ul class="r-list">
+        <li>手番終了時にもらう：<i class="ic" data-icon="cell-strong"></i>強化済セル <span class="k-res">+1</span>（コアは除く）、<i class="ic" data-icon="core"></i>コア <span class="k-res">+2</span></li>
+        <li>いまは<b>維持費はなし</b></li>
+      </ul>
     </section>
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="act-destroy"></i>破壊の攻防</h3>
       <ol class="r-steps">
-        <li>攻撃側が<span class="k-res">資源1</span>を払って破壊を宣言</li>
-        <li>攻撃側は<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃トークン</span>、防御側は<i class="ic" data-icon="defense"></i><span class="k-def">防御トークン</span>を何個出すか<b>伏せて</b>決める（30秒。決めなければ0個）</li>
+        <li>攻撃側が<span class="k-res">資源2</span>を払って破壊を宣言（<span class="k-atk">攻撃トークン</span>が1個以上必要）</li>
+        <li>攻撃側は<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃トークン</span>を<b>1個以上</b>、防御側は<i class="ic" data-icon="defense"></i><span class="k-def">防御トークン</span>を0個以上、何個出すか<b>伏せて</b>決める（30秒。決めなければ攻撃1個・防御0個）</li>
         <li>同時に公開して判定</li>
       </ol>
       <div class="r-judge">
@@ -210,15 +211,14 @@
         <span class="sep">／</span>
         <span class="k-atk">攻撃</span> ＜ <span class="k-def">防御</span> → <b class="k-good">守られた</b>
       </div>
-      <p class="r-hint">出したトークンはすべてなくなる。防御側が防御トークンを1個も持っていなければ、出し合いなしで成功。</p>
+      <p class="r-hint">出したトークンはすべてなくなる。<b>防御トークンは最初に2個</b>配られ、<b>ほかの人の防御トークンの数は見えない</b>（攻撃トークンの数は見える）。</p>
     </section>
 
     <section class="r-sec">
-      <h3><i class="ic" data-icon="hex-mountain"></i>地形</h3>
+      <h3><i class="ic" data-icon="hex-river"></i>地形</h3>
+      <p class="r-hint">いまは平原と河川だけ（山岳と鉱山はお休み中）。</p>
       <div class="r-cards terrain">
-        <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>維持費が半分</small></div>
-        <div class="r-card"><i class="ic big" data-icon="hex-mountain"></i><b>山岳</b><small>拡張 <span class="k-res">2</span>。拡張・強化で <span class="k-def">防御 +1</span></small></div>
-        <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山</b><small>資源 <span class="k-res">+1</span>（強化済で <span class="k-res">+2</span>）</small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>効果なし</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">4</span> で橋をかけて渡る</small></div>
         <div class="r-card"><i class="ic big" data-icon="bridge"></i><b>橋</b><small>強化できる。壊されると河川に戻る</small></div>
       </div>
@@ -229,6 +229,7 @@
       <ul class="r-list">
         <li>拡大・縮小：ホイール／ピンチ。移動：ドラッグ。「全体表示」で元に戻す</li>
         <li>マスを選ぶ（クリック／タップ）と、そのマスの情報とできる行動のボタンが出る</li>
+        <li>「◎ フォーカス」をオンにすると、ほかの人の行動があったマスに視点が動く</li>
       </ul>
     </section>
   </div>
@@ -241,6 +242,7 @@
   <label class="check"><input type="checkbox" id="set-cb"> 色覚多様性に配慮した配色（Okabe-Ito）</label>
   <label class="check"><input type="checkbox" id="set-pattern"> 陣営ごとにセルの縁の模様を変える</label>
   <label class="check"><input type="checkbox" id="set-sound"> 効果音を鳴らす</label>
+  <label class="check"><input type="checkbox" id="set-focus"> フォーカスモード（ほかの人の行動があったマスに視点を動かす）</label>
   <div id="set-preview" class="color-preview"></div>
   <form method="dialog"><button class="primary">閉じる</button></form>
 </dialog>
@@ -248,11 +250,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=10"></script>
-<script src="shared/cpu.js?v=10"></script>
-<script src="shared/room.js?v=10"></script>
-<script src="sound.js?v=10"></script>
-<script src="board.js?v=10"></script>
-<script src="client.js?v=10"></script>
+<script src="shared/engine.js?v=12"></script>
+<script src="shared/cpu.js?v=12"></script>
+<script src="shared/room.js?v=12"></script>
+<script src="sound.js?v=12"></script>
+<script src="board.js?v=12"></script>
+<script src="client.js?v=12"></script>
 </body>
 </html>
