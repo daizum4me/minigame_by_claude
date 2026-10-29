@@ -30,7 +30,11 @@
     const me = playerById(g, id);
     const foes = g.players.filter(p => p.alive && p.id !== id);
     const foeCores = foes.map(p => E.parseKey(p.core));
-    const late = g.round >= R.rounds - 2;               // 終盤はセルの数を重視
+    const late = g.round >= R.rounds - 2;               // 終盤は一番大きなかたまりを重視
+    const myGroup = new Set(E.largestGroup(g, id));
+    // 一番大きなかたまりが最大の相手（12ラウンド終了の勝敗に効く）
+    const leaderGroups = new Set(foes.map(p => E.largestGroup(g, p.id)).sort((a, b) => b.length - a.length)[0] || []);
+    const touchesMine = c => E.neighbors(c.q, c.r).some(([q, r]) => myGroup.has(E.key(q, r)));
     const danger = threat(g, me);
     const out = [];
     const noise = () => (rng() - 0.5) * 0.6;
@@ -43,7 +47,9 @@
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
         if (c.terrain === 'mine') s += 1.6;
         if (c.terrain === 'mountain') s += me.defense < 2 ? 0.8 : -0.3;
-        if (late) s += 2.5;
+        // 一番大きなかたまりにつながる拡張を重視（終盤は特に）
+        if (touchesMine(c)) s += late ? 2.8 : 0.6;
+        else if (late) s += 0.3;
         out.push({ s: s + noise(), a: { type: 'expand', q: c.q, r: c.r } });
       }
     }
@@ -72,6 +78,8 @@
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1;
         if (late) s += 1.5;
+        if (late && leaderGroups.has(k)) s += 2;          // 首位のかたまりを削る
+        if (touchesMine(c)) s += 0.5;                       // 取ったマスが自分のかたまりにつながる
         // 自分のコアの隣にいる相手セルは優先して壊す
         if (E.dist([c.q, c.r], E.parseKey(me.core)) <= 1) s += 3;
         out.push({ s: s + noise(), a: { type: 'destroy', q: c.q, r: c.r } });
@@ -114,6 +122,15 @@
       return null;
     }
     if (E.current(g).id !== id || g.over) return null;
+    // 行動回数を使い切ったら、資源を払ってでもやりたい行動があれば行動 +1 を買う
+    if (g.actionsLeft <= 0) {
+      const cost = E.extraActionCost(g);
+      if (me.resource < cost + 1) return { type: 'endTurn' };
+      g.actionsLeft = 1; me.resource -= cost;           // 買ったつもりで考えてみる
+      const top = scoreActions(g, id, rng).sort((a, b) => b.s - a.s)[0];
+      g.actionsLeft = 0; me.resource += cost;
+      return top && top.s >= 3 ? { type: 'buyAction' } : { type: 'endTurn' };
+    }
     const best = scoreActions(g, id, rng).sort((a, b) => b.s - a.s)[0];
     return best && best.s > 0.5 ? best.a : { type: 'endTurn' };
   }

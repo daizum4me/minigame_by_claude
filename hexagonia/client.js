@@ -445,10 +445,19 @@
     const enough = room.players.length >= R.minPlayers;
     $('#btn-start').hidden = !isHost;
     $('#btn-start').disabled = !enough;
+    const dia = room.settings ? room.settings.diameter : 0;
+    const sel = $('#set-diameter');
+    sel.disabled = !isHost;
+    sel.value = String(dia);
+    const autoDia = enough ? R.radius[room.players.length] * 2 + 1 : 0;
+    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '2人 7・3人 9・4人 11';
     $('#lobby-wait').textContent = isHost
-      ? (enough ? `${room.players.length}人で始められます（盤面の半径 ${R.radius[room.players.length]}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
+      ? (enough ? `${room.players.length}人で始められます（盤面の直径 ${dia || autoDia}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
       : 'ホストがゲームを始めるのを待っています…';
   }
+
+  // 直径 d の六角形の盤面のマスの数
+  const diameterCells = d => { const r = (d - 1) / 2; return 3 * r * (r + 1) + 1; };
 
   let view = null;
   function boardView() {
@@ -493,14 +502,15 @@
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
     $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御 +1・攻撃 +1</small></button>`
-      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>資源 +${me ? E.income(g, app.me) : 0}</small></button>`;
+      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>資源 +${me ? E.income(g, app.me) : 0}</small></button>`
+      + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
     let hint = '';
     if (g.over) hint = '';
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
     else if (g.pending) hint = '破壊の攻防中です';
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
-    else if (g.actionsLeft === 0) hint = '行動回数を使い切りました。「手番終了」を押してください';
+    else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
     else hint = 'あなたの手番です。光っているマスを選ぶと、拡張・強化・破壊のボタンが出ます';
     $('#hint').textContent = hint;
 
@@ -508,10 +518,11 @@
     const isHost = room.hostId === app.me;
     $('#players').innerHTML = g.players.map(p => {
       const cells = E.cellsOf(g, p.id).length;
+      const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
         <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
-        <div class="pstats"><span class="cells" title="セルの数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${cells}</b></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
+        <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
     }).join('');
@@ -541,6 +552,7 @@
     app.wasMyTurn = mine;
 
     renderClash(g, pl);
+    renderExtra(g, me);
     tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
@@ -598,10 +610,31 @@
     tickTimers();
   }
 
+  // 行動回数を使い切ったら、画面中央で「手番終了」か「資源を払って行動 +1」かを選ぶ
+  function renderExtra(g, me) {
+    const el = $('#extra');
+    const show = myTurn(g) && me && me.alive && g.actionsLeft === 0;
+    const key = `${g.round}:${g.turn}:${g.extraBought}`;
+    if (!show || app.extraHidden === key) { el.hidden = true; return; }
+    const cost = E.extraActionCost(g);
+    const lack = cost - me.resource;
+    el.innerHTML = `<div class="extra-card">
+      <h3>行動回数を使い切りました</h3>
+      <div class="extra-btns">
+        <button data-extra="endTurn"><b>手番終了</b><small>資源 +${E.income(g, app.me)}</small></button>
+        <button class="primary" data-extra="buyAction" ${lack > 0 ? 'disabled' : ''}><b>行動 +1</b><small>${TOKEN_SVG.resource}${cost} を払う${lack > 0 ? `（あと ${lack} 足りない）` : ''}</small></button>
+      </div>
+      <p class="muted small">行動 +1 に必要な資源は、同じ手番で買うたびに +${R.extraAction.step}（手番が変わると ${R.extraAction.base} に戻る）</p>
+      <button class="link" data-extra="hide">盤面を見る</button>
+    </div>`;
+    el.dataset.key = key;
+    el.hidden = false;
+  }
+
   // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
   function playSounds(g, fresh) {
     if (!fresh.length) return;
-    const order = ['win', 'out', 'success', 'fail', 'declare', 'strengthen', 'reinforce', 'expand', 'endTurn'];
+    const order = ['win', 'out', 'success', 'fail', 'declare', 'buy', 'strengthen', 'reinforce', 'expand', 'endTurn'];
     const found = new Set();
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
@@ -609,7 +642,7 @@
       else if (/^破壊成功/.test(l.text)) found.add('success');
       else if (/^破壊失敗/.test(l.text)) found.add('fail');
       else if (l.tone === 'destroy') found.add('declare');
-      else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1 }) found.add(l.tone);
+      else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1, buy: 1 }) found.add(l.tone);
       else if (l.tone === 'income') found.add('endTurn');
     }
     const name = order.find(n => found.has(n));
@@ -647,13 +680,13 @@
   function renderResult(room, g) {
     const el = $('#result');
     if (!g.over) { el.hidden = true; return; }
-    const rank = g.players.map(p => ({ p, cells: E.cellsOf(g, p.id).length }))
-      .sort((x, y) => (y.p.alive - x.p.alive) || (y.cells - x.cells));
+    const rank = g.players.map(p => ({ p, cells: E.cellsOf(g, p.id).length, group: E.largestGroup(g, p.id).length }))
+      .sort((x, y) => (y.p.alive - x.p.alive) || (y.group - x.group) || (y.cells - x.cells));
     const win = g.winners.includes(app.me);
     el.innerHTML = `<div class="card result-card">
       <h2>${win ? (g.winners.length > 1 ? '同率優勝！' : 'あなたの勝利！') : 'ゲーム終了'}</h2>
       <p class="muted">${esc(g.endReason)}</p>
-      <ol class="rank">${rank.map(({ p, cells }) => `<li class="${g.winners.includes(p.id) ? 'win' : ''}">${g.winners.includes(p.id) ? '<span class="crown">🏆</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span><span class="muted">${p.alive ? `セル ${cells}` : '脱落'}</span></li>`).join('')}</ol>
+      <ol class="rank">${rank.map(({ p, cells, group }) => `<li class="${g.winners.includes(p.id) ? 'win' : ''}">${g.winners.includes(p.id) ? '<span class="crown">🏆</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span><span class="muted">${p.alive ? `かたまり <b>${group}</b>（セル ${cells}）` : '脱落'}</span></li>`).join('')}</ol>
       ${room.hostId === app.me ? '<button class="primary" id="btn-lobby">ロビーに戻る</button>' : '<p class="muted">ホストがロビーに戻すのを待っています…</p>'}
       <button class="link" id="btn-hide-result">盤面を見る</button>
     </div>`;
@@ -803,6 +836,13 @@
     $('#btn-start').onclick = () => send({ type: 'start' });
     $('#color-pick').onclick = e => { const b = e.target.closest('[data-color]'); if (b && !b.disabled) send({ type: 'color', color: b.dataset.color }); };
 
+    $('#extra').onclick = e => {
+      const b = e.target.closest('[data-extra]');
+      if (!b || b.disabled) return;
+      if (b.dataset.extra === 'hide') { app.extraHidden = $('#extra').dataset.key; $('#extra').hidden = true; return; }
+      send({ type: 'act', action: { type: b.dataset.extra } });
+    };
+    $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
     $('#actions').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b || b.disabled) return;

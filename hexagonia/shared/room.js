@@ -36,6 +36,7 @@
       this.players = [];        // { id, token, name, color, connected, cpu }
       this.hostId = null;
       this.phase = 'lobby';
+      this.settings = { diameter: 0 };   // 盤面の直径（マス）。0 は人数に合わせる
       this.game = null;
       this.seq = 0;
       this.timers = {};         // turn / bid / grace / cpu
@@ -124,11 +125,21 @@
           this.changed();
           return;
         }
+        case 'settings': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          const d = Number(msg.diameter);
+          const [lo, hi] = E.RULES.radiusRange;
+          if (d !== 0 && !(Number.isInteger(d) && d % 2 === 1 && d >= lo * 2 + 1 && d <= hi * 2 + 1)) return err('盤面の大きさが正しくありません');
+          this.settings.diameter = d;
+          this.changed();
+          return;
+        }
         case 'start': {
           if (id !== this.hostId) return err('ゲームを始められるのはホストだけです');
           if (this.phase !== 'lobby') return;
           if (this.players.length < E.RULES.minPlayers) return err(`${E.RULES.minPlayers}人以上でないと始められません`);
-          this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng);
+          const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
+          this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius });
           this.phase = 'game';
           this.changed();
           return;
@@ -296,6 +307,7 @@
         code: this.code,
         phase: this.phase,
         hostId: this.hostId,
+        settings: this.settings,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu })),
         turnLeftMs: live ? (g.pending ? this.turnRemain : Math.max(0, this.turnDeadline - now)) : 0,
         turnPaused: !!(live && g.pending),
