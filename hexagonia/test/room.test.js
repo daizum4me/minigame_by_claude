@@ -89,15 +89,15 @@ test('持ち時間120秒で自動で手番終了、攻防のあいだは止ま�
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS);
   clock.t += 50000;
   // 攻防が始まると持ち時間は止まる
-  const { gp } = declareOnCore(r, 1, 1);
+  const { gp } = declareOnCore(r, 2, 2);
   assert.ok(room.game.pending);
   assert.strictEqual(last(h).room.turnPaused, true);
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
   clock.t += 20000;
-  room.handle(g, { type: 'act', action: { type: 'bid', count: 1 } });
-  room.handle(h, { type: 'act', action: { type: 'bid', count: 0 } });
+  room.handle(g, { type: 'act', action: { type: 'bid', count: 2 } });
+  room.handle(h, { type: 'act', action: { type: 'bid', count: 1 } });
   assert.strictEqual(room.game.pending, null);
-  assert.ok(gp.alive);
+  assert.ok(gp.alive);   // 攻撃1 ＜ 防御2 で守られた
   // 攻防のあとは残り70秒から再開
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
   const before = `${room.game.round}:${room.game.turn}`;
@@ -123,16 +123,17 @@ test('攻防で出す数は、公開されるまで相手には見えない', ()
   assert.deepStrictEqual([lc.atk, lc.def, lc.success], [1, 2, false]);
 });
 
-test('攻防で30秒決めなければ 0 個', () => {
+test('攻防で30秒決めなければ、出せる最小の数（攻撃側は1個・防御側は0個）', () => {
   const r = startTwo();
   const { room, h, g, fire } = r;
-  const { gp } = declareOnCore(r, 1, 0);
+  const { gp } = declareOnCore(r, 1, 2);
   fire(BID_MS);
   assert.strictEqual(room.game.pending, null);
   assert.strictEqual(gp.alive, false);   // 防御トークンを出さなかったのでコアが破壊された
   assert.ok(room.game.over);
   assert.deepStrictEqual(room.game.winners, [h]);
   assert.ok(room.game.log.some(l => l.text.includes('B：時間切れのため 0 個')));
+  assert.ok(room.game.log.some(l => l.text.includes('A：時間切れのため 1 個')));
   assert.notStrictEqual(g, h);
 });
 
@@ -185,4 +186,26 @@ test('ホストは盤面の直径を設定できる', () => {
   room.handle(h, { type: 'start' });
   assert.strictEqual(room.game.radius, 6);
   assert.strictEqual(Object.keys(room.game.board).length, 127);
+});
+
+test('ほかの人の防御トークンの数は届かない', () => {
+  const r = startTwo();
+  const { room, h, g, last } = r;
+  const mine = last(h).room.game.players.find(p => p.id === h);
+  const other = last(h).room.game.players.find(p => p.id === g);
+  assert.strictEqual(mine.defense, 2);
+  assert.strictEqual(other.defense, null);
+  assert.strictEqual(last(g).room.game.players.find(p => p.id === g).defense, 2);
+});
+
+test('ホストは行動回数とラウンド数を設定できる（0 は人数に合わせる）', () => {
+  const { room, inbox, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  room.join('t2', 'B');
+  room.handle(h, { type: 'settings', actions: 9 });
+  assert.strictEqual(inbox[h].at(-1).type, 'error');
+  room.handle(h, { type: 'settings', actions: 5, rounds: 8 });
+  assert.deepStrictEqual(last(h).room.settings, { diameter: 0, actions: 5, rounds: 8 });
+  room.handle(h, { type: 'start' });
+  assert.deepStrictEqual([room.game.actionsPerTurn, room.game.rounds], [5, 8]);
 });

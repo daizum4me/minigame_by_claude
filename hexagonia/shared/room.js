@@ -37,7 +37,8 @@
       this.players = [];        // { id, token, name, color, connected, cpu }
       this.hostId = null;
       this.phase = 'lobby';
-      this.settings = { diameter: 0 };   // 盤面の直径（マス）。0 は人数に合わせる
+      // 盤面の直径（マス）・1手番の行動回数・ラウンド数。0 は人数に合わせる
+      this.settings = { diameter: 0, actions: 0, rounds: 0 };
       this.game = null;
       this.seq = 0;
       this.timers = {};         // turn / bid / grace / cpu
@@ -128,10 +129,26 @@
         }
         case 'settings': {
           if (id !== this.hostId || this.phase !== 'lobby') return;
-          const d = Number(msg.diameter);
-          const [lo, hi] = E.RULES.radiusRange;
-          if (d !== 0 && !(Number.isInteger(d) && d % 2 === 1 && d >= lo * 2 + 1 && d <= hi * 2 + 1)) return err('盤面の大きさが正しくありません');
-          this.settings.diameter = d;
+          const next = Object.assign({}, this.settings);
+          if ('diameter' in msg) {
+            const d = Number(msg.diameter);
+            const [lo, hi] = E.RULES.radiusRange;
+            if (d !== 0 && !(Number.isInteger(d) && d % 2 === 1 && d >= lo * 2 + 1 && d <= hi * 2 + 1)) return err('盤面の大きさが正しくありません');
+            next.diameter = d;
+          }
+          if ('actions' in msg) {
+            const a = Number(msg.actions);
+            const [lo, hi] = E.RULES.actionsRange;
+            if (a !== 0 && !(Number.isInteger(a) && a >= lo && a <= hi)) return err('行動回数が正しくありません');
+            next.actions = a;
+          }
+          if ('rounds' in msg) {
+            const r = Number(msg.rounds);
+            const [lo, hi] = E.RULES.roundsRange;
+            if (r !== 0 && !(Number.isInteger(r) && r >= lo && r <= hi)) return err('ラウンド数が正しくありません');
+            next.rounds = r;
+          }
+          this.settings = next;
           this.changed();
           return;
         }
@@ -140,7 +157,12 @@
           if (this.phase !== 'lobby') return;
           if (this.players.length < E.RULES.minPlayers) return err(`${E.RULES.minPlayers}人以上でないと始められません`);
           const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
-          this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius });
+          const { actions, rounds } = this.settings;
+          try {
+            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, actions, rounds });
+          } catch (e) {
+            return err(e.message);
+          }
           this.phase = 'game';
           this.changed();
           return;
@@ -272,13 +294,14 @@
       this.changed();
     }
 
-    // 決めていない人は 0 個
+    // 決めていない人は、出せる最小の数（攻撃側は1個、防御側は0個）
     bidTimeout(pd) {
       const g = this.game;
       if (this.closed || !g || g.pending !== pd) return;
       for (const id of E.waiting(g)) {
-        this.note(`⏳ ${g.players.find(x => x.id === id).name}：時間切れのため 0 個`);
-        E.apply(g, id, { type: 'bid', count: 0 });
+        const n = E.minBid(pd.attacker === id ? 'atk' : 'def');
+        this.note(`⏳ ${g.players.find(x => x.id === id).name}：時間切れのため ${n} 個`);
+        E.apply(g, id, { type: 'bid', count: n });
       }
       this.changed();
     }
@@ -305,7 +328,7 @@
         const r = action ? E.apply(g, id, action) : { ok: false };
         // 万一ルール上できない手を選んだら、止まらないように進める
         if (!r.ok) {
-          if (g.pending) E.apply(g, id, { type: 'bid', count: 0 });
+          if (g.pending) E.apply(g, id, { type: 'bid', count: E.minBid(g.pending.attacker === id ? 'atk' : 'def') });
           else if (g.abandon) E.apply(g, id, { type: 'abandon', cells: E.suggestAbandon(g, id) });
           else E.apply(g, id, { type: 'endTurn' });
         }
@@ -319,7 +342,11 @@
       const now = this.now();
       let game = null;
       if (g) {
-        game = Object.assign({}, g, { log: g.log.slice(-LOG_SEND) });
+        // ほかの人の防御トークンの数は見せない
+        game = Object.assign({}, g, {
+          log: g.log.slice(-LOG_SEND),
+          players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { defense: null })),
+        });
         const pd = g.pending;
         if (pd) {
           game.pending = Object.assign({}, pd, {
