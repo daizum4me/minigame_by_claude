@@ -390,6 +390,13 @@
           ctx.setLineDash([]);
           ctx.stroke();
         }
+        if (c.fort) {
+          // 防御済：さらに内側にもう一つ六角形の線
+          hexPath(ctx, x, y, s * 0.44);
+          ctx.lineWidth = Math.max(1.2, s * 0.05);
+          ctx.strokeStyle = col.light;
+          ctx.stroke();
+        }
         if (c.core) {
           ctx.beginPath();
           ctx.arc(x, y, s * 0.27, 0, Math.PI * 2);
@@ -398,17 +405,6 @@
           ctx.lineWidth = Math.max(1, s * 0.04);
           ctx.strokeStyle = col.light;
           ctx.stroke();
-          // コアの耐久（残りは塗りつぶし、減った分は輪郭だけ）
-          const owner = g.players.find(p => p.id === c.owner);
-          if (owner && owner.coreHp != null && s >= 12) {
-            const max = E.RULES.coreHp;
-            for (let i = 0; i < max; i++) {
-              ctx.beginPath();
-              ctx.arc(x + (i - (max - 1) / 2) * s * 0.2, y + s * 0.47, Math.max(1.5, s * 0.065), 0, Math.PI * 2);
-              if (i < owner.coreHp) { ctx.fillStyle = col.light; ctx.fill(); }
-              else { ctx.lineWidth = Math.max(1, s * 0.03); ctx.strokeStyle = col.light; ctx.stroke(); }
-            }
-          }
         }
       }
       // 捨てるセルとして選んだマス：赤い枠と×

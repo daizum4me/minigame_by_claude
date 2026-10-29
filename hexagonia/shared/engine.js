@@ -23,11 +23,11 @@
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
     terrainRatio: { plain: 14, mountain: 3, mine: 3 }, // 平原：山岳：鉱山 = 70%：15%：15%（要調整）
     startResource: 3,
-    coreHp: 3,                          // コアは攻撃が3回成功すると破壊される
     actionsPerTurn: 3,
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     rounds: 12,
-    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 1, reinforce: 2 },
+    // fortify：強化済のセルをもう一度強化して「防御済」にする（攻撃が2回成功しないと落ちない）
+    cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, fortify: 3, destroy: 1, reinforce: 2 },
     // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
     income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
     upkeep: { per: 4, plainWeight: 0.5 },  // 維持費 = セルの数 ÷ 4（切り捨て）。平原のセルは半分として数える
@@ -141,7 +141,7 @@
     const board = {};
     for (let q = -radius; q <= radius; q++) {
       for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
-        board[key(q, r)] = { q, r, terrain: 'plain', owner: null, strong: false, core: false };
+        board[key(q, r)] = { q, r, terrain: 'plain', owner: null, strong: false, fort: false, core: false };
       }
     }
     // 公平さの補正：コアのマスとその周囲1マスは平原に固定
@@ -178,7 +178,7 @@
       players: order.map((p, i) => {
         const [q, r] = cores[i];
         Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: 0, alive: true, core: key(q, r), coreHp: RULES.coreHp };
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: 0, alive: true, core: key(q, r) };
       }),
       turn: 0,               // players の何番目の手番か
       round: 1,
@@ -230,6 +230,11 @@
     return Math.floor(weight / u.per + 1e-9);
   }
 
+  // 強化に必要な資源：未強化なら強化済へ、強化済なら防御済へ
+  function strengthenCost(cell) {
+    return cell.strong ? RULES.cost.fortify : RULES.cost.strengthen;
+  }
+
   function expandCost(cell) {
     if (cell.terrain === 'mountain') return RULES.cost.expandMountain;
     if (cell.terrain === 'river') return RULES.cost.bridge;   // 川には橋をかける
@@ -271,7 +276,8 @@
       if (type === 'expand') {
         if (!c.owner && p.resource >= expandCost(c) && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
       } else if (type === 'strengthen') {
-        if (c.owner === id && !c.strong) out.push(k);
+        // 未強化 → 強化済（資源2）、強化済 → 防御済（資源3）
+        if (c.owner === id && !c.fort && p.resource >= strengthenCost(c)) out.push(k);
       } else if (type === 'destroy') {
         if (c.owner && c.owner !== id && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
       }
@@ -337,12 +343,18 @@
     if (action.type === 'expand') {
       const cost = expandCost(cell);
       p.resource -= cost;
-      Object.assign(cell, { owner: id, strong: false, core: false });
+      Object.assign(cell, { owner: id, strong: false, fort: false, core: false });
       let extra = '';
       if (cell.terrain === 'mountain') { p.defense += 1; extra = '（山岳：防御トークン +1）'; }
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
+    } else if (action.type === 'strengthen' && cell.strong) {
+      // 3段階目：防御済（攻撃が2回成功しないと落ちない）
+      p.resource -= RULES.cost.fortify;
+      cell.fort = true;
+      state.actionsLeft--;
+      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を防御済にした`, 'strengthen');
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
@@ -393,16 +405,14 @@
     const what = cell.core ? 'コア' : 'セル';
     if (d.defense + def > 0) addLog(state, `攻防：${a.name} 攻撃トークン ${atk} 個 ／ ${d.name} 防御トークン ${def} 個`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
-    const wasCore = cell.core;
-    if (wasCore) {
-      // コアは耐久が 0 になるまで残る
-      d.coreHp--;
-      if (d.coreHp > 0) {
-        addLog(state, `コアに命中：${a.name} が ${d.name} のコア${cellLabel(cell)}への攻撃に成功（残り耐久 ${d.coreHp} / ${RULES.coreHp}）`, 'hit');
-        return;
-      }
+    if (cell.fort) {
+      // 防御済は1回目の成功では落ちず、強化済に戻る
+      cell.fort = false;
+      addLog(state, `防御済に命中：${a.name} の攻撃で ${d.name} の${what}${cellLabel(cell)}が強化済に戻った`, 'hit');
+      return;
     }
-    Object.assign(cell, { owner: null, strong: false, core: false });
+    const wasCore = cell.core;
+    Object.assign(cell, { owner: null, strong: false, fort: false, core: false });
     if (cell.terrain === 'river') {
       // 橋は破壊されると落ちて、川に戻る（攻撃側のセルにはならない）
       addLog(state, `破壊成功：${a.name} が ${d.name} の橋${cellLabel(cell)}を落とした（川に戻る）`, 'destroy');
@@ -411,7 +421,7 @@
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
     // 破壊したマスはそのまま攻撃側のセル（未強化）になる。山岳マスなら拡張と同じく防御トークン +1
-    Object.assign(cell, { owner: a.id, strong: false, core: false });
+    Object.assign(cell, { owner: a.id, strong: false, fort: false, core: false });
     let extra = '';
     if (cell.terrain === 'mountain') { a.defense += 1; extra = '（山岳：防御トークン +1）'; }
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
@@ -419,7 +429,7 @@
 
   function eliminate(state, p) {
     p.alive = false;
-    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
+    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, fort: false, core: false });
     p.resource = 0; p.attack = 0; p.defense = 0;
     addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
@@ -467,7 +477,7 @@
       if (!c || c.owner !== id) return fail('自分のセルを選んでください');
       if (c.core) return fail('コアは捨てられません');
     }
-    for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, core: false });
+    for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, fort: false, core: false });
     const p = playerById(state, id);
     addLog(state, `${p.name} がセル ${keys.map(k => cellLabel(state.board[k])).join(' ')} を捨てた`, 'abandon');
     state.abandon = null;
@@ -569,6 +579,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon,
+    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, strengthenCost,
   };
 });

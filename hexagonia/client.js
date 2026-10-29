@@ -554,7 +554,7 @@
       const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
-        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}${p.alive && p.coreHp < R.coreHp ? `<span class="badge hp" title="コアの耐久">コア ${p.coreHp}/${R.coreHp}</span>` : ''}</div>
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -612,7 +612,7 @@
       // 公開された結果
       el.innerHTML = `${head}
         <div class="clash-count reveal"><span>${TOKEN_SVG.attack}攻撃 <b>${res.atk}</b></span><span class="vs">vs</span><span>${TOKEN_SVG.defense}防御 <b>${res.def}</b></span></div>
-        <p class="clash-result ${res.success ? 'bad' : 'good'}">${!res.success ? '破壊失敗（守られた）' : cell.core ? `コアに命中（残り耐久 ${d.coreHp} / ${R.coreHp}）` : '破壊成功'}</p>`;
+        <p class="clash-result ${res.success ? 'bad' : 'good'}">${!res.success ? '破壊失敗（守られた）' : cell.owner === res.defender ? '防御済に命中（強化済に戻った）' : '破壊成功'}</p>`;
       el.hidden = false;
       return;
     }
@@ -810,17 +810,21 @@
       cost = E.expandCost(c);
       gain = c.terrain === 'mountain' ? '防御トークン +1' : c.terrain === 'mine' ? `手番終了時の資源 +${R.income.mine}` : c.terrain === 'river' ? '橋をかけて川を渡る' : '';
     } else if (c.owner === app.me) {
-      if (c.strong) return { note: '強化済のセルです' };
+      if (c.fort) return { note: '防御済のセルです（攻撃が2回成功しないと落ちない）' };
       type = 'strengthen';
-      cost = R.cost.strengthen;
+      cost = E.strengthenCost(c);
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
-      gain = '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
+      gain = c.strong
+        ? '防御済にする：攻撃が2回成功しないと落ちない（1回目で強化済に戻る）'
+        : '攻撃トークン +1' + (c.terrain === 'mountain' ? '・防御トークン +1' : '') + `・手番終了時の資源 +${inc}`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
-      gain = c.core
-        ? `${foe.name} の防御トークン ${foe.defense} 個。コアの耐久 ${foe.coreHp} / ${R.coreHp}（攻撃が成功するたびに -1、0 で破壊）`
+      gain = c.fort
+        ? `${foe.name} の防御トークン ${foe.defense} 個。防御済なので、1回目の成功では強化済に戻るだけ`
+        : c.core
+        ? `${foe.name} の防御トークン ${foe.defense} 個。成功するとコアを破壊（${foe.name} は脱落）`
         : c.terrain === 'river'
           ? `${foe.name} の防御トークン ${foe.defense} 個。成功すると橋が落ちて川に戻る`
           : `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
@@ -845,13 +849,13 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? (c.terrain === 'river' ? '川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? `コア（耐久 ${owner.coreHp} / ${R.coreHp}）・` : '') + (c.strong ? '強化済' : '未強化');
+    const state = !owner ? (c.terrain === 'river' ? '川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.fort ? '防御済' : c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
       const a = cellAction(g, tip.key);
       if (a && a.type) {
         acts = `<div class="tt-acts"><button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
-          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
+          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : a.type === 'strengthen' && c.strong ? '強化（防御済へ）' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
           ${a.why ? `<p class="tt-why">${esc(a.why)}</p>` : ''}</div>`;
       } else if (a && a.note) {
         acts = `<div class="tt-acts"><p class="tt-why">${esc(a.note)}</p></div>`;
