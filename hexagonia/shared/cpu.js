@@ -72,7 +72,8 @@
         // 相手が防御トークンを全部出しても破りきれるか（破りきれないときは出す数の読み合いになる）
         const canBreak = me.attack >= foe.defense;
         let s;
-        if (c.core) s = canBreak ? 30 : me.attack > 0 ? 3 : 1;
+        // コアは耐久が残り1なら最優先。それまでは攻撃を重ねる価値がある
+        if (c.core) s = foe.coreHp <= 1 ? (canBreak ? 30 : me.attack > 0 ? 3 : 1) : (canBreak ? 7 + (R.coreHp - foe.coreHp) * 2 : me.attack > 0 ? 2 : 0.5);
         else if (foe.defense === 0) s = 5;
         else s = canBreak ? 3.2 : me.attack > 0 ? 0.8 : -1;
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる

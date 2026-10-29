@@ -52,7 +52,7 @@ test('CPU はコアを守れる数を出し、破りきれるときは必要な�
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(3));
   const [a, b] = g.players;
   const [cq, cr] = E.parseKey(b.core);
-  const [nq, nr] = E.neighbors(cq, cr)[0];
+  const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => g.board[E.key(q, r)]);
   Object.assign(g.board[E.key(nq, nr)], { owner: a.id });
   b.defense = 3;
   a.attack = 1;

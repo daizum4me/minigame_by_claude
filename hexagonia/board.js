@@ -327,14 +327,14 @@
         ctx.stroke();
         if (c.terrain === 'mountain') {
           ctx.beginPath();
-          ctx.moveTo(x, y - s * 0.38);
-          ctx.lineTo(x + s * 0.4, y + s * 0.3);
-          ctx.lineTo(x - s * 0.4, y + s * 0.3);
+          ctx.moveTo(x, y - s * 0.25);
+          ctx.lineTo(x + s * 0.27, y + s * 0.2);
+          ctx.lineTo(x - s * 0.27, y + s * 0.2);
           ctx.closePath();
           ctx.fillStyle = COL.mark;
           ctx.fill();
         } else if (c.terrain === 'mine') {
-          starPath(ctx, x, y + s * 0.02, s * 0.42, s * 0.18);
+          starPath(ctx, x, y + s * 0.02, s * 0.28, s * 0.12);
           ctx.fillStyle = COL.mark;
           ctx.fill();
         }
@@ -370,6 +370,17 @@
           ctx.lineWidth = Math.max(1, s * 0.04);
           ctx.strokeStyle = col.light;
           ctx.stroke();
+          // コアの耐久（残りは塗りつぶし、減った分は輪郭だけ）
+          const owner = g.players.find(p => p.id === c.owner);
+          if (owner && owner.coreHp != null && s >= 12) {
+            const max = E.RULES.coreHp;
+            for (let i = 0; i < max; i++) {
+              ctx.beginPath();
+              ctx.arc(x + (i - (max - 1) / 2) * s * 0.2, y + s * 0.47, Math.max(1.5, s * 0.065), 0, Math.PI * 2);
+              if (i < owner.coreHp) { ctx.fillStyle = col.light; ctx.fill(); }
+              else { ctx.lineWidth = Math.max(1, s * 0.03); ctx.strokeStyle = col.light; ctx.stroke(); }
+            }
+          }
         }
       }
       // 行動できるマス（薄く光らせる）

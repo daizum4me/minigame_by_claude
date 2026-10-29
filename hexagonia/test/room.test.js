@@ -44,7 +44,7 @@ function declareOnCore(r, gDefense, hAttack) {
   gp.defense = gDefense;
   hp.attack = hAttack;
   const [cq, cr] = E.parseKey(gp.core);
-  const [nq, nr] = E.neighbors(cq, cr)[0];
+  const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => room.game.board[E.key(q, r)]);
   Object.assign(room.game.board[E.key(nq, nr)], { owner: h });
   room.handle(h, { type: 'act', action: { type: 'destroy', q: cq, r: cr } });
   return { gp, hp };
@@ -125,6 +125,7 @@ test('攻防で出す数は、公開されるまで相手には見えない', ()
 test('攻防で30秒決めなければ 0 個', () => {
   const r = startTwo();
   const { room, h, g, fire } = r;
+  room.game.players.find(p => p.id === g).coreHp = 1;   // 残り耐久1
   const { gp } = declareOnCore(r, 1, 0);
   fire(BID_MS);
   assert.strictEqual(room.game.pending, null);

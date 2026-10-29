@@ -521,7 +521,7 @@
       const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
-        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}${p.alive && p.coreHp < R.coreHp ? `<span class="badge hp" title="コアの耐久">コア ${p.coreHp}/${R.coreHp}</span>` : ''}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -533,7 +533,12 @@
     logEl.innerHTML = g.log.map(l => `<li class="lg-${l.tone}">${esc(l.text)}</li>`).join('');
     if (atBottom || !app.lastLogSeq) logEl.scrollTop = logEl.scrollHeight;
     const fresh = app.lastLogSeq ? g.log.filter(l => l.seq > app.lastLogSeq) : [];
-    for (const l of fresh) if (/^破壊(成功|失敗)/.test(l.text) || l.tone === 'out') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
+    for (const l of fresh) {
+      if (/^破壊(成功|失敗)/.test(l.text) || l.tone === 'out' || l.tone === 'hit') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
+      else if (me && l.text === `${me.name} はもう行動できないため、自動で手番終了`) toast('もう行動できないため、自動で手番を終えました', 'info');
+    }
+    // コアに命中したら、コアを赤く光らせる（マスは変わらないので）
+    if (g.lastClash && fresh.some(l => l.tone === 'hit')) view.flash([g.lastClash.target], '255,110,110');
     playSounds(g, fresh);
     app.lastLogSeq = g.log.length ? g.log[g.log.length - 1].seq : 0;
 
@@ -573,7 +578,7 @@
       // 公開された結果
       el.innerHTML = `${head}
         <div class="clash-count reveal"><span>${TOKEN_SVG.attack}攻撃 <b>${res.atk}</b></span><span class="vs">vs</span><span>${TOKEN_SVG.defense}防御 <b>${res.def}</b></span></div>
-        <p class="clash-result ${res.success ? 'bad' : 'good'}">${res.success ? '破壊成功' : '破壊失敗（守られた）'}</p>`;
+        <p class="clash-result ${res.success ? 'bad' : 'good'}">${!res.success ? '破壊失敗（守られた）' : cell.core ? `コアに命中（残り耐久 ${d.coreHp} / ${R.coreHp}）` : '破壊成功'}</p>`;
       el.hidden = false;
       return;
     }
@@ -639,7 +644,7 @@
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
       else if (l.tone === 'out') found.add('out');
-      else if (/^破壊成功/.test(l.text)) found.add('success');
+      else if (/^破壊成功/.test(l.text) || l.tone === 'hit') found.add('success');
       else if (/^破壊失敗/.test(l.text)) found.add('fail');
       else if (l.tone === 'destroy') found.add('declare');
       else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1, buy: 1 }) found.add(l.tone);
@@ -735,7 +740,9 @@
       type = 'destroy';
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
-      gain = `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
+      gain = c.core
+        ? `${foe.name} の防御トークン ${foe.defense} 個。コアの耐久 ${foe.coreHp} / ${R.coreHp}（攻撃が成功するたびに -1、0 で破壊）`
+        : `${foe.name} の防御トークン ${foe.defense} 個。成功するとこのマスが自分のセルになる`;
     }
     let why = '';
     if (!E.targets(g, app.me, type).includes(key)) {
@@ -756,7 +763,7 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? '空きマス' : (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
+    const state = !owner ? '空きマス' : (c.core ? `コア（耐久 ${owner.coreHp} / ${R.coreHp}）・` : '') + (c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
       const a = cellAction(g, tip.key);
