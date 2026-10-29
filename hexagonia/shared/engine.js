@@ -39,8 +39,11 @@
     // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。補強は行動回数を使わない
     cost: { expand: 1, expandMountain: 2, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2 },
     // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
-    // コアを強化しても資源は増えない（coreStrongBonus: false）
-    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: false },
+    // 手番終了時の資源。強化済のコアは +2 に加えて +1
+    income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
+    // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +3 を作り、セル1つにつき1を食べる。
+    // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
+    food: { start: 0, core: 5, strong: 3, perCell: 1 },
     strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
     // 維持費：セルが多いほど割る数が小さくなる（累進）。6つまでは4つにつき1、7〜12は3つにつき1、13より多い分は2つにつき1。合計を切り捨て
     // いまは試しに維持費なし（enabled: false）。戻すときは true にする
@@ -271,7 +274,7 @@
       players: order.map((p, i) => {
         const [q, r] = cores[i];
         Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: RULES.startDefense, alive: true, core: key(q, r) };
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: RULES.startDefense, food: RULES.food.start, alive: true, core: key(q, r) };
       }),
       actionsPerTurn: actions,
       rounds,
@@ -541,7 +544,7 @@
   function eliminate(state, p) {
     p.alive = false;
     for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
-    p.resource = 0; p.attack = 0; p.defense = 0;
+    p.resource = 0; p.attack = 0; p.defense = 0; p.food = 0;
     addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);
@@ -557,6 +560,8 @@
   }
 
   // 手番終了：資源を受け取り、維持費を払う。払えなければ足りない数だけセルを選んで捨ててから次へ
+  // 手番終了：資源を受け取り、維持費（いまは無効）を払い、食料を作って食べる。
+  // 維持費か食料が足りなければ、足りない数だけセルを選んで捨ててから次へ
   function endTurn(state) {
     const p = current(state);
     const n = income(state, p.id);
@@ -564,15 +569,31 @@
     const cost = upkeep(state, p.id);
     const paid = Math.min(cost, p.resource);
     p.resource -= paid;
-    addLog(state, `${p.name} が手番終了（資源トークン +${n}${cost ? `・維持費 −${paid}` : ''}）`, 'income');
-    const lack = cost - paid;
+    const made = foodMade(state, p.id), eaten = foodEaten(state, p.id);
+    p.food = (p.food || 0) + made - eaten;
+    const hungry = Math.max(0, -p.food);
+    p.food = Math.max(0, p.food);
+    addLog(state, `${p.name} が手番終了（資源トークン +${n}${cost ? `・維持費 −${paid}` : ''}・食料 +${made} −${eaten}）`, 'income');
+    const lack = (cost - paid) + hungry;
     const spare = cellsOf(state, p.id).filter(c => !c.core).length;
     if (lack > 0 && spare > 0) {
       state.abandon = { player: p.id, count: Math.min(lack, spare) };
-      addLog(state, `${p.name} は維持費が ${lack} 足りないため、セルを ${state.abandon.count} つ捨てる`, 'abandon');
+      const why = hungry && cost - paid ? `維持費と食料が ${lack}` : hungry ? `食料が ${hungry}` : `維持費が ${lack}`;
+      addLog(state, `${p.name} は${why} 足りないため、セルを ${state.abandon.count} つ捨てる`, 'abandon');
       return;
     }
     advance(state);
+  }
+
+  // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +3
+  function foodMade(state, id) {
+    const f = RULES.food;
+    return cellsOf(state, id).reduce((n, c) => n + (c.core ? f.core : 0) + (c.strong ? f.strong : 0), 0);
+  }
+
+  // 手番終了時に食べる食料：セル1つにつき1
+  function foodEaten(state, id) {
+    return cellsOf(state, id).length * RULES.food.perCell;
   }
 
   // 捨てるセルを選ぶ（コアは捨てられない）
@@ -710,6 +731,6 @@
     RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid,
+    largestGroup, extraActionCost, upkeep, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten,
   };
 });

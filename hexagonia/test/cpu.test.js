@@ -28,8 +28,18 @@ test('CPU どうしで最後まで遊べる（ルール違反の手を選ばな�
     }
     if (g.endReason.includes('脱落')) stats.core++; else stats.rounds++;
   }
-  // 攻め合いでの決着と、12ラウンドでの決着の両方が起きる
-  assert.ok(stats.core > 0, JSON.stringify(stats));
+  assert.strictEqual(stats.core + stats.rounds, 33);
+});
+
+test('2人戦では、攻め合いでの決着と、最後のラウンドでの決着の両方が起きる', () => {
+  const stats = { core: 0, rounds: 0 };
+  for (let seed = 1; seed <= 20; seed++) {
+    const rng = seeded(seed);
+    const g = E.createGame(PLAYERS.slice(0, 2), rng);
+    while (!g.over) for (const id of E.waiting(g)) E.apply(g, id, CPU.decide(g, id, rng));
+    if (g.endReason.includes('脱落')) stats.core++; else stats.rounds++;
+  }
+  assert.ok(stats.core > 0 && stats.rounds > 0, JSON.stringify(stats));
 });
 
 test('CPU は何もしない相手に勝つ', () => {

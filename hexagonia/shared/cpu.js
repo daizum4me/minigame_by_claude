@@ -37,6 +37,8 @@
     const touchesMine = c => E.neighbors(c.q, c.r).some(([q, r]) => myGroup.has(E.key(q, r)));
     const danger = threat(g, me);
     const net = E.income(g, id) - E.upkeep(g, id);      // 毎手番の資源の増え方（維持費を引いたあと）
+    // 食料：手番終了時に「貯え + 作る量 − 食べる量」が足りないとセルを捨てることになる
+    const foodLeft = (me.food || 0) + E.foodMade(g, id) - E.foodEaten(g, id);
     const out = [];
     const noise = () => (rng() - 0.5) * 0.6;
 
@@ -58,6 +60,9 @@
         }
         // 維持費で資源が増えなくなってきたら、広げるのを控える（平原は維持費が半分）
         if (net <= 1) s -= c.terrain === 'plain' ? 0.4 : 0.8;
+        // 広げると食料を1つ多く食べる。食べさせきれないなら広げない
+        if (foodLeft - 1 < 0) s -= 6;
+        else if (foodLeft - 1 < 2) s -= 1.5;
         // 一番大きなかたまりにつながる拡張を重視（終盤は特に）
         if (touchesMine(c)) s += late ? 2.8 : 0.6;
         else if (late) s += 0.3;
@@ -69,6 +74,7 @@
         const c = g.board[k];
         // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
+        if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +3
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (c.terrain === 'mountain') s += 0.8;

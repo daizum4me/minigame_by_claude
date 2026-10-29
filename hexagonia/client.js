@@ -120,8 +120,10 @@
     attack: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 2 L14.89 7 L20.66 7 L17.77 12 L20.66 17 L14.89 17 L12 22 L9.11 17 L3.34 17 L6.23 12 L3.34 7 L9.11 7 Z" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
     // 防御：青の正方形
     defense: `<svg viewBox="0 0 24 24" class="tk"><rect x="4.5" y="4.5" width="15" height="15" rx="1.2" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.6"/></svg>`,
+    // 食料：黄色の丸
+    food: `<svg viewBox="0 0 24 24" class="tk"><circle cx="12" cy="12" r="8" fill="rgba(240,200,40,.5)" stroke="#FFE27A" stroke-width="1.6"/></svg>`,
   };
-  const TOKEN_NAMES = { resource: '資源', attack: '攻撃', defense: '防御' };
+  const TOKEN_NAMES = { resource: '資源', attack: '攻撃', defense: '防御', food: '食料' };
 
   // ルール説明のアイコン（盤面の見た目に合わせた小さな絵）
   const HEX = 'M12 2 L20.7 7 L20.7 17 L12 22 L3.3 17 L3.3 7 Z';
@@ -131,6 +133,7 @@
   const CELL_FILL = 'rgba(76,142,218,.45)', CELL_LINE = '#9CC6F2';
   const ICONS = {
     resource: TOKEN_SVG.resource,
+    food: TOKEN_SVG.food,
     attack: TOKEN_SVG.attack,
     defense: TOKEN_SVG.defense,
     cell: tile(CELL_FILL, CELL_LINE),
@@ -567,7 +570,7 @@
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
     $('#me-actions').textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
-    $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('attack', me.attack, true) + tokenChip('defense', me.defense, true) : '';
+    $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('attack', me.attack, true) + tokenChip('defense', me.defense, true) + tokenChip('food', me.food, true) : '';
 
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
@@ -597,7 +600,7 @@
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
         <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
-        <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}</div>
+        <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}${tokenChip('food', p.food)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
     }).join('');
@@ -717,7 +720,10 @@
   // 手番終了で受け取る資源（収入 − 維持費）
   function netText(g) {
     const inc = E.income(g, app.me), up = E.upkeep(g, app.me);
-    return up ? `資源 +${inc} −維持費 ${up}` : `資源 +${inc}`;
+    const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me);
+    const me = g.players.find(p => p.id === app.me);
+    const short = Math.max(0, eaten - made - ((me && me.food) || 0));
+    return (up ? `資源 +${inc} −維持費 ${up}` : `資源 +${inc}`) + `・食料 +${made} −${eaten}` + (short ? `（${short} 足りない）` : '');
   }
 
   // 自分が捨てるセルを選んでいるところか
@@ -731,7 +737,7 @@
     for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
     const k = app.abandonSel.size;
     el.innerHTML = `<div class="extra-card abandon-card">
-      <h3>維持費が足りません</h3>
+      <h3>${R.upkeep.enabled ? '維持費か食料' : '食料'}が足りません</h3>
       <p>捨てるセルを <b>${n}</b> つ、盤面で選んでください（コアは選べません）</p>
       <p class="abandon-count ${k === n ? 'ok' : ''}">選んだ数 <b>${k}</b> / ${n}</p>
       <div class="extra-btns">
@@ -859,7 +865,8 @@
       cost = R.cost.strengthen;
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : c.terrain === 'mine' ? R.income.mineStrong - R.income.mine : R.income.strong;
       const gives = R.strengthenGives;
-      gain = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? 1 : 0)}` + (inc ? `・手番終了時の資源 +${inc}` : '（コアは資源は増えない）');
+      const foodNote = `・食料 +${R.food.strong}`;
+      gain = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? 1 : 0)}・手番終了時の資源 +${inc}${foodNote}`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;

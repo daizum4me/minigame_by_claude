@@ -461,3 +461,12 @@ h3 #diameter-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .settings-row { margin-top: 0; }
 .settings-row .select { flex: 1; }
 h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
+
+/* 食料 */
+.k-food { color: #FFE27A; font-weight: 600; }
+.tk-food b { color: #FFE27A; }
+.r-box.food { border-color: rgba(255, 226, 122, 0.35); }
+/* トークンが4種類になったので、自分のパネルでは詰めて1行に */
+.tokens { gap: 6px; }
+.tokens .tchip { padding: 6px 2px; gap: 2px; }
+.tokens .tchip small { white-space: nowrap; margin-left: 1px; }
