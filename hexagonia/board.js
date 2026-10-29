@@ -110,8 +110,16 @@
       this.draw();
     }
 
+    // 盤面の下に浮いている自分の情報の高さ（その上の範囲に盤面を収める）
+    setInsetBottom(px) {
+      if (Math.abs((this.insetBottom || 0) - px) < 2) return;
+      this.insetBottom = px;
+      if (!this.moved) this.fit();
+      this.draw();
+    }
+
     fitScale() {
-      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      const w = this.canvas.clientWidth, h = Math.max(120, this.canvas.clientHeight - (this.insetBottom || 0));
       const R = this.radius + 0.8;
       // 盤面全体（大きな六角形）が収まる大きさ
       return Math.max(1, Math.min(w / (SQRT3 * (2 * R + 0.2)), h / (3 * R + 1.2)) * 0.98);
@@ -120,7 +128,7 @@
     fit() {
       this.scale = Math.min(FIT_MAX_HEX_PX, this.fitScale());
       this.ox = this.canvas.clientWidth / 2;
-      this.oy = this.canvas.clientHeight / 2;
+      this.oy = Math.max(60, (this.canvas.clientHeight - (this.insetBottom || 0)) / 2);
     }
 
     reset() { this.moved = false; this.fit(); this.draw(); }
@@ -144,7 +152,7 @@
       this.focusAnim = {
         t0: performance.now(),
         from: { ox: this.ox, oy: this.oy, scale: this.scale },
-        to: { ox: w / 2 - wx * scale, oy: h / 2 - wy * scale, scale },
+        to: { ox: w / 2 - wx * scale, oy: (h - (this.insetBottom || 0)) / 2 - wy * scale, scale },
       };
       this.moved = true;
       this.animate();

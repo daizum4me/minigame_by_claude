@@ -574,7 +574,7 @@
 
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない補強と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
-    $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御 +1・攻撃 +1（行動回数を使わない）</small></button>`
+    $('#actions').innerHTML = `<button class="act" data-act="reinforce" ${canAct && !E.actionBlocked(g, app.me, 'reinforce') ? '' : 'disabled'}><b>補強</b><small>資源 ${R.cost.reinforce} → 防御 +1（行動回数を使わない）</small></button>`
       + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
       + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
@@ -634,6 +634,7 @@
     if (mine && !app.wasMyTurn) { toast('あなたの手番です', 'good'); window.HexSound.play('turn'); }
     app.wasMyTurn = mine;
 
+    updateDock();
     renderClash(g, pl);
     renderExtra(g, me);
     renderAbandon(g, me);
@@ -958,6 +959,14 @@
 
   // ---------- イベント ----------
 
+  // 盤面の下に浮かせた自分の情報の高さを、盤面の表示範囲・攻防のパネル・盤面のボタンの位置に反映
+  function updateDock() {
+    const h = $('#dock').offsetHeight;
+    if (!h) return;
+    $('.board-wrap').style.setProperty('--dock-h', h + 'px');
+    if (view) view.setInsetBottom(h + 20);
+  }
+
   // ルール説明などの <i data-icon="…"> にアイコンを入れる
   function fillIcons() {
     document.querySelectorAll('[data-icon]').forEach(el => { if (ICONS[el.dataset.icon]) el.innerHTML = ICONS[el.dataset.icon]; });
@@ -965,6 +974,7 @@
 
   function init() {
     fillIcons();
+    new ResizeObserver(updateDock).observe($('#dock'));
     const params = new URLSearchParams(location.search);
     $('#in-name').value = store.get('name') || '';
     const code = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);

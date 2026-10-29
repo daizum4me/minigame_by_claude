@@ -74,7 +74,7 @@
         const c = g.board[k];
         // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
-        if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +3
+        if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (c.terrain === 'mountain') s += 0.8;
@@ -104,8 +104,8 @@
       }
     }
     if (!E.actionBlocked(g, id, 'reinforce')) {
-      // 補強は防御トークン +1 と攻撃トークン +1（行動回数は使わない）。攻撃トークンがないと破壊できない
-      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.attack === 0 && frontier(g, id) > 0 ? 4 : me.defense <= 1 && g.round >= 3 ? 1.8 : 0.2;
+      // 補強は防御トークン +1 だけ（行動回数は使わない）
+      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.defense <= 1 && g.round >= 3 ? 1.8 : 0.2;
       out.push({ s: s + noise(), a: { type: 'reinforce' } });
     }
     return out;

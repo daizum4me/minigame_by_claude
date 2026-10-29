@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア（仮）— 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 
@@ -119,10 +119,8 @@
     <div id="extra" class="extra" hidden></div>
     <div id="abandon" class="extra" hidden></div>
     <div id="tooltip" class="tooltip" hidden></div>
-  </section>
-
-  <aside class="panel">
-    <section class="me">
+    <!-- 自分の情報と、補強・手番終了のボタン（盤面の下に浮かせる） -->
+    <section id="dock" class="dock me">
       <div class="me-head">
         <span id="me-swatch"></span>
         <strong id="me-name"></strong>
@@ -132,6 +130,9 @@
       <div id="actions" class="actions"></div>
       <p id="hint" class="hint"></p>
     </section>
+  </section>
+
+  <aside class="panel">
     <section>
       <h3>プレイヤー</h3>
       <ul id="players" class="players"></ul>
@@ -163,7 +164,7 @@
       <h3><i class="ic" data-icon="cell-strong"></i>セルの段階</h3>
       <div class="r-cards">
         <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
-        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +3</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span></small></div>
         <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +5</span></small></div>
       </div>
     </section>
@@ -185,9 +186,9 @@
       <table class="r-table">
         <tr><th></th><th>行動</th><th>資源</th><th>内容</th></tr>
         <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>河川 4</small></td><td>自分のセルの隣の空きマスにセルを置く。河川には<b>橋をかける</b></td></tr>
-        <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>・<i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>。以後、毎手番 <span class="k-res">資源 +1</span>・<span class="k-food">食料 +3</span></td></tr>
+        <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>・<i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>。以後、毎手番 <span class="k-res">資源 +1</span>・<span class="k-food">食料 +1</span></td></tr>
         <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>攻撃トークン1個以上</small></td><td>隣の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
-        <tr><td><i class="ic" data-icon="act-reinforce"></i></td><td><b>補強</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>・<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>。行動回数を使い切っていてもできる</td></tr>
+        <tr><td><i class="ic" data-icon="act-reinforce"></i></td><td><b>補強</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>（攻撃トークンは増えない）。行動回数を使い切っていてもできる。ログには出ない</td></tr>
       </table>
     </section>
 
@@ -204,7 +205,7 @@
         <div class="r-box food">
           <b>食料（手番終了時）</b>
           <ul class="r-list">
-            <li>作る：<i class="ic" data-icon="core"></i>コア <span class="k-food">+5</span>、<i class="ic" data-icon="cell-strong"></i>強化済のセル（コアも） <span class="k-food">+3</span></li>
+            <li>作る：<i class="ic" data-icon="core"></i>コア <span class="k-food">+5</span>、<i class="ic" data-icon="cell-strong"></i>強化済のセル（コアも） <span class="k-food">+1</span></li>
             <li>食べる：<b>セル1つにつき1</b>。余りは持ち越す</li>
             <li class="k-bad">足りないときは、足りない数だけセルを捨てる（コアは不可・30秒で自動）</li>
           </ul>
@@ -264,11 +265,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=13"></script>
-<script src="shared/cpu.js?v=13"></script>
-<script src="shared/room.js?v=13"></script>
-<script src="sound.js?v=13"></script>
-<script src="board.js?v=13"></script>
-<script src="client.js?v=13"></script>
+<script src="shared/engine.js?v=14"></script>
+<script src="shared/cpu.js?v=14"></script>
+<script src="shared/room.js?v=14"></script>
+<script src="sound.js?v=14"></script>
+<script src="board.js?v=14"></script>
+<script src="client.js?v=14"></script>
 </body>
 </html>

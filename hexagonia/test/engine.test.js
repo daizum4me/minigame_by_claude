@@ -115,13 +115,13 @@ test('行動は最大3回（補強は行動回数を使わない）、資源不�
   assert.strictEqual(g.actionsLeft, 0);
   const [q, r] = E.parseKey(E.targets(g, me, 'expand').length ? E.targets(g, me, 'expand')[0] : Object.keys(g.board).find(k => !g.board[k].owner));
   assert.strictEqual(E.apply(g, me, { type: 'expand', q, r }).ok, false);
-  // 補強は行動回数を使い切っていてもできる。防御トークン +1 と攻撃トークン +1。ログには出ない
+  // 補強は行動回数を使い切っていてもできる。防御トークン +1 だけ（攻撃トークンは増えない）。ログには出ない
   const logLen = g.log.length;
   assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
   assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
   assert.strictEqual(g.log.length, logLen);
-  // 防御：最初の2 + 強化の1 + 補強の2、攻撃：強化の1 + 補強の2
-  assert.deepStrictEqual([P(g, me).defense, P(g, me).attack], [5, 3]);
+  // 防御：最初の2 + 強化の1 + 補強の2、攻撃：強化の1だけ
+  assert.deepStrictEqual([P(g, me).defense, P(g, me).attack], [5, 1]);
   assert.strictEqual(g.actionsLeft, 0);
   E.apply(g, me, { type: 'endTurn' });
   P(g, other).resource = 1;
@@ -577,20 +577,20 @@ test('内側にコアがある人は、ラウンド1の前に1手番ずつ先に
   assert.strictEqual(newGame(6).round, 1);
 });
 
-test('食料：手番終了時にコア +5・強化済のセル（コアも）+3 を作り、セル1つにつき1を食べる。余りは持ち越す', () => {
+test('食料：手番終了時にコア +5・強化済のセル（コアも）+1 を作り、セル1つにつき1を食べる。余りは持ち越す', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6 });
   const me = cur(g);
   assert.strictEqual(P(g, me).food, 0);
   const free = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain');
   free.slice(0, 3).forEach(c => { c.owner = me; });           // セル4つ（コアを含む）
   free[0].strong = true;                                        // 強化済1つ
-  assert.deepStrictEqual([E.foodMade(g, me), E.foodEaten(g, me)], [5 + 3, 4]);
+  assert.deepStrictEqual([E.foodMade(g, me), E.foodEaten(g, me)], [5 + 1, 4]);
   E.apply(g, me, { type: 'endTurn' });
-  assert.strictEqual(P(g, me).food, 4);                         // 0 + 8 − 4
-  assert.ok(g.log.some(l => l.text.includes('食料 +8 −4')));
-  // 強化済のコアも +3
+  assert.strictEqual(P(g, me).food, 2);                         // 0 + 6 − 4
+  assert.ok(g.log.some(l => l.text.includes('食料 +6 −4')));
+  // 強化済のコアも +1
   g.board[P(g, me).core].strong = true;
-  assert.strictEqual(E.foodMade(g, me), 5 + 3 + 3);
+  assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
 });
 
 test('食料が足りなければ、足りない数だけセルを選んで捨てる（コアは捨てられない）', () => {

@@ -41,9 +41,9 @@
     // 手番終了時の資源。強化済セル +1、鉱山は強化しなくても +1・強化すると +2、コアは常に +2（強化済ならさらに +1）
     // 手番終了時の資源。強化済のコアは +2 に加えて +1
     income: { strong: 1, mine: 1, mineStrong: 2, core: 2, coreStrongBonus: true },
-    // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +3 を作り、セル1つにつき1を食べる。
+    // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
-    food: { start: 0, core: 5, strong: 3, perCell: 1 },
+    food: { start: 0, core: 5, strong: 1, perCell: 1 },
     strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
     // 維持費：セルが多いほど割る数が小さくなる（累進）。6つまでは4つにつき1、7〜12は3つにつき1、13より多い分は2つにつき1。合計を切り捨て
     // いまは試しに維持費なし（enabled: false）。戻すときは true にする
@@ -450,8 +450,7 @@
     if (action.type === 'reinforce') {
       p.resource -= RULES.cost.reinforce;
       p.defense += 1;
-      p.attack += 1;
-      // 補強はログに出さない（防御トークンの数を相手にわかりにくくするため）
+      // 補強は防御トークン +1 だけ（攻撃トークンは増えない）。ログに出さない（防御トークンの数を相手にわかりにくくするため）
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -585,7 +584,7 @@
     advance(state);
   }
 
-  // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +3
+  // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +1
   function foodMade(state, id) {
     const f = RULES.food;
     return cellsOf(state, id).reduce((n, c) => n + (c.core ? f.core : 0) + (c.strong ? f.strong : 0), 0);
