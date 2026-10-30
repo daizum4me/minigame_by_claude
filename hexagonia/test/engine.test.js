@@ -789,13 +789,12 @@ test('効果のあるマスは、盤面の中心に近いほど出やすい', ()
   const inner = [0, 0], outer = [0, 0];
   for (let seed = 1; seed <= 20; seed++) {
     const g = newGame(6, seed);
-    const r = g.radius;
     for (const c of Object.values(g.board)) {
       if (c.owner || c.terrain === 'river') continue;
-      const side = E.dist([c.q, c.r], [0, 0]) <= r / 3 ? inner : outer;
+      const side = E.dist([c.q, c.r], [0, 0]) <= 1 ? inner : outer;   // 中心とその周り
       side[1]++;
       if (E.TERRAIN_KINDS.includes(c.terrain)) side[0]++;
     }
   }
-  assert.ok(inner[0] / inner[1] > outer[0] / outer[1] + 0.05, `中心 ${inner} 外側 ${outer}`);
+  assert.ok(inner[0] / inner[1] > outer[0] / outer[1] + 0.1, `中心 ${inner} 外側 ${outer}`);
 });
