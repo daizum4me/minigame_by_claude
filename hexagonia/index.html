@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="style.css?v=38">
 </head>
 <body>
 
@@ -160,7 +160,7 @@
       <ul class="r-list">
         <li>六角形の盤面で自分の<b>セル</b>を広げ、強化し、相手のセルを破壊して争います</li>
         <li><b class="k-good">最後のラウンドが終わったとき</b>に、<b>つながっている一番大きなかたまり</b>（隣り合う自分のセルのまとまり）が最も大きい人の勝ち。同じなら同率優勝</li>
-        <li><i class="ic" data-icon="core"></i><b class="k-core">コア</b>を破壊されると脱落。自分以外の全員が脱落したら、その時点で勝ち</li>
+        <li><i class="ic" data-icon="core"></i><b class="k-core">コア</b>を破壊されると脱落し、<b>破壊した人がセルとトークンをまるごと奪う</b>。自分以外の全員が脱落したら、その時点で勝ち</li>
       </ul>
     </section>
 
@@ -169,7 +169,7 @@
       <div class="r-cards">
         <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
         <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span>。<b>拠点</b>になる</small></div>
-        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +6</span></small></div>
+        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落（壊した人がすべて奪う）。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +6</span></small></div>
       </div>
       <ul class="r-list">
         <li><b>拠点</b>：破壊できるのは、<b>自分の強化済のセルに隣接する</b>相手のセルだけ。攻めたい方向に強化を置く</li>
@@ -301,11 +301,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=37"></script>
-<script src="shared/cpu.js?v=37"></script>
-<script src="shared/room.js?v=37"></script>
-<script src="sound.js?v=37"></script>
-<script src="board.js?v=37"></script>
-<script src="client.js?v=37"></script>
+<script src="shared/engine.js?v=38"></script>
+<script src="shared/cpu.js?v=38"></script>
+<script src="shared/room.js?v=38"></script>
+<script src="sound.js?v=38"></script>
+<script src="board.js?v=38"></script>
+<script src="client.js?v=38"></script>
 </body>
 </html>

@@ -626,7 +626,7 @@
       return;
     }
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
-    if (wasCore) eliminate(state, d);
+    if (wasCore) eliminate(state, d, a);   // コアを破壊した人が、相手のセルとトークンをまるごと奪う
     // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山マスなら拡張と同じく戦力トークン +1
     Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = terrainGain(a, cell);
@@ -642,11 +642,22 @@
     return `鉱山：戦力トークン +${RULES.minePower}`;
   }
 
-  function eliminate(state, p) {
+  // 脱落。heir（コアを破壊した人）がいれば、セル（強化済はそのまま）・資源・戦力・食料をまるごと受け継ぐ。
+  // いなければ（切断などで脱落させたとき）、セルは空きマスに戻り、トークンもなくなる
+  function eliminate(state, p, heir) {
     p.alive = false;
-    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
+    const cells = cellsOf(state, p.id);
+    for (const c of cells) Object.assign(c, heir ? { owner: heir.id, core: false } : { owner: null, strong: false, core: false });
+    if (heir) {
+      heir.resource += p.resource;
+      heir.power += p.power;
+      heir.powerSeen += p.powerSeen;
+      heir.food = (heir.food || 0) + (p.food || 0);
+    }
     p.resource = 0; p.power = 0; p.food = 0; p.powerSeen = 0;
-    addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
+    addLog(state, heir
+      ? `💀 ${p.name} のコアが破壊され、脱落。セル ${cells.length} 個とトークンはすべて ${heir.name} のものに`
+      : `💀 ${p.name} が脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);
   }

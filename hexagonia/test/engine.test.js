@@ -286,7 +286,7 @@ test('城壁はない：強化済のセルの隣のセルでも、守る側に�
   assert.strictEqual(g.board[t].owner, a);
 });
 
-test('コアを破壊すると脱落、セルとトークンが消えて手番が飛ばされる、最後の1人が勝利', () => {
+test('コアを破壊すると脱落し、破壊した人がセル・トークンをまるごと奪う。脱落した人の手番は飛ばされ、最後の1人が勝利', () => {
   const g = newGame(3);
   const [a, b, c] = g.players.map(p => p.id);
   const bc = E.parseKey(P(g, b).core);
@@ -294,16 +294,21 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   setCell(g, nq, nr, { owner: a, strong: true });
   const [oq, or] = nb(g, ...bc).at(-1);
   setCell(g, oq, or, { owner: b, strong: true });
-  P(g, b).resource = 5; P(g, b).power = 2; P(g, b).power = 0;
+  P(g, b).resource = 5; P(g, b).power = 0; P(g, b).food = 3;
   P(g, a).power = 5;
+  const aRes = P(g, a).resource, aFood = P(g, a).food;
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
   E.apply(g, b, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 1 });   // 相手の戦力トークンは見えないので、攻撃側は数を選ぶ
   assert.strictEqual(P(g, b).alive, false);
   assert.strictEqual(E.cellsOf(g, b).length, 0);
   assert.strictEqual(g.board[E.key(...bc)].owner, a); // コアのマスも攻撃側のセルになる
-  assert.strictEqual(g.board[E.key(oq, or)].owner, null);
-  assert.deepStrictEqual([P(g, b).resource, P(g, b).power], [0, 0]);
+  // b のセルは強化済のまま a のものに（コアではなくなる）。資源・食料も a へ
+  assert.deepStrictEqual([g.board[E.key(oq, or)].owner, g.board[E.key(oq, or)].strong], [a, true]);
+  assert.ok(!Object.values(g.board).some(c => c.core && c.owner === a && E.key(c.q, c.r) !== P(g, a).core));
+  assert.deepStrictEqual([P(g, b).resource, P(g, b).power, P(g, b).food], [0, 0, 0]);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).food], [aRes - E.RULES.cost.destroy + 5, aFood + 3]);   // 破壊の資源2を払ったうえで、b の5を受け取る
+  assert.ok(g.log.find(l => l.tone === 'out').text.endsWith(`${P(g, a).name} のものに`));
   E.apply(g, a, { type: 'endTurn' });
   assert.strictEqual(cur(g), c);                       // 脱落した b は飛ばされる
   E.apply(g, c, { type: 'endTurn' });
@@ -354,11 +359,13 @@ test('対象マスの一覧', () => {
   assert.deepStrictEqual(E.targets(g, a, 'strengthen'), []);
 });
 
-test('途中で脱落させる（切断）', () => {
+test('途中で脱落させる（切断）：セルは空きマスに戻る', () => {
   const g = newGame(3);
   const [a, b] = g.players.map(p => p.id);
   E.forfeit(g, a);
   assert.strictEqual(P(g, a).alive, false);
+  assert.strictEqual(E.cellsOf(g, a).length, 0);
+  assert.strictEqual(g.board[P(g, a).core].owner, null);
   assert.strictEqual(cur(g), b);
   assert.strictEqual(g.actionsLeft, 3);
 });

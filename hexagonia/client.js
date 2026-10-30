@@ -1017,7 +1017,7 @@
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
       gain = '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
-        ? `成功するとコアを破壊（${foe.name} は脱落）`
+        ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`
         : c.terrain === 'river'
           ? '成功すると橋が落ちて河川に戻る'
           : '成功するとこのマスが自分のセルになる');

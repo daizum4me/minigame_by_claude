@@ -16,11 +16,11 @@
 
   // 強さ。noise：点数のゆらぎ（大きいほど気まぐれ）、endBelow：これより点数が低い行動しかなければ手番終了、
   // buyAt：行動 +1 を買うのに必要な点数、bidRandom：攻防で出す数をでたらめに決める、
-  // bias：行動の種類ごとの点数の上乗せ（CPU どうしの対戦で、強化と破壊を少し多めにするのが一番勝てた）
+  // bias：行動の種類ごとの点数の上乗せ（CPU どうしの対戦で、強化を多め・拡張を控えめにするのが一番勝てた）
   const LEVELS = {
     weak: { noise: 4, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {} },
     normal: { noise: 0.6, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: {} },
-    strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 0.5, destroy: 0.5 } },
+    strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 1.5, expand: -0.5 } },
   };
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
@@ -64,7 +64,8 @@
         const c = g.board[k];
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
-        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
+        // 相手のコアに近づくほど高い（コアを破壊すれば、相手のセルとトークンをまるごと奪える）
+        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.35;
         if (c.terrain === 'mine') s += me.power <= 1 ? 2.5 : 1.2;    // 鉱山は取ると戦力トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
@@ -116,7 +117,7 @@
         const est = estPower(foe);
         const canBreak = me.power >= est;                 // 同じ数なら攻撃側の勝ち
         let s;
-        if (c.core) s = canBreak ? 30 : 3;                  // コアは最優先
+        if (c.core) s = canBreak ? 30 : 6;                  // コアは最優先（破りきれなくても、読み合いで狙う）
         else if (est <= 1) s = 5;
         else s = canBreak ? 3.2 : -1.5;   // 守る側はためた数を全部使えるので、破りきれないなら控える
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
