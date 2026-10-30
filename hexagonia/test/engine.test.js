@@ -63,17 +63,18 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形は平原・鉱山・農地・森林（平原 約73%、ほかは約9%ずつ）と河川', () => {
-  for (const n of [2, 4, 8]) {
+test('地形は平原・鉱山・農地・森林・山岳（効果のあるマスは合わせて約27%、4種類に均等）と河川', () => {
+  for (const n of [2, 4, 8, 12]) {
     const g = newGame(n, 3);
     const cnt = {};
     Object.values(g.board).forEach(c => { cnt[c.terrain] = (cnt[c.terrain] || 0) + 1; });
-    assert.deepStrictEqual(Object.keys(cnt).sort(), ['farm', 'forest', 'mine', 'plain', 'river'], JSON.stringify(cnt));
-    // コアとその周りは平原、河川は河川。残りのマスの 2/22 ずつ
+    assert.deepStrictEqual(Object.keys(cnt).sort(), ['farm', 'forest', 'mine', 'mountain', 'plain', 'river'], JSON.stringify(cnt));
+    // コアとその周りは平原、河川は河川。残りのマスの 6/22 が効果のあるマス
     const fixed = g.players.reduce((k, p) => k + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
     const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
-    const each = Math.round(free * 2 / 22);
-    assert.deepStrictEqual([cnt.mine, cnt.farm, cnt.forest], [each, each, each], JSON.stringify(cnt));
+    const kinds = [cnt.mine, cnt.farm, cnt.forest, cnt.mountain];
+    assert.strictEqual(kinds.reduce((a, b) => a + b, 0), Math.round(free * 6 / 22), JSON.stringify(cnt));
+    assert.ok(Math.max(...kinds) - Math.min(...kinds) <= 1, JSON.stringify(cnt));
   }
 });
 
@@ -626,6 +627,22 @@ test('農地マス：このセルがあると手番終了時に食料 +1（強�
   assert.strictEqual(E.foodMade(g, me), 5 + 1);
   g.board[E.key(fq, fr)].strong = true;
   assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
+});
+
+test('山岳マス：拡張・強化・破壊で取ったときに防御トークン +1（ほかの人にも見える）', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const [mq, mr] = nb(g, cq, cr)[0];
+  setCell(g, mq, mr, { terrain: 'mountain' });
+  P(g, me).resource = 10;
+  const d0 = P(g, me).defense, s0 = P(g, me).defenseSeen;
+  assert.ok(E.apply(g, me, { type: 'expand', q: mq, r: mr }).ok);
+  assert.deepStrictEqual([P(g, me).defense, P(g, me).defenseSeen], [d0 + 1, s0 + 1]);
+  assert.match(g.log.at(-1).text, /山岳：防御トークン \+1/);
+  assert.ok(E.apply(g, me, { type: 'strengthen', q: mq, r: mr }).ok);
+  assert.strictEqual(P(g, me).defense, d0 + 3);   // 強化の +1 と山岳の +1
+  assert.strictEqual(P(g, me).attack, 1);
 });
 
 test('森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）', () => {

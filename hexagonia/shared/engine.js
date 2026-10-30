@@ -21,9 +21,10 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：鉱山：農地：森林（河川は別に流す）。平原 約73%・鉱山／農地／森林 約9%ずつ
-    terrainRatio: { plain: 16, mine: 2, farm: 2, forest: 2 },
+    // 平原：鉱山：農地：森林：山岳（河川は別に流す）。効果のあるマスは合わせて約27%（6/22）で、4種類に均等に分ける
+    terrainRatio: { plain: 16, mine: 1.5, farm: 1.5, forest: 1.5, mountain: 1.5 },
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
+    mountainDefense: 1,                 // 山岳マス：拡張（破壊で取ったときも）と強化のときに防御トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
     // イベント：ラウンドの始まりに 1/3 の確率で、どれか1つが起きてそのラウンドの間続く（予告はしない）
@@ -62,7 +63,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', mountain: '山岳マス', river: '河川マス' };
   // イベント。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、actions：行動回数
   const EVENTS = {
     famine: { name: '不作', text: 'このラウンド、食料生産が0.5倍', food: 0.5 },
@@ -74,6 +75,8 @@
     festival: { name: '祭事', text: 'このラウンド、行動可能回数 +1', actions: 1 },
     plague: { name: '疫病', text: 'このラウンド、行動可能回数 −1', actions: -1 },
   };
+
+  const TERRAIN_KINDS = ['mine', 'farm', 'forest', 'mountain'];   // 効果のある地形
 
   const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '生産（防御トークン）', produceAttack: '生産（攻撃トークン）' };
   const PRODUCE = ['reinforce', 'produceAttack'];   // 生産（行動回数を使わない）
@@ -261,9 +264,13 @@
     river.forEach(k => { board[k].terrain = 'river'; });
     const free = Object.keys(board).filter(k => !fixed.has(k) && !river.has(k));
     const ratio = RULES.terrainRatio;
-    const kinds = ['mine', 'farm', 'forest'];
-    const total = ratio.plain + kinds.reduce((n, t) => n + (ratio[t] || 0), 0);
-    const counts = kinds.map(t => [t, Math.round(free.length * (ratio[t] || 0) / total)]);
+    const kinds = TERRAIN_KINDS;
+    const effect = kinds.reduce((n, t) => n + (ratio[t] || 0), 0);
+    // 効果のあるマスの合計を先に決めてから、種類ごとに分ける（割り切れない分はランダムな種類に1つずつ）
+    const sum = Math.round(free.length * effect / (ratio.plain + effect));
+    const counts = kinds.map(t => [t, Math.floor(sum * (ratio[t] || 0) / effect)]);
+    const extra = shuffle(counts.slice(), rng);
+    for (let left = sum - counts.reduce((n, c) => n + c[1], 0), j = 0; left > 0; left--, j++) extra[j % extra.length][1]++;
     shuffle(free, rng);
     let i = 0;
     for (const [t, n] of counts) for (let j = 0; j < n && i < free.length; j++) board[free[i++]].terrain = t;
@@ -517,7 +524,8 @@
       p.resource -= cost;
       Object.assign(cell, { owner: id, strong: false, core: false });
       let extra = '';
-      if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
+      extra = terrainGain(p, cell);
+      if (extra) extra = `（${extra}）`;
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
@@ -529,7 +537,8 @@
       p.defense += gives.defense;
       p.defenseSeen += gives.defense;
       let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
-      if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; extra += `・鉱山：攻撃トークン +${RULES.mineAttack}`; }
+      const tg = terrainGain(p, cell);
+      if (tg) extra += `・${tg}`;
       state.actionsLeft--;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
     } else if (action.type === 'destroy') {
@@ -592,11 +601,22 @@
     }
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
-    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山マスなら拡張と同じく攻撃トークン +1
+    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山・山岳マスなら拡張と同じくトークン +1
     Object.assign(cell, { owner: a.id, strong: false, core: false });
-    let extra = '';
-    if (cell.terrain === 'mine') { a.attack += RULES.mineAttack; extra = `（鉱山：攻撃トークン +${RULES.mineAttack}）`; }
+    let extra = terrainGain(a, cell);
+    if (extra) extra = `（${extra}）`;
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
+  }
+
+  // 鉱山・山岳マスを拡張・強化したとき（破壊で取ったときも）にもらえるトークン。ログ用の文を返す
+  function terrainGain(p, cell) {
+    if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; return `鉱山：攻撃トークン +${RULES.mineAttack}`; }
+    if (cell.terrain === 'mountain') {
+      p.defense += RULES.mountainDefense;
+      p.defenseSeen += RULES.mountainDefense;   // ログに出るので、ほかの人にもわかる
+      return `山岳：防御トークン +${RULES.mountainDefense}`;
+    }
+    return '';
   }
 
   function eliminate(state, p) {
@@ -787,7 +807,7 @@
   }
 
   return {
-    RULES, DIRS, TERRAIN_NAMES, ACTION_NAMES, EVENTS, PRODUCE,
+    RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
     adjacentToStrong, wallOf, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,

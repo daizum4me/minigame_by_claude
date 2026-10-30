@@ -57,6 +57,7 @@
         if (c.terrain === 'mine') s += me.attack <= 1 ? 2.5 : 1.2;   // 鉱山は取ると攻撃トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
+        if (c.terrain === 'mountain') s += danger > 0 || me.defense <= 1 ? 1.8 : 0.8;   // 山岳は取ると防御トークン +1
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
           const beyond = E.neighbors(c.q, c.r).filter(([q, r]) => {
@@ -82,6 +83,7 @@
         if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
+        if (c.terrain === 'mountain') s += danger > 0 ? 1.2 : 0.6;
         if (me.attack === 0 && frontier(g, id) > 0) s += 1.5;
         // 強化済のセルは破壊の拠点で、隣の自分のセルを守る城壁にもなる。前線に置くほど役に立つ
         const foesNext = foeNeighbors(g, id, c);
