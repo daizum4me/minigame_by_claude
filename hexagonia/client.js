@@ -1088,7 +1088,7 @@
     const wrap = $('.board-wrap');
     const W = wrap.clientWidth, H = wrap.clientHeight;
     const w = el.offsetWidth, h = el.offsetHeight;
-    // マスの左に出す（入りきらなければ右）。カーソルが重なって反対側に移したあとは、そちらを先に
+    // マスの左に出す（入りきらなければ右）。クリックして反対側に移したあとは、そちらを先に
     const toLeft = x - s * 1.05 - w, toRight = x + s * 1.05;
     let left = app.tip.flip ? toRight : toLeft;
     if (left < 8 || left + w > W - 8) left = app.tip.flip ? toLeft : toRight;
@@ -1101,15 +1101,11 @@
     el.style.top = top + 'px';
   }
 
-  // 選んだマスのツールチップにカーソルが重なったら（行動のボタンの上は除く）、マスの反対側に移す。
+  // 選んだマスのツールチップをクリックしたら（行動のボタンは除く）、マスの反対側に移す。
   // ツールチップの下のマスを選びやすくするため
-  function dodgeTip(e) {
-    if (!app.tip || !app.tip.pinned || e.pointerType !== 'mouse') return;
-    if (e.target.closest('.tt-acts')) return;
-    const now = Date.now();
-    if (app.tip.flippedAt && now - app.tip.flippedAt < 500) return;   // 移した直後にまた重なっても、行ったり来たりしない
+  function flipTip() {
+    if (!app.tip || !app.tip.pinned) return;
     app.tip.flip = !app.tip.flip;
-    app.tip.flippedAt = now;
     positionTip();
   }
 
@@ -1202,7 +1198,6 @@
       if (b.dataset.act === 'reinforce' || b.dataset.act === 'produceAttack') window.HexSound.play('reinforce');
       send({ type: 'act', action: { type: b.dataset.act } });
     };
-    $('#tooltip').addEventListener('pointerover', dodgeTip);
     // ツールチップの上でホイールを回しても、盤面を拡大・縮小する
     $('#tooltip').addEventListener('wheel', e => {
       e.preventDefault();
@@ -1210,7 +1205,8 @@
     }, { passive: false });
     $('#tooltip').onclick = e => {
       const b = e.target.closest('[data-cell-act]');
-      if (!b || b.disabled || !app.tip) return;
+      if (!b) { flipTip(); return; }
+      if (b.disabled || !app.tip) return;
       const type = b.dataset.cellAct;
       const [q, r] = E.parseKey(app.tip.key);
       send({ type: 'act', action: { type, q, r } });
