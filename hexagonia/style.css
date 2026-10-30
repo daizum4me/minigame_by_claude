@@ -9,6 +9,7 @@
   --muted: #9A988F;
   --glass: rgba(42, 42, 40, 0.72);   /* 半透明のパネル（ボタン・表示・ウィンドウ類）。ぼかさずに、後ろの盤面がそのまま透けて見える */
   --glass-line: rgba(255, 255, 255, 0.09);
+  --solid: #2A2A28;   /* 不透明のウィンドウ（ルール・設定・行動回数を使い切ったとき・食料が足りないとき） */
   --accent: #9CC6F2;
   --good: #8EDDB2;
   --bad: #FF9C94;
@@ -284,7 +285,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 
 /* ダイアログ */
 .dialog {
-  background: var(--glass);
+  background: var(--solid);
   color: var(--text);
   border: 1px solid var(--glass-line);
   border-radius: 16px;
@@ -292,7 +293,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
   width: min(560px, calc(100% - 32px));
   max-height: calc(100% - 32px);
 }
-.dialog::backdrop { background: rgba(0, 0, 0, 0.3); }
+.dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .dialog form { margin-top: 16px; text-align: right; }
 .rules-dialog { width: min(680px, calc(100% - 24px)); }
 .rules { font-size: 14px; line-height: 1.65; }
@@ -401,7 +402,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 .extra-card {
   pointer-events: auto;
   width: min(380px, 100%);
-  background: var(--glass);
+  background: var(--solid);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
   padding: 16px;
@@ -443,7 +444,7 @@ h3 #diameter-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
   width: 100%;
   padding: 10px 14px;
   box-shadow: none;
-  background: rgba(255, 156, 148, 0.08);
+  background: linear-gradient(rgba(255, 156, 148, 0.08), rgba(255, 156, 148, 0.08)), var(--solid);
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
