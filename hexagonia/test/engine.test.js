@@ -63,7 +63,7 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形：どのコアにも距離2〜3のマスに4種類が1つずつあり、効果のあるマスは合わせて約27%（4種類に均等）', () => {
+test('地形：どのコアにも距離2〜3のマスに4種類が1つずつあり、ほかにも散らす。効果のあるマスは4種類に均等', () => {
   for (const n of [2, 4, 8, 12]) {
     for (const seed of [1, 2, 3]) {
       const g = newGame(n, seed);
@@ -80,7 +80,7 @@ test('地形：どのコアにも距離2〜3のマスに4種類が1つずつあ�
       const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
       const kinds = E.TERRAIN_KINDS.map(t => cnt[t] || 0);
       const sum = kinds.reduce((a, b) => a + b, 0);
-      assert.strictEqual(sum, Math.max(4 * n, Math.round(free * 6 / 22)), JSON.stringify(cnt));
+      assert.strictEqual(sum, Math.max(4 * n + Math.round(free * E.RULES.centerShare), Math.round(free * 6 / 22)), JSON.stringify(cnt));
       assert.ok(Math.max(...kinds) - Math.min(...kinds) <= 1, JSON.stringify(cnt));
     }
   }
@@ -783,4 +783,19 @@ test('河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5
       }
     }
   }
+});
+
+test('効果のあるマスは、盤面の中心に近いほど出やすい', () => {
+  const inner = [0, 0], outer = [0, 0];
+  for (let seed = 1; seed <= 20; seed++) {
+    const g = newGame(6, seed);
+    const r = g.radius;
+    for (const c of Object.values(g.board)) {
+      if (c.owner || c.terrain === 'river') continue;
+      const side = E.dist([c.q, c.r], [0, 0]) <= r / 3 ? inner : outer;
+      side[1]++;
+      if (E.TERRAIN_KINDS.includes(c.terrain)) side[0]++;
+    }
+  }
+  assert.ok(inner[0] / inner[1] > outer[0] / outer[1] + 0.05, `中心 ${inner} 外側 ${outer}`);
 });

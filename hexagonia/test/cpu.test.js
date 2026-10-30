@@ -34,8 +34,9 @@ test('CPU どうしで最後まで遊べる（ルール違反の手を選ばな�
 
 test('2人戦では、攻め合いでの決着と、最後のラウンドでの決着の両方が起きる', () => {
   const stats = { core: 0, rounds: 0 };
-  // コアを破壊するには、コアの隣に強化済のセル（拠点）を作る必要があるので、攻め合いでの決着はまれ
-  for (let seed = 1; seed <= 60; seed++) {
+  // コアを破壊するには、コアの隣に強化済のセル（拠点）を作る必要があるので、攻め合いでの決着はまれ（100戦に1〜3回ほど）。
+  // 両方が起きるまで回す
+  for (let seed = 1; seed <= 250 && !(stats.core && stats.rounds); seed++) {
     const rng = seeded(seed);
     const g = E.createGame(PLAYERS.slice(0, 2), rng);
     while (!g.over) for (const id of E.waiting(g)) E.apply(g, id, CPU.decide(g, id, rng));
