@@ -357,7 +357,7 @@
 
   // CPU対戦（通信なし）：自分のブラウザで Room を動かす
   class LocalTransport {
-    // tutorial：チュートリアル（CPU 1人と2人戦・イベントなし・すぐ始める）
+    // tutorial：チュートリアル（「よわい」CPU 1人と2人戦・イベントなし・すぐ始める）
     constructor(name, tutorial) {
       this.isLocal = true;
       const clone = m => JSON.parse(JSON.stringify(m));
@@ -366,6 +366,7 @@
       this.room.handle(this.id, { type: 'addCpu' });
       if (tutorial) {
         this.room.events = false;
+        this.room.handle(this.id, { type: 'cpuLevel', target: this.room.players.find(p => p.cpu).id, level: 'weak' });
         this.room.handle(this.id, { type: 'start' });
       }
     }
@@ -557,7 +558,9 @@
     $('#host-warn').hidden = !(app.conn && app.conn.isHost);
     $('#lobby-count').textContent = `${room.players.length} / ${R.maxPlayers}人`;
     $('#lobby-players').innerHTML = room.players.map(p =>
-      `<li>${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${p.cpu ? '<span class="badge cpu">CPU</span>' : ''}${p.id === room.hostId && !local ? '<span class="badge">ホスト</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${isHost && p.cpu ? `<button class="small remove" data-remove-cpu="${p.id}" title="このCPUを外す">外す</button>` : ''}</li>`).join('');
+      `<li>${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${p.cpu ? `<span class="badge cpu">CPU</span>${isHost
+        ? `<select class="cpu-level" data-cpu-level="${p.id}" aria-label="${esc(p.name)} の強さ">${Object.entries(window.HexCpu.LEVEL_NAMES).map(([k, v]) => `<option value="${k}"${p.level === k ? ' selected' : ''}>${v}</option>`).join('')}</select>`
+        : `<span class="badge">${window.HexCpu.LEVEL_NAMES[p.level] || ''}</span>`}` : ''}${p.id === room.hostId && !local ? '<span class="badge">ホスト</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${isHost && p.cpu ? `<button class="small remove" data-remove-cpu="${p.id}" title="このCPUを外す">外す</button>` : ''}</li>`).join('');
     $('#btn-add-cpu').hidden = !isHost;
     $('#btn-add-cpu').disabled = room.players.length >= R.maxPlayers;
     const mine = room.players.find(p => p.id === app.me);
@@ -601,7 +604,7 @@
     const me = pl(app.me);
     const cur = E.current(g);
     const conn = id => { const p = room.players.find(x => x.id === id); return p ? p.connected : false; };
-    const cpuOf = id => { const p = room.players.find(x => x.id === id); return !!(p && p.cpu); };
+    const cpuOf = id => { const p = room.players.find(x => x.id === id); return p && p.cpu ? p : null; };   // CPU ならその人
 
     // 自分の手番では、何か行動できるマスを薄く光らせる
     const targets = myTurn(g) ? [...new Set(CELL_ACTIONS.flatMap(t => E.targets(g, app.me, t)))] : [];
@@ -633,7 +636,7 @@
     $('#hud-event').hidden = !evNow;
     $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '');
     $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
-      : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}</span>`;
+      : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}・残り行動 ${g.actionsLeft}</span>`;
 
     // 自分
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
@@ -662,7 +665,7 @@
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
     $('#players').classList.toggle('compact', g.players.length > 6);
-    // このラウンドの手番の順に並べる（ラウンドごとに最初の人が1人ずつずれる）
+    // 手番の順に並べる
     const n = g.players.length;
     const roundOrder = g.players.map((_, k) => g.players[((g.roundStart || 0) + k) % n]);
     $('#players').innerHTML = roundOrder.map(p => {
@@ -670,7 +673,7 @@
       const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
-        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? '<span class="badge cpu">CPU</span>' : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}${tokenChip('food', p.food)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -747,6 +750,8 @@
       const lo = E.minBid(side);
       const wall = pd.wall || 0;
       if (!app.bid || app.bid.key !== key) app.bid = { key, n: side === 'atk' ? Math.min(have, 1 + wall) : Math.min(have, Math.max(0, foeAtk + 1 - wall)) };
+      // 同じ手番に同じマスへもう一度宣言したときなど、前の数が持っている数を超えていたら直す
+      app.bid.n = Math.max(lo, Math.min(have, app.bid.n));
       app.bid.lo = lo;
       const n = app.bid.n;
       const kind = side === 'atk' ? 'attack' : 'defense';
@@ -766,6 +771,8 @@
     } else {
       body = '<p class="muted">出す数を伏せて選んでいます…</p>';
     }
+    // 攻撃側は、決着する前なら破壊を取りやめられる
+    if (pd.attacker === app.me) body += '<button class="link cancel-destroy" data-cancel-destroy>破壊をやめる（資源と行動回数が戻る）</button>';
     el.innerHTML = `${head}${body}
       <div class="clash-status">${status(a.name, pd.atkReady)}${status(d.name, pd.defReady)}<span class="muted" data-left="bid"></span></div>`;
     el.hidden = false;
@@ -810,6 +817,7 @@
     const el = $('#abandon');
     $('#dock').classList.toggle('abandoning', abandoning(g));
     if (!abandoning(g)) { el.hidden = true; app.abandonSel = new Set(); return; }
+    if (app.tip) hideTip();   // 選んでいたマスのツールチップは閉じる（マスを選ぶと捨てる候補になるので）
     const n = g.abandon.count;
     for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
     const k = app.abandonSel.size;
@@ -834,7 +842,7 @@
     { title: 'ヘキサゴニアへようこそ', next: true,
       text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
     { title: '盤面の見方', next: true,
-      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　▲ <b>山岳</b>：取ると防御トークン +1<br>● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源4で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　▲ <b>山岳</b>：取ると防御トークン +1<br>● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
     { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
       text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
       done: (g, base) => myCells(g).length > base.cells },
@@ -922,13 +930,13 @@
     if (!g || room.phase !== 'game' || g.over || g.abandon) { el.hidden = true; return; }
     const pass = Date.now() - (app.graceAt || Date.now());
     const sec = ms => Math.max(0, Math.ceil(ms / 1000));
-    const turnSec = room.turnPaused ? sec(room.turnLeftMs) : sec(room.turnLeftMs - pass);
+    const turnSec = sec(room.turnLeftMs - pass);
     const mm = `${Math.floor(turnSec / 60)}:${String(turnSec % 60).padStart(2, '0')}`;
     el.hidden = false;
-    el.className = 'pill timer' + (room.turnPaused ? ' paused' : turnSec <= 10 ? ' low' : '');
-    el.innerHTML = `<span class="muted">持ち時間</span> <strong>${mm}</strong>${room.turnPaused ? '<span class="muted">（攻防中は停止）</span>' : ''}`;
+    el.className = 'pill timer' + (turnSec <= 10 ? ' low' : '');
+    el.innerHTML = `<span class="muted">持ち時間</span> <strong>${mm}</strong>`;
     // 自分の手番の残り10秒は時計の音
-    if (myTurn(g) && !room.turnPaused && turnSec <= 10 && turnSec > 0 && turnSec !== lastTickSec) window.HexSound.play('tick');
+    if (myTurn(g) && turnSec <= 10 && turnSec > 0 && turnSec !== lastTickSec) window.HexSound.play('tick');
     lastTickSec = turnSec;
     const abEl = document.querySelector('[data-left="abandon"]');
     if (abEl) abEl.textContent = `あと ${sec(room.abandonLeftMs - pass)} 秒（時間切れのときは自動で選びます）`;
@@ -964,6 +972,8 @@
   function onCellSelect(key) {
     const g = app.room && app.room.game;
     if (abandoning(g)) {
+      // 捨てるセルを選ぶあいだは、ツールチップは出さない（出ていたら閉じる）。盤面の外や自分以外のマスを選んでも閉じるだけ
+      hideTip();
       const c = key && g.board[key];
       if (!c || c.owner !== app.me) return;
       if (c.core) { toast('コアは捨てられません'); return; }
@@ -978,7 +988,7 @@
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
-    if (byLongPress) { if (key) showTip({ key, pinned: true }); return; }
+    if (byLongPress) { if (key && !abandoning(app.room && app.room.game)) showTip({ key, pinned: true }); return; }
     if (app.tip && app.tip.pinned) return;   // 選んでいるマスがあるあいだは、そちらを出したまま
     if (!key) hideTip(); else showTip({ key, pinned: false });
   }
@@ -1143,6 +1153,7 @@
     };
     $('#btn-add-cpu').onclick = () => send({ type: 'addCpu' });
     $('#lobby-players').onclick = e => { const b = e.target.closest('[data-remove-cpu]'); if (b) send({ type: 'removeCpu', target: b.dataset.removeCpu }); };
+    $('#lobby-players').onchange = e => { const s = e.target.closest('[data-cpu-level]'); if (s) send({ type: 'cpuLevel', target: s.dataset.cpuLevel, level: s.value }); };
     $('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') enterRoom('join'); });
     $('#btn-copy').onclick = async () => {
       const url = $('#invite-url').value;
@@ -1184,6 +1195,7 @@
       if (type === 'destroy') hideTip();
     };
     $('#clash').onclick = e => {
+      if (e.target.closest('[data-cancel-destroy]')) { send({ type: 'act', action: { type: 'cancelDestroy' } }); return; }
       const b = e.target.closest('[data-bid-step], [data-bid-ok]');
       if (!b || b.disabled || !app.bid) return;
       if (b.dataset.bidStep) {

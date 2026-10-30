@@ -3,7 +3,8 @@
  * 人間と同じ公開情報（盤面・全員のトークン数）だけで、次の1手を決める。
  * 手番では「できる行動に点数を付けて一番高いもの」を選び、よい行動がなければ手番終了。
  *
- * decide(state, id, rng) → action（engine.apply に渡せる形）
+ * decide(state, id, rng, level) → action（engine.apply に渡せる形）
+ * level：'weak'（よわい）・'normal'（ふつう）・'strong'（つよい）
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine'));
@@ -12,6 +13,16 @@
   'use strict';
 
   const R = E.RULES;
+
+  // 強さ。noise：点数のゆらぎ（大きいほど気まぐれ）、endBelow：これより点数が低い行動しかなければ手番終了、
+  // buyAt：行動 +1 を買うのに必要な点数、bidRandom：攻防で出す数をでたらめに決める、
+  // bias：行動の種類ごとの点数の上乗せ（CPU どうしの対戦で、強化を多め・破壊を控えめにするのが一番勝てた）
+  const LEVELS = {
+    weak: { noise: 4, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {} },
+    normal: { noise: 0.6, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: {} },
+    strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 1, destroy: -1 } },
+  };
+  const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
   const playerById = (g, id) => g.players.find(p => p.id === id);
 
@@ -33,7 +44,7 @@
   // 見えている増減（最初の2個・強化、守られた攻防）に、見えない生産の分を1個ぶん足しておく
   const estDefense = foe => Math.max(0, foe.defenseSeen == null ? foe.defense : foe.defenseSeen) + 1;
 
-  function scoreActions(g, id, rng) {
+  function scoreActions(g, id, rng, lv) {
     const me = playerById(g, id);
     const foes = g.players.filter(p => p.alive && p.id !== id);
     const foeCores = foes.map(p => E.parseKey(p.core));
@@ -46,7 +57,7 @@
     // 食料：手番終了時に「貯え + 作る量 − 食べる量」が足りないとセルを捨てることになる
     const foodLeft = (me.food || 0) + E.foodMade(g, id) - E.foodEaten(g, id);
     const out = [];
-    const noise = () => (rng() - 0.5) * 0.6;
+    const noise = () => (rng() - 0.5) * lv.noise;
 
     if (!E.actionBlocked(g, id, 'expand')) {
       for (const k of E.targets(g, id, 'expand')) {
@@ -72,7 +83,7 @@
         // 一番大きなかたまりにつながる拡張を重視（終盤は特に）
         if (touchesMine(c)) s += late ? 2.8 : 0.6;
         else if (late) s += 0.3;
-        out.push({ s: s + noise(), a: { type: 'expand', q: c.q, r: c.r } });
+        out.push({ s: s + noise() + (lv.bias.expand || 0), a: { type: 'expand', q: c.q, r: c.r } });
       }
     }
     if (!E.actionBlocked(g, id, 'strengthen')) {
@@ -102,7 +113,7 @@
           return n && n.owner === id && !E.adjacentToStrong(g, id, q, r) && foeNeighbors(g, id, n) > 0;
         }).length;
         s += Math.min(3, shielded) * (danger > 0 ? 0.8 : 0.5);    // 新しく城壁で守られる前線のセル
-        out.push({ s: s + noise(), a: { type: 'strengthen', q: c.q, r: c.r } });
+        out.push({ s: s + noise() + (lv.bias.strengthen || 0), a: { type: 'strengthen', q: c.q, r: c.r } });
       }
     }
     if (!E.actionBlocked(g, id, 'destroy')) {
@@ -127,7 +138,7 @@
         if (touchesMine(c)) s += 0.5;                       // 取ったマスが自分のかたまりにつながる
         // 自分のコアの隣にいる相手セルは優先して壊す
         if (E.dist([c.q, c.r], E.parseKey(me.core)) <= 1) s += 3;
-        out.push({ s: s + noise(), a: { type: 'destroy', q: c.q, r: c.r } });
+        out.push({ s: s + noise() + (lv.bias.destroy || 0), a: { type: 'destroy', q: c.q, r: c.r } });
       }
     }
     if (!E.actionBlocked(g, id, 'produceAttack')) {
@@ -147,8 +158,9 @@
     return out;
   }
 
-  function decide(g, id, rng) {
+  function decide(g, id, rng, level) {
     rng = rng || Math.random;
+    const lv = LEVELS[level] || LEVELS.normal;
     const me = playerById(g, id);
     if (g.abandon) return g.abandon.player === id ? { type: 'abandon', cells: E.suggestAbandon(g, id) } : null;
     const pd = g.pending;
@@ -156,6 +168,7 @@
       // 出す数を伏せて決める。相手が出せる最大数は見えている
       const target = g.board[pd.target];
       if (pd.atk === null && pd.attacker === id) {
+        if (lv.bidRandom) return { type: 'bid', count: 1 + Math.floor(rng() * me.attack) };
         const foe = playerById(g, pd.defender);
         let n;
         const est = estDefense(foe) + (pd.wall || 0);
@@ -165,6 +178,7 @@
         return { type: 'bid', count: n };
       }
       if (pd.def === null && pd.defender === id) {
+        if (lv.bidRandom) return { type: 'bid', count: Math.floor(rng() * (me.defense + 1)) };
         const foe = playerById(g, pd.attacker);
         const sure = Math.max(0, foe.attack + 1 - (pd.wall || 0));   // 相手が全部出しても守れる数（城壁の分を引く）
         const keep = target.core ? 0 : threat(g, me) > 0 ? 1 : 0;    // コアのために残しておく数
@@ -185,13 +199,13 @@
       const cost = E.extraActionCost(g);
       if (me.resource < cost + 1) return { type: 'endTurn' };
       g.actionsLeft = 1; me.resource -= cost;           // 買ったつもりで考えてみる
-      const top = scoreActions(g, id, rng).sort((a, b) => b.s - a.s)[0];
+      const top = scoreActions(g, id, rng, lv).sort((a, b) => b.s - a.s)[0];
       g.actionsLeft = 0; me.resource += cost;
-      return top && top.s >= 3 ? { type: 'buyAction' } : { type: 'endTurn' };
+      return top && top.s >= lv.buyAt ? { type: 'buyAction' } : { type: 'endTurn' };
     }
-    const best = scoreActions(g, id, rng).sort((a, b) => b.s - a.s)[0];
-    return best && best.s > 0.5 ? best.a : { type: 'endTurn' };
+    const best = scoreActions(g, id, rng, lv).sort((a, b) => b.s - a.s)[0];
+    return best && best.s > lv.endBelow ? best.a : { type: 'endTurn' };
   }
 
-  return { decide };
+  return { decide, LEVELS, LEVEL_NAMES };
 });

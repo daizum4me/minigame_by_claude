@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 
@@ -169,7 +169,7 @@
       <div class="r-cards">
         <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
         <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span>。<b>拠点</b>と<b>城壁</b>になる</small></div>
-        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +5</span></small></div>
+        <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +6</span></small></div>
       </div>
       <ul class="r-list">
         <li><b>拠点</b>：破壊できるのは、<b>自分の強化済のセルに隣接する</b>相手のセルだけ。攻めたい方向に強化を置く</li>
@@ -182,9 +182,9 @@
       <h3><i class="ic" data-icon="clock"></i>手番</h3>
       <ul class="r-list">
         <li>自分の手番では行動を<b>決まった回数</b>まで（2〜4人は3回・12ラウンド。人数が多いほどラウンドが少なく、行動回数が多い。ロビーで変えられる）。使い切ったら<i class="ic" data-icon="resource"></i><span class="k-res">資源</span>を払って<b>行動 +1</b>できる（6 → 10 → 14…。手番が変わると6に戻る）</li>
-        <li>持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）。切れると自動で手番終了（破壊の攻防のあいだは止まる）</li>
+        <li>持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）。切れると自動で手番終了（破壊の攻防のあいだも止まらない。攻防中に切れたら、攻防が終わってから手番終了）</li>
         <li>もうできる行動がなくなったときも、自動で手番終了</li>
-        <li>手番の順は、ラウンドごとに最初の人が1人ずつずれる（A B C → B C A → C A B…）。<b>2人戦はずらさない</b></li>
+        <li>手番の順はゲームのあいだ変わらない（ラウンドが変わってもずらさない）</li>
         <li>7人以上で内側にコアがある人は、ラウンド1の前に<b>1手番ずつ先に</b>動ける</li>
       </ul>
     </section>
@@ -194,7 +194,7 @@
       <p class="r-hint">拡張・強化・破壊は、盤面のマスを選ぶと出るツールチップのボタンから。生産と手番終了は盤面の下のバーから。</p>
       <table class="r-table">
         <tr><th></th><th>行動</th><th>資源</th><th>内容</th></tr>
-        <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>河川 4</small></td><td>自分のセルの隣の空きマスにセルを置く。河川には<b>橋をかける</b></td></tr>
+        <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>河川 3</small></td><td>自分のセルの隣の空きマスにセルを置く。河川には<b>橋をかける</b></td></tr>
         <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="attack"></i><span class="k-atk">攻撃 +1</span>・<i class="ic" data-icon="defense"></i><span class="k-def">防御 +1</span>。以後、毎手番 <span class="k-res">資源 +1</span>・<span class="k-food">食料 +1</span></td></tr>
         <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>攻撃トークン1個以上</small></td><td><b>自分の強化済のセルの隣</b>の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
         <tr><td><i class="ic" data-icon="defense"></i></td><td><b>生産</b><small>防御</small></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="defense"></i><span class="k-def">防御トークン +1</span>。行動回数を使い切っていてもできる。ログには出ない</td></tr>
@@ -216,7 +216,7 @@
         <div class="r-box food">
           <b>食料（手番終了時）</b>
           <ul class="r-list">
-            <li>作る：<i class="ic" data-icon="core"></i>コア <span class="k-food">+5</span>、<i class="ic" data-icon="cell-strong"></i>強化済のセル（コアも） <span class="k-food">+1</span>、<i class="ic" data-icon="hex-farm"></i>農地のセル <span class="k-food">+1</span></li>
+            <li>作る：<i class="ic" data-icon="core"></i>コア <span class="k-food">+6</span>、<i class="ic" data-icon="cell-strong"></i>強化済のセル（コアも） <span class="k-food">+1</span>、<i class="ic" data-icon="hex-farm"></i>農地のセル <span class="k-food">+1</span></li>
             <li>食べる：<b>セル1つにつき1</b>。余りは持ち越す</li>
             <li class="k-bad">足りないときは、足りない数だけセルを捨てる（コアは不可・30秒で自動）</li>
           </ul>
@@ -236,7 +236,7 @@
         <span class="sep">／</span>
         <span class="k-atk">攻撃</span> ＜ <span class="k-def">防御</span>（＋城壁1） → <b class="k-good">守られた</b>
       </div>
-      <p class="r-hint">出したトークンはすべてなくなる（数は公開されない）。<b>防御トークンは最初に2個</b>配られ、<b>ほかの人の防御トークンの数は見えない</b>（攻撃トークンの数は見える）。</p>
+      <p class="r-hint">出したトークンはすべてなくなる（数は公開されない）。<b>防御トークンは最初に2個</b>配られ、<b>ほかの人の防御トークンの数は見えない</b>（攻撃トークンの数は見える）。<br>攻撃側は、決着する前なら<b>破壊をやめられる</b>（資源と行動回数が戻る）。</p>
     </section>
 
     <section class="r-sec">
@@ -253,14 +253,14 @@
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="hex-river"></i>地形</h3>
-      <p class="r-hint">平原が約73%、鉱山・山岳・農地・森林が約7%ずつ。それに河川。</p>
+      <p class="r-hint">平原が約73%、鉱山・山岳・農地・森林が約7%ずつ。それに河川。どのコアの近く（距離2〜3）にも4種類が1つずつある。</p>
       <div class="r-cards terrain">
         <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>効果なし</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山 ◆</b><small>拡張・強化したとき <span class="k-atk">攻撃 +1</span></small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-mountain"></i><b>山岳 ▲</b><small>拡張・強化したとき <span class="k-def">防御 +1</span></small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-forest"></i><b>森林 ▽</b><small>このセルがあると手番終了時 <span class="k-res">資源 +1</span>（強化とは別）</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-farm"></i><b>農地 ●</b><small>このセルがあると手番終了時 <span class="k-food">食料 +1</span>（強化とは別）</small></div>
-        <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">4</span> で橋をかけて渡る</small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">3</span> で橋をかけて渡る</small></div>
         <div class="r-card"><i class="ic big" data-icon="bridge"></i><b>橋</b><small>強化できる。壊されると河川に戻る</small></div>
       </div>
     </section>
@@ -304,11 +304,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=25"></script>
-<script src="shared/cpu.js?v=25"></script>
-<script src="shared/room.js?v=25"></script>
-<script src="sound.js?v=25"></script>
-<script src="board.js?v=25"></script>
-<script src="client.js?v=25"></script>
+<script src="shared/engine.js?v=28"></script>
+<script src="shared/cpu.js?v=28"></script>
+<script src="shared/room.js?v=28"></script>
+<script src="sound.js?v=28"></script>
+<script src="board.js?v=28"></script>
+<script src="client.js?v=28"></script>
 </body>
 </html>
