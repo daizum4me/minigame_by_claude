@@ -54,10 +54,7 @@
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
     food: { start: 0, core: 6, strong: 1, perCell: 1 },
     strengthenPower: 1,                 // 強化でもらえる戦力トークン
-    // 強化済のセルの役目（コアも強化すれば同じ）
-    //  拠点：破壊できるのは、自分の強化済のセルに隣接する相手のセルだけ
-    //  城壁：強化済のセルに隣接する（同じ持ち主の）セルが狙われたら、防御側に +wallBonus
-    wallBonus: 1,
+    // 拠点：破壊できるのは、自分の強化済のセル（コアも強化すれば同じ）に隣接する相手のセルだけ
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -395,10 +392,6 @@
     return neighbors(q, r).some(([nq, nr]) => { const c = state.board[key(nq, nr)]; return c && c.owner === id && c.strong; });
   }
 
-  // 城壁：そのセルの隣に同じ持ち主の強化済のセルがあれば、防御側に +wallBonus
-  function wallOf(state, cell) {
-    return cell.owner && adjacentToStrong(state, cell.owner, cell.q, cell.r) ? RULES.wallBonus : 0;
-  }
 
   // ターン終了時に受け取る資源
   // ラウンドが始まったら、このラウンドのイベントを決める
@@ -567,7 +560,7 @@
       addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}に破壊を宣言`, 'destroy');
       // 攻撃側（1個以上）・防御側（0個から）が、出す戦力トークンの数を伏せて決める。
       // 戦力トークンの数はおたがいに見えないので、0個しか出せなくても選ぶ
-      state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null, wall: wallOf(state, cell) };
+      state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null };
       if (p.power === 1) state.pending.atk = 1;                     // 1個しかなければ1個に決まる
       if (state.pending.atk !== null && state.pending.def !== null) resolveDestroy(state, state.pending.atk, state.pending.def);
     }
@@ -575,7 +568,7 @@
   }
 
   // 破壊の攻防：攻撃側と防御側が出す数を伏せて決め、そろったら同時に公開する。
-  // 出した数が多いほうが勝ち。攻撃 ＞ 防御（＋城壁）なら破壊成功で、同じ数なら守られる。出したトークンはすべてなくなる
+  // 攻撃 ≧ 防御なら破壊成功（同じ数なら攻撃側の勝ち）。出したトークンはすべてなくなる
   function bid(state, id, count) {
     const pd = state.pending;
     if (state.over || !pd) return fail('いまは攻防中ではありません');
@@ -616,13 +609,12 @@
     const a = playerById(state, pd.attacker), d = playerById(state, pd.defender);
     a.power -= atk;
     d.power -= def;
-    const wall = pd.wall || 0;
-    const success = atk > def + wall;
+    const success = atk >= def;
     // 出した数は公開しない（成功か失敗かだけ）。数は当人にだけ見せる（room.js）
-    state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, wall, success };
-    // 見えている数の目安：攻撃側は少なくとも1個（成功なら城壁＋1個）、守られたなら防御側は少なくとも「1 − 城壁」個は出したはず
-    a.powerSeen = Math.max(0, a.powerSeen - (success ? wall + 1 : 1));
-    if (!success) d.powerSeen = Math.max(0, d.powerSeen - Math.max(0, 1 - wall));
+    state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, success };
+    // 見えている数の目安：攻撃側は少なくとも1個、守られたなら防御側は少なくとも2個（攻撃側の1個より多く）出したはず
+    a.powerSeen = Math.max(0, a.powerSeen - 1);
+    if (!success) d.powerSeen = Math.max(0, d.powerSeen - 2);
     const what = cell.core ? 'コア' : 'セル';
     addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
@@ -634,7 +626,7 @@
       return;
     }
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
-    if (wasCore) eliminate(state, d);
+    if (wasCore) eliminate(state, d, a);   // コアを破壊した人が、相手のセルとトークンをまるごと奪う
     // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山マスなら拡張と同じく戦力トークン +1
     Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = terrainGain(a, cell);
@@ -650,11 +642,22 @@
     return `鉱山：戦力トークン +${RULES.minePower}`;
   }
 
-  function eliminate(state, p) {
+  // 脱落。heir（コアを破壊した人）がいれば、セル（強化済はそのまま）・資源・戦力・食料をまるごと受け継ぐ。
+  // いなければ（切断などで脱落させたとき）、セルは空きマスに戻り、トークンもなくなる
+  function eliminate(state, p, heir) {
     p.alive = false;
-    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
+    const cells = cellsOf(state, p.id);
+    for (const c of cells) Object.assign(c, heir ? { owner: heir.id, core: false } : { owner: null, strong: false, core: false });
+    if (heir) {
+      heir.resource += p.resource;
+      heir.power += p.power;
+      heir.powerSeen += p.powerSeen;
+      heir.food = (heir.food || 0) + (p.food || 0);
+    }
     p.resource = 0; p.power = 0; p.food = 0; p.powerSeen = 0;
-    addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
+    addLog(state, heir
+      ? `💀 ${p.name} のコアが破壊され、脱落。セル ${cells.length} 個とトークンはすべて ${heir.name} のものに`
+      : `💀 ${p.name} が脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);
   }
@@ -840,6 +843,6 @@
     RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    adjacentToStrong, wallOf, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
+    adjacentToStrong, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
   };
 });

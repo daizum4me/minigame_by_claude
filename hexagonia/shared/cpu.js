@@ -16,11 +16,11 @@
 
   // 強さ。noise：点数のゆらぎ（大きいほど気まぐれ）、endBelow：これより点数が低い行動しかなければ手番終了、
   // buyAt：行動 +1 を買うのに必要な点数、bidRandom：攻防で出す数をでたらめに決める、
-  // bias：行動の種類ごとの点数の上乗せ（CPU どうしの対戦で、強化を多め・破壊を控えめにするのが一番勝てた）
+  // bias：行動の種類ごとの点数の上乗せ（CPU どうしの対戦で、強化を多め・拡張を控えめにするのが一番勝てた）
   const LEVELS = {
     weak: { noise: 4, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {} },
     normal: { noise: 0.6, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: {} },
-    strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 1, destroy: -1 } },
+    strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 1.5, expand: -0.5 } },
   };
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
@@ -64,7 +64,8 @@
         const c = g.board[k];
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
-        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
+        // 相手のコアに近づくほど高い（コアを破壊すれば、相手のセルとトークンをまるごと奪える）
+        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.35;
         if (c.terrain === 'mine') s += me.power <= 1 ? 2.5 : 1.2;    // 鉱山は取ると戦力トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
@@ -94,7 +95,7 @@
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (me.power === 0 && frontier(g, id) > 0) s += 1.5;
-        // 強化済のセルは破壊の拠点で、隣の自分のセルを守る城壁にもなる。前線に置くほど役に立つ
+        // 強化済のセルは破壊の拠点。前線に置くほど役に立つ
         const foesNext = foeNeighbors(g, id, c);
         if (foesNext > 0) {
           const newTargets = E.neighbors(c.q, c.r).filter(([q, r]) => {
@@ -104,13 +105,7 @@
           s += Math.min(3, newTargets) * 0.9;            // 新しく破壊できるようになる相手のセル
           // 相手のコアを狙える拠点になるなら大きい
           if (E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.core && n.owner && n.owner !== id; })) s += 4;
-          if (E.parseKey(me.core).join() !== [c.q, c.r].join() && E.wallOf(g, c) === 0) s -= 0.4;   // 自分は守られない
         }
-        const shielded = E.neighbors(c.q, c.r).filter(([q, r]) => {
-          const n = cellAt(g, q, r);
-          return n && n.owner === id && !E.adjacentToStrong(g, id, q, r) && foeNeighbors(g, id, n) > 0;
-        }).length;
-        s += Math.min(3, shielded) * (danger > 0 ? 0.8 : 0.5);    // 新しく城壁で守られる前線のセル
         out.push({ s: s + noise() + (lv.bias.strengthen || 0), a: { type: 'strengthen', q: c.q, r: c.r } });
       }
     }
@@ -119,18 +114,14 @@
         const c = g.board[k];
         const foe = playerById(g, c.owner);
         // 相手が戦力トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
-        const wall = E.wallOf(g, c);
-        const est = estPower(foe) + wall;                 // 城壁の分は相手が出さなくても足される
-        const canBreak = me.power > est;                  // 同じ数なら守られる
+        const est = estPower(foe);
+        const canBreak = me.power >= est;                 // 同じ数なら攻撃側の勝ち
         let s;
-        if (c.core) s = canBreak ? 30 : 3;                  // コアは最優先
+        if (c.core) s = canBreak ? 30 : 6;                  // コアは最優先（破りきれなくても、読み合いで狙う）
         else if (est <= 1) s = 5;
-        else s = canBreak ? 3.2 : -1.5;   // 同じ数なら守られ、守る側もためた数を使えるので、破りきれないなら控える
+        else s = canBreak ? 3.2 : -1.5;   // 守る側はためた数を全部使えるので、破りきれないなら控える
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1 + (E.dist([c.q, c.r], E.parseKey(me.core)) <= 3 ? 1.5 : 0);   // 近くの相手の拠点は崩したい
-        if (wall) s -= canBreak ? 0.5 : 1.8;              // 城壁で守られたセルは、破りきれないなら狙わない
-        // 城壁のない強化済のセルを崩すと、その隣のセルの城壁もなくなる
-        if (c.strong && !wall) s += 0.7 * Math.min(2, E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === c.owner && !n.strong; }).length);
         if (late) s += 1.5;
         if (late && leaderGroups.has(k)) s += 2;          // 首位のかたまりを削る
         if (touchesMine(c)) s += 0.5;                       // 取ったマスが自分のかたまりにつながる
@@ -148,7 +139,7 @@
       else if (me.power <= 1 && g.round >= 3) s = Math.max(s, 1.8);
       // 相手のコアの隣に拠点があるなら、コアを破りきれる数までためる
       const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.adjacentToStrong(g, id, q, r); });
-      if (coreFoe && me.power <= estPower(coreFoe) + E.wallOf(g, g.board[coreFoe.core])) s = Math.max(s, 4);
+      if (coreFoe && me.power < estPower(coreFoe)) s = Math.max(s, 4);
       out.push({ s: s + noise(), a: { type: 'produce' } });
     }
     return out;
@@ -167,7 +158,7 @@
         if (lv.bidRandom) return { type: 'bid', count: 1 + Math.floor(rng() * me.power) };
         const foe = playerById(g, pd.defender);
         let n;
-        const need = estPower(foe) + (pd.wall || 0) + 1;            // 同じ数なら守られるので、1個多く
+        const need = Math.max(1, estPower(foe));                    // 同じ数なら攻撃側の勝ち
         if (me.power >= need) n = need;                              // 相手が全部出しても破れそうな最小の数
         else if (target.core) n = me.power;                          // コアを狙うなら全部
         else n = rng() < 0.6 ? me.power : 1 + Math.floor(rng() * me.power);
@@ -176,8 +167,8 @@
       if (pd.def === null && pd.defender === id) {
         if (lv.bidRandom) return { type: 'bid', count: Math.floor(rng() * (me.power + 1)) };
         const foe = playerById(g, pd.attacker);
-        // 相手が全部出しても守れそうな数（相手の数は見えないので見積もり。同じ数なら守れる。城壁の分を引く）
-        const sure = Math.max(0, estPower(foe) - (pd.wall || 0));
+        // 相手が全部出しても守れそうな数（相手の数は見えないので見積もり。同じ数では負けるので1個多く）
+        const sure = estPower(foe) + 1;
         const keep = target.core ? 0 : threat(g, me) > 0 ? 1 : 0;    // コアのために残しておく数
         let n;
         if (me.power - keep >= sure) n = sure;

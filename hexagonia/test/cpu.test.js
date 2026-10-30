@@ -72,11 +72,11 @@ test('CPU はコアを守れる数を出し、攻撃では相手の戦力トー�
   a.resource = 10;
   E.apply(g, a.id, { type: 'destroy', q: cq, r: cr });
   // 相手の数は見えないので、見えている数（最初の2個）＋見えない生産の分1個 = 3個と見積もる。
-  // 同じ数なら守れるので、3個出せば守れる
+  // 同じ数では負けるので、守りきるには4個要る。足りないが、コアなので全部（3個）出す
   assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'bid', count: 3 });
-  // 攻撃側も、相手を3個と見積もり、それより1個多い4個を出す
+  // 攻撃側も、相手を3個と見積もり、同じ数なら勝てるので3個出す
   a.power = 5; b.power = 0;
-  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 4 });
+  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 3 });
 });
 
 test('部屋に CPU を入れて遊べる', () => {
