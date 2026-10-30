@@ -26,7 +26,7 @@
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
-    // イベント：ラウンドの始まりに 1/3 の確率で、どれか1つが起きてそのラウンドの間続く。次のラウンドの分は1ラウンド前に予告する
+    // イベント：ラウンドの始まりに 1/3 の確率で、どれか1つが起きてそのラウンドの間続く（予告はしない）
     eventChance: 1 / 3,
     startResource: 3,
     startDefense: 2,                    // 最初に防御トークンを2個配る
@@ -306,7 +306,6 @@
       preQueue: [],          // 先行で、このあと手番が来る人（players の何番目か）
       eventPlan: [],         // ラウンドごとのイベント（ホストだけが持つ。ほかの人には今と次のラウンドの分だけ送る）
       event: null,           // このラウンドのイベント
-      nextEvent: null,       // 次のラウンドのイベント（予告）
       roundStart: 0,         // このラウンドの最初の人（players の何番目か）。ラウンドごとに1人ずつずれる
       roundPos: 0,           // このラウンドで何人目の手番か
       actionsLeft: actions,
@@ -331,8 +330,6 @@
       state.round = 0;
       state.turn = state.preQueue.shift();
       addLog(state, `先行：内側にコアがある人（${inner.map(i => state.players[i].name).join('・')}）が、ラウンド1の前に ${RULES.preTurns} 手番ずつ動く`, 'round');
-      state.nextEvent = state.eventPlan[1];
-      if (state.nextEvent) addLog(state, `予告：ラウンド1は「${EVENTS[state.nextEvent].name}」（${EVENTS[state.nextEvent].text}）`, 'event');
     } else {
       addLog(state, `ラウンド 1 / ${rounds}`, 'round');
       startRoundEvent(state);
@@ -372,12 +369,10 @@
   }
 
   // ターン終了時に受け取る資源
-  // ラウンドが始まったら、このラウンドのイベントと次のラウンドの予告を決める
+  // ラウンドが始まったら、このラウンドのイベントを決める
   function startRoundEvent(state) {
     state.event = state.eventPlan[state.round] || null;
-    state.nextEvent = state.eventPlan[state.round + 1] || null;
     if (state.event) addLog(state, `イベント：${EVENTS[state.event].name}（${EVENTS[state.event].text}）`, 'event');
-    if (state.nextEvent) addLog(state, `予告：次のラウンドは「${EVENTS[state.nextEvent].name}」（${EVENTS[state.nextEvent].text}）`, 'event');
   }
 
   const eventOf = state => (state.round >= 1 && state.event ? EVENTS[state.event] : null);
@@ -618,7 +613,6 @@
     state.pending = null;
     state.abandon = null;
     state.event = null;
-    state.nextEvent = null;
     state.winners = winners.map(p => p.id);
     state.endReason = reason;
     addLog(state, `🏆 ${winners.map(p => p.name).join('・')} の${winners.length > 1 ? '同率優勝' : '勝利'}（${reason}）`, 'win');

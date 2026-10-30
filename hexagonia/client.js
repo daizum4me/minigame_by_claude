@@ -573,14 +573,12 @@
 
     // 上部の表示
     $('#hud-round').textContent = g.round === 0 ? '先行' : `${g.round} / ${g.rounds}`;
-    // イベント（このラウンド）と予告（次のラウンド）
+    // このラウンドのイベント
     const EV = E.EVENTS;
     const evNow = !g.over && g.round >= 1 && g.event ? EV[g.event] : null;
-    const evNext = !g.over && g.nextEvent ? EV[g.nextEvent] : null;
     const good = k => ['harvest', 'discovery', 'fishing', 'festival'].includes(k);
-    $('#hud-event').hidden = !evNow && !evNext;
-    $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '')
-      + (evNext ? `<span class="muted next" title="${esc(evNext.text)}">${evNow ? '／' : ''}次：<b class="${good(g.nextEvent) ? 'k-good' : 'k-bad'}">${esc(evNext.name)}</b></span>` : '');
+    $('#hud-event').hidden = !evNow;
+    $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '');
     $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
       : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}</span>`;
 
@@ -659,6 +657,7 @@
     renderClash(g, pl);
     renderExtra(g, me);
     renderAbandon(g, me);
+    updateDock();   // 捨てるセルの表示でバーの高さが変わるので、盤面の余白を合わせ直す
     tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
@@ -756,6 +755,7 @@
   // 食料が足りないとき：捨てるセルを盤面で選ぶ（コアは選べない）
   function renderAbandon(g, me) {
     const el = $('#abandon');
+    $('#dock').classList.toggle('abandoning', abandoning(g));
     if (!abandoning(g)) { el.hidden = true; app.abandonSel = new Set(); return; }
     const n = g.abandon.count;
     for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
@@ -801,7 +801,7 @@
     { title: 'どこを強化するか：拠点と城壁', next: true,
       text: '<b>拠点</b>：破壊できるのは、<b>自分の強化済のセルの隣</b>にある相手のセルだけ。攻めたい方向のセルを強化しましょう。<br><b>城壁</b>：<b>強化済のセルの隣</b>のセルが狙われると、守る側に <span class="k-def">防御 +1</span>。<br>前線に強化すれば攻めと守りの要になるけれど、狙われやすい。後方に強化すれば安全に稼げるけれど、攻めにも守りにも使えません。' },
     { title: 'もう少しだけ', next: true,
-      text: 'ラウンドの始まりに、ときどき<b>イベント</b>（豊作・不作など）が起きます。次のラウンドの分は画面上部で予告されます。<br>行動回数を使い切ったら、資源を払って<b>行動 +1</b> もできます。' },
+      text: 'ラウンドの始まりに、ときどき<b>イベント</b>（豊作・不作など）が起きます。起きたイベントは画面上部に出ます。<br>行動回数を使い切ったら、資源を払って<b>行動 +1</b> もできます。' },
     { title: 'これでおしまい', next: true, last: true,
       text: 'あとはこのまま CPU と最後まで遊んでみてください。<br>ルールはいつでも右上の <b>？</b> で見られます。' },
   ];
