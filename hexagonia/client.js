@@ -352,7 +352,7 @@
 
   // CPU対戦（通信なし）：自分のブラウザで Room を動かす
   class LocalTransport {
-    // tutorial：チュートリアル（「よわい」CPU 1人と2人戦・イベントなし・すぐ始める）
+    // tutorial：チュートリアル（攻めてこない練習相手の CPU 1人と2人戦・イベントなし・すぐ始める）
     constructor(name, tutorial) {
       this.isLocal = true;
       const clone = m => JSON.parse(JSON.stringify(m));
@@ -361,7 +361,7 @@
       this.room.handle(this.id, { type: 'addCpu' });
       if (tutorial) {
         this.room.events = false;
-        this.room.handle(this.id, { type: 'cpuLevel', target: this.room.players.find(p => p.cpu).id, level: 'weak' });
+        this.room.handle(this.id, { type: 'cpuLevel', target: this.room.players.find(p => p.cpu).id, level: 'tutorial' });
         this.room.handle(this.id, { type: 'start' });
       }
     }
@@ -637,7 +637,7 @@
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
     $('#me-actions').textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
-    $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('power', me.power, true) + tokenChip('food', me.food, true) : '';
+    renderMyTokens(me);
 
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない生産と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
@@ -668,7 +668,7 @@
       const group = E.largestGroup(g, p.id).length;
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
-        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${cpuOf(p.id).level === 'tutorial' ? '練習相手' : window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('power', p.power)}${tokenChip('food', p.food)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -687,6 +687,9 @@
     // コアに命中したら、コアを赤く光らせる（マスは変わらないので）
     if (g.lastClash && fresh.some(l => l.tone === 'hit')) view.flash([g.lastClash.target], '255,110,110');
     playSounds(g, fresh);
+    // 自分の手番終了：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
+    const le = g.lastEndTurn;
+    if (le && le.player === app.me && fresh.some(l => l.seq === le.seq)) playEndTurn(g, le);
     app.lastLogSeq = g.log.length ? g.log[g.log.length - 1].seq : 0;
 
     // 公開された攻防の結果を少しのあいだ見せる
@@ -712,6 +715,59 @@
     tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
+  }
+
+  // 下のバーの自分のトークン。手番終了の演出中は、演出の途中の数を見せる
+  function renderMyTokens(me) {
+    const v = app.tokenView;
+    $('#me-tokens').innerHTML = me
+      ? tokenChip('resource', v ? v.resource : me.resource, true) + tokenChip('power', me.power, true) + tokenChip('food', v ? v.food : me.food, true)
+      : '';
+    if (v && v.flash) for (const [kind, cls] of Object.entries(v.flash)) {
+      const chip = $(`#me-tokens .tk-${kind}`);
+      if (chip) chip.classList.add(cls);
+    }
+  }
+
+  // 手番終了の演出（自分の手番だけ）。数は lastEndTurn の合計に合わせ、マスごとの内訳は盤面から数える
+  function playEndTurn(g, le) {
+    const inc = R.income, f = R.food;
+    const me = g.players.find(p => p.id === app.me);
+    let baseRes = 0, baseFood = 0;
+    for (const c of E.cellsOf(g, app.me)) {
+      const res = (c.core ? inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0) : c.strong ? inc.strong : 0) + (c.terrain === 'forest' ? R.forestResource : 0);
+      const food = (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
+      baseRes += res; baseFood += food;
+      if (res || food) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : ''), 'gain', 0);
+    }
+    // イベント（豊作・不作など）で変わった分は、コアの上にまとめて出す
+    const dRes = le.resource - baseRes, dFood = le.made - baseFood;
+    const sign = n => (n > 0 ? '+' : '−') + Math.abs(n);
+    if (dRes || dFood) floater(me.core, `<span class="fl-ev">イベント ${dRes ? `資源 ${sign(dRes)}` : ''}${dRes && dFood ? '・' : ''}${dFood ? `食料 ${sign(dFood)}` : ''}</span>`, 'gain', 250);
+    // 少し遅れて、食べた分をコアの上に（セル1つずつ出すとうるさいので合計で）
+    floater(me.core, `<span class="fl-food">${TOKEN_SVG.food}−${le.eaten}</span>${le.hungry ? `<span class="fl-short">${le.hungry} 足りない</span>` : ''}`, 'loss', 900);
+    // 下のバー：増える前 → 増えた → 減った
+    const set = (resource, food, flash) => { app.tokenView = { resource, food, flash }; renderMyTokens(app.room && app.room.game.players.find(p => p.id === app.me)); };
+    clearTimeout(app.tokenTimer1); clearTimeout(app.tokenTimer2); clearTimeout(app.tokenTimer3);
+    set(le.resBefore, le.foodBefore, null);
+    app.tokenTimer1 = setTimeout(() => set(le.resBefore + le.resource, le.foodBefore + le.made, { resource: 'up', food: 'up' }), 200);
+    app.tokenTimer2 = setTimeout(() => set(le.resBefore + le.resource, Math.max(0, le.foodBefore + le.made - le.eaten), { food: le.hungry ? 'short' : 'down' }), 1100);
+    app.tokenTimer3 = setTimeout(() => { app.tokenView = null; renderMyTokens(app.room && app.room.game && app.room.game.players.find(p => p.id === app.me)); }, 2000);
+  }
+
+  // 盤面のマスの上に、数字をふわっと浮かべて消す
+  function floater(key, html, kind, delay) {
+    setTimeout(() => {
+      if (!view) return;
+      const [x, y] = view.screenOf(key);
+      const el = document.createElement('div');
+      el.className = 'floater ' + kind;
+      el.innerHTML = html;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      $('#floaters').appendChild(el);
+      setTimeout(() => el.remove(), 1600);
+    }, delay);
   }
 
   // 破壊の攻防：攻撃側と防御側が出す数を伏せて決める。そろったら同時に公開
@@ -834,7 +890,7 @@
     { title: 'ヘキサゴニアへようこそ', next: true,
       text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
     { title: '盤面の見方', next: true,
-      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると戦力トークン +1　● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると戦力トークン +1　▽ <b>森林</b>：毎手番 資源 +1<br>● <b>農地</b>：自分の平原のセルを<b>開墾</b>（資源2）すると農地になり、毎手番 食料 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
     { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
       text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
       done: (g, base) => myCells(g).length > base.cells },
@@ -842,7 +898,7 @@
       text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、戦力トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。<br>強化済のセルは、あとで説明する<b>拠点</b>にもなります。',
       done: g => myCells(g).some(c => c.strong) },
     { title: 'トークンと食料', next: true, target: '#me-tokens',
-      text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-pow">戦力</span>：攻めにも守りにも使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。' },
+      text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-pow">戦力</span>：攻めにも守りにも使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。<br>手番を終えると、どのマスで何が増えたかが盤面に浮かび、下のバーの数字も「増えてから減る」順に動きます。食料が足りなくなりそうなら、セルを選んで<b>開墾</b>しましょう。' },
     { title: 'やってみよう：生産', myTurn: true, target: '#actions [data-act="produce"]', skippable: true,
       text: '下のバーの<b>「生産」</b>で、資源から戦力トークンを作れます（資源2）。行動回数は使いません。<br>作ってみましょう。資源が足りなければ「次へ」で進めます。',
       done: (g, base) => { const me = g.players.find(p => p.id === app.me); return me && me.power > base.power; } },
@@ -986,55 +1042,55 @@
   }
 
   const TERRAIN_EFFECTS = {
-    plain: '効果なし',
+    plain: `効果なし。自分のセルなら、資源 ${R.cost.cultivate} で開墾して農地にできる`,
     mine: `拡張したとき（破壊で取ったときも）と強化したときに、戦力トークン +${R.minePower}`,
-    farm: `このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
+    farm: `開墾した土地。このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
     forest: `このセルがあると、手番終了時に資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
 
-  // そのマスでできる行動（1つ）と、できないときの理由
-  function cellAction(g, key) {
+  // そのマスでできる行動と、できないときの理由（自分のセルなら強化と開墾の2つになることがある）
+  function cellActions(g, key) {
     const c = g.board[key];
     const me = g.players.find(p => p.id === app.me);
     if (!me || !me.alive || g.over) return null;
-    let type, cost, gain;
+    const list = [];
     if (!c.owner) {
-      type = 'expand';
-      cost = E.expandCost(c);
-      gain = c.terrain === 'mine' ? `戦力トークン +${R.minePower}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
+      list.push({ type: 'expand', cost: E.expandCost(c),
+        gain: c.terrain === 'mine' ? `戦力トークン +${R.minePower}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '' });
     } else if (c.owner === app.me) {
-      if (c.strong) return { note: '強化済のセルです' };
-      type = 'strengthen';
-      cost = R.cost.strengthen;
-      const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
-      const foodNote = `・食料 +${R.food.strong}`;
-      gain = `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・手番終了時の資源 +${inc}${foodNote}。隣の相手セルを破壊できる拠点になる`;
+      if (!c.strong) {
+        const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
+        list.push({ type: 'strengthen', cost: R.cost.strengthen,
+          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・手番終了時の資源 +${inc}・食料 +${R.food.strong}。隣の相手セルを破壊できる拠点になる` });
+      }
+      if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。手番終了時の食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
+      if (!list.length) return { note: c.strong ? '強化済のセルです' : 'このセルでできる行動はありません' };
     } else {
-      type = 'destroy';
-      cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
-      gain = '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
-        ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`
-        : c.terrain === 'river'
-          ? '成功すると橋が落ちて河川に戻る'
-          : '成功するとこのマスが自分のセルになる');
+      list.push({ type: 'destroy', cost: R.cost.destroy,
+        gain: '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
+          ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`
+          : c.terrain === 'river'
+            ? '成功すると橋が落ちて河川に戻る'
+            : '成功するとこのマスが自分のセルになる') });
     }
-    let why = '';
-    if (!E.targets(g, app.me, type).includes(key)) {
+    for (const a of list) {
+      a.why = '';
+      if (E.targets(g, app.me, a.type).includes(key)) continue;
       const cur = E.current(g);
-      if (g.pending) why = '破壊の攻防が終わるまで待ってください';
-      else if (cur.id !== app.me) why = `${cur.name} の手番です`;
-      else if (g.abandon) why = '捨てるセルを選んでいるところです';
-      else if (g.actionsLeft <= 0) why = '行動回数を使い切りました';
-      else if (me.resource < cost) why = `資源トークンが足りません（あと ${cost - me.resource}）`;
-      else if (type === 'destroy' && me.power < 1) why = '戦力トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
-      else if (type === 'destroy') why = '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると狙えます';
-      else why = '自分のセルに隣接していません';
+      if (g.pending) a.why = '破壊の攻防が終わるまで待ってください';
+      else if (cur.id !== app.me) a.why = `${cur.name} の手番です`;
+      else if (g.abandon) a.why = '捨てるセルを選んでいるところです';
+      else if (g.actionsLeft <= 0) a.why = '行動回数を使い切りました';
+      else if (me.resource < a.cost) a.why = `資源トークンが足りません（あと ${a.cost - me.resource}）`;
+      else if (a.type === 'destroy' && me.power < 1) a.why = '戦力トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
+      else if (a.type === 'destroy') a.why = '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると狙えます';
+      else a.why = '自分のセルに隣接していません';
     }
-    return { type, cost, gain, why };
+    return { list };
   }
 
   function showTip(tip) {
@@ -1047,13 +1103,15 @@
     const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
-      const a = cellAction(g, tip.key);
-      if (a && a.type) {
-        acts = `<div class="tt-acts"><button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
-          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : a.type === 'strengthen' && c.strong ? '強化（防御済へ）' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>
-          ${a.why ? `<p class="tt-why">${esc(a.why)}</p>` : ''}</div>`;
-      } else if (a && a.note) {
-        acts = `<div class="tt-acts"><p class="tt-why">${esc(a.note)}</p></div>`;
+      const r = cellActions(g, tip.key);
+      if (r && r.list) {
+        // 理由は同じことが多いので、まとめて最後に1回だけ出す
+        const whys = [...new Set(r.list.map(a => a.why).filter(Boolean))];
+        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
+          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
+          ${whys.map(w => `<p class="tt-why">${esc(w)}</p>`).join('')}</div>`;
+      } else if (r && r.note) {
+        acts = `<div class="tt-acts"><p class="tt-why">${esc(r.note)}</p></div>`;
       }
     }
     const el = $('#tooltip');

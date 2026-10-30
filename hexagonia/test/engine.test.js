@@ -33,8 +33,8 @@ function untilTurn(g, id) {
 // 盤面を空にして、自分で決めた配置にする
 function setCell(g, q, r, props) { Object.assign(g.board[E.key(q, r)], { owner: null, strong: false, core: false, terrain: 'plain' }, props); }
 
-test('人数ごとの盤面の大きさ（直径 7・9・11）と、大きさの指定', () => {
-  for (const [n, cells] of [[2, 37], [3, 61], [4, 91]]) {
+test('人数ごとの盤面の大きさ（2〜3人は直径 7・4人は 9・5〜6人は 11）と、大きさの指定', () => {
+  for (const [n, cells] of [[2, 37], [3, 37], [4, 61], [6, 91]]) {
     const g = newGame(n);
     assert.strictEqual(Object.keys(g.board).length, cells);
     assert.strictEqual(g.radius, E.RULES.radius[n]);
@@ -63,7 +63,7 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形：どのコアにも距離2〜3のマスに3種類が1つずつあり、ほかにも散らす。効果のあるマスは3種類に均等', () => {
+test('地形：どのコアにも距離2〜3のマスに鉱山・森林が1つずつあり、ほかにも散らす。効果のあるマスは2種類に均等。農地は最初はない', () => {
   for (const n of [2, 4, 8, 12]) {
     for (const seed of [1, 2, 3]) {
       const g = newGame(n, seed);
@@ -80,7 +80,8 @@ test('地形：どのコアにも距離2〜3のマスに3種類が1つずつあ�
       const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
       const kinds = E.TERRAIN_KINDS.map(t => cnt[t] || 0);
       const sum = kinds.reduce((a, b) => a + b, 0);
-      assert.strictEqual(sum, Math.max(3 * n + Math.round(free * E.RULES.centerShare), Math.round(free * 6 / 22)), JSON.stringify(cnt));
+      assert.strictEqual(sum, Math.max(2 * n + Math.round(free * E.RULES.centerShare), Math.round(free * 4 / 20)), JSON.stringify(cnt));
+      assert.ok(!cnt.farm, JSON.stringify(cnt));
       assert.ok(Math.max(...kinds) - Math.min(...kinds) <= 1, JSON.stringify(cnt));
     }
   }
@@ -661,6 +662,37 @@ test('農地マス：このセルがあると手番終了時に食料 +1（強�
   assert.strictEqual(E.foodMade(g, me), 6 + 1);
   g.board[E.key(fq, fr)].strong = true;
   assert.strictEqual(E.foodMade(g, me), 6 + 1 + 1);
+});
+
+test('開墾：資源2・行動1回で、自分の平原のセル（コア以外）を農地にする。毎手番 食料 +1', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const [aq, ar] = nb(g, cq, cr)[0], [bq, br] = nb(g, cq, cr)[1];
+  setCell(g, aq, ar, { owner: me });
+  setCell(g, bq, br, { owner: me, terrain: 'forest' });
+  P(g, me).resource = 10;
+  const t = E.targets(g, me, 'cultivate');
+  assert.ok(t.includes(E.key(aq, ar)));
+  assert.ok(!t.includes(E.key(bq, br)));       // 森林は不可
+  assert.ok(!t.includes(P(g, me).core));       // コアは不可
+  const made = E.foodMade(g, me);
+  assert.ok(E.apply(g, me, { type: 'cultivate', q: aq, r: ar }).ok);
+  assert.deepStrictEqual([g.board[E.key(aq, ar)].terrain, P(g, me).resource, g.actionsLeft], ['farm', 8, 2]);
+  assert.strictEqual(E.foodMade(g, me), made + 1);
+  assert.match(g.log.at(-1).text, /開墾/);
+  assert.strictEqual(E.apply(g, me, { type: 'cultivate', q: aq, r: ar }).ok, false);   // 農地はもう開墾できない
+});
+
+test('手番終了の記録：増える前の数・増えた数・減った数が残る（画面の演出用）', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  P(g, me).food = 4;
+  const res = P(g, me).resource;
+  E.apply(g, me, { type: 'endTurn' });
+  const r = g.lastEndTurn;
+  assert.deepStrictEqual([r.player, r.resBefore, r.resource, r.foodBefore, r.made, r.eaten, r.hungry], [me, res, 2, 4, 6, 1, 0]);
+  assert.strictEqual(P(g, me).food, 4 + 6 - 1);
 });
 
 test('森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）', () => {

@@ -196,6 +196,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 }
 .tooltip.pinned { pointer-events: auto; border-color: rgba(255, 255, 255, 0.22); }
 .tt-acts { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--glass-line); }
+.tt-act + .tt-act { margin-top: 6px; }
 .tt-act {
   width: 100%;
   display: grid;
@@ -627,3 +628,32 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .chat-form input { flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-line); border-radius: 10px; padding: 6px 10px; color: var(--text); font: inherit; font-size: 13px; }
 .chat-form button { padding: 6px 12px; font-size: 13px; }
 @media (max-width: 820px) { .chat-list { height: 120px; } }
+
+/* 手番終了で増えた・減った数（自分の手番だけ） */
+.floaters { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.floater {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; gap: 4px; align-items: center; white-space: nowrap;
+  font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+  animation: float-up 1.6s ease-out forwards;
+}
+.floater span { display: inline-flex; align-items: center; gap: 1px; padding: 1px 5px; border-radius: 8px; background: rgba(20, 20, 18, .72); }
+.floater .tk { width: 13px; height: 13px; }
+.floater .fl-res { color: #FFC888; }
+.floater .fl-food { color: #FFE27A; }
+.floater .fl-ev { color: var(--accent); font-size: 12px; }
+.floater .fl-short { color: var(--bad); font-size: 12px; }
+.floater.loss .fl-food { color: #FF9C94; }
+@keyframes float-up {
+  0% { opacity: 0; transform: translate(-50%, -30%); }
+  15% { opacity: 1; transform: translate(-50%, -60%); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -140%); }
+}
+@media (prefers-reduced-motion: reduce) { .floater { animation-duration: 2.2s; } }
+/* 下のバーの数字：増えたら緑、減ったら赤、足りなければ赤く点滅 */
+.tchip.up b { color: var(--good) !important; transition: color .2s; }
+.tchip.down b { color: #FF9C94 !important; }
+.tchip.short { animation: chip-short .35s ease-in-out 3; }
+.tchip.short b { color: var(--bad) !important; }
+@keyframes chip-short { 50% { background: rgba(255, 156, 148, 0.3); } }
