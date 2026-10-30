@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
 
@@ -236,7 +236,7 @@
         <span class="sep">／</span>
         <span class="k-atk">攻撃</span> ＜ <span class="k-def">防御</span>（＋城壁1） → <b class="k-good">守られた</b>
       </div>
-      <p class="r-hint">出したトークンはすべてなくなる（数は公開されない）。<b>防御トークンは最初に2個</b>配られ、<b>ほかの人の防御トークンの数は見えない</b>（攻撃トークンの数は見える）。</p>
+      <p class="r-hint">出したトークンはすべてなくなる（数は公開されない）。<b>防御トークンは最初に2個</b>配られ、<b>ほかの人の防御トークンの数は見えない</b>（攻撃トークンの数は見える）。<br>攻撃側は、決着する前なら<b>破壊をやめられる</b>（資源と行動回数が戻る。1手番に1回まで）。</p>
     </section>
 
     <section class="r-sec">
@@ -304,11 +304,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=25"></script>
-<script src="shared/cpu.js?v=25"></script>
-<script src="shared/room.js?v=25"></script>
-<script src="sound.js?v=25"></script>
-<script src="board.js?v=25"></script>
-<script src="client.js?v=25"></script>
+<script src="shared/engine.js?v=26"></script>
+<script src="shared/cpu.js?v=26"></script>
+<script src="shared/room.js?v=26"></script>
+<script src="sound.js?v=26"></script>
+<script src="board.js?v=26"></script>
+<script src="client.js?v=26"></script>
 </body>
 </html>

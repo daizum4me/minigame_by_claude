@@ -766,6 +766,12 @@
     } else {
       body = '<p class="muted">出す数を伏せて選んでいます…</p>';
     }
+    // 攻撃側は、決着する前なら破壊を取りやめられる（1手番に1回まで）
+    if (pd.attacker === app.me) {
+      body += g.cancelUsed
+        ? '<p class="muted small cancel-note">この手番はもう破壊を取りやめたので、取りやめられません</p>'
+        : '<button class="link cancel-destroy" data-cancel-destroy>破壊をやめる（資源と行動回数が戻る・1手番に1回まで）</button>';
+    }
     el.innerHTML = `${head}${body}
       <div class="clash-status">${status(a.name, pd.atkReady)}${status(d.name, pd.defReady)}<span class="muted" data-left="bid"></span></div>`;
     el.hidden = false;
@@ -1184,6 +1190,7 @@
       if (type === 'destroy') hideTip();
     };
     $('#clash').onclick = e => {
+      if (e.target.closest('[data-cancel-destroy]')) { send({ type: 'act', action: { type: 'cancelDestroy' } }); return; }
       const b = e.target.closest('[data-bid-step], [data-bid-ok]');
       if (!b || b.disabled || !app.bid) return;
       if (b.dataset.bidStep) {
