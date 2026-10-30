@@ -234,7 +234,7 @@ test('破壊：防御トークンがなくても、攻撃側は出す数を選�
   assert.strictEqual(P(g, a).attack, 1);
 });
 
-test('破壊の取りやめ：決着する前なら攻撃側が取り消せる。資源と行動回数が戻り、1手番に1回まで', () => {
+test('破壊の取りやめ：決着する前なら攻撃側が取り消せる。資源と行動回数が戻り、何回でもできる', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
   P(g, a).attack = 3;
   P(g, b).defense = 2;
@@ -246,16 +246,12 @@ test('破壊の取りやめ：決着する前なら攻撃側が取り消せる�
   assert.strictEqual(g.pending, null);
   assert.deepStrictEqual([P(g, a).resource, g.actionsLeft, P(g, a).attack, P(g, b).defense, g.board[t].owner], [10, 3, 3, 2, b]);
   assert.match(g.log.at(-1).text, /取りやめ/);
-  // 同じ手番の2回目はできない
+  // 同じ手番に2回目もできる
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
-  assert.match(E.apply(g, a, { type: 'cancelDestroy' }).error, /1回まで/);
-  E.apply(g, b, { type: 'bid', count: 0 });
-  E.apply(g, a, { type: 'bid', count: 1 });
-  assert.strictEqual(g.pending, null);
-  // 攻防中でなければできない・次の手番ではまたできる
+  assert.ok(E.apply(g, a, { type: 'cancelDestroy' }).ok);
+  assert.deepStrictEqual([P(g, a).resource, g.actionsLeft], [10, 3]);
+  // 攻防中でなければできない
   assert.strictEqual(E.apply(g, a, { type: 'cancelDestroy' }).ok, false);
-  E.apply(g, a, { type: 'endTurn' });
-  assert.strictEqual(g.cancelUsed, false);
 });
 
 test('拠点：破壊できるのは、自分の強化済のセルに隣接する相手のセルだけ', () => {

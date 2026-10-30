@@ -317,7 +317,6 @@
       roundPos: 0,           // このラウンドで何人目の手番か
       actionsLeft: actions,
       extraBought: 0,        // この手番で行動 +1 を買った回数
-      cancelUsed: false,     // この手番で破壊を取りやめたか（1手番に1回まで）
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
       abandon: null,         // 食料が足りず、セルを捨てる途中： { player, count }
       over: false,
@@ -576,16 +575,14 @@
   }
 
   // 破壊の取りやめ：攻防が決着する前なら、攻撃側は宣言を取り消せる。資源と行動回数は戻り、トークンは減らない。
-  // 取りやめを繰り返して手番を引き延ばせないように、1手番に1回まで
+  // 何回でもできる（攻防のあいだも持ち時間は進むので、引き延ばしにはならない）
   function cancelDestroy(state, id) {
     const pd = state.pending;
     if (state.over || !pd) return fail('いまは攻防中ではありません');
     if (pd.attacker !== id) return fail('破壊を取りやめられるのは攻撃側だけです');
-    if (state.cancelUsed) return fail('破壊の取りやめは1手番に1回までです');
     const p = playerById(state, id);
     const cell = state.board[pd.target];
     state.pending = null;
-    state.cancelUsed = true;
     p.resource += RULES.cost.destroy;
     state.actionsLeft++;
     addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}への破壊を取りやめた（資源と行動回数は戻る）`, 'info');
@@ -764,7 +761,6 @@
     state.turnNo = (state.turnNo || 0) + 1;
     state.actionsLeft = actionsThisTurn(state);
     state.extraBought = 0;
-    state.cancelUsed = false;
   }
 
   // 12ラウンド終了：つながっている一番大きなかたまりが大きい人の勝利

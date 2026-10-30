@@ -105,6 +105,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 #invite-url { font-size: 13px; color: var(--muted); }
 .lobby-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .lobby-players .remove { margin: 0 0 0 auto; }
+.lobby-players .cpu-level { background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-line); border-radius: 8px; color: var(--text); font: inherit; font-size: 12.5px; padding: 2px 6px; }
 .add-cpu { width: 100%; margin-top: 8px; border-style: dashed; color: var(--muted); }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 16px 0 12px; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--glass-line); }
@@ -378,7 +379,6 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 .pill.timer strong { font-variant-numeric: tabular-nums; }
 .pill.timer.low { border-color: rgba(255, 156, 148, 0.6); color: var(--bad); }
 .pill.timer.low strong { color: var(--bad); }
-.pill.timer.paused { opacity: .75; }
 
 /* 攻防：出す数を伏せて決める */
 .clash .small { font-size: 12px; margin-top: 2px; }

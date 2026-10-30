@@ -13,7 +13,7 @@
   'use strict';
 
   const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
-  const TURN_MS = E.RULES.turnSeconds.normal * 1000;   // 1手番の持ち時間（7人以上は E.turnMs で60秒）。攻防のあいだは止まる
+  const TURN_MS = E.RULES.turnSeconds.normal * 1000;   // 1手番の持ち時間（7人以上は E.turnMs で60秒）。攻防のあいだも止まらない
   const BID_MS = 30000;     // 攻防で出す数を決める時間。切れたら 0 個
   const ABANDON_MS = 30000; // 食料が足りないとき、捨てるセルを選ぶ時間。切れたら自動で選ぶ
   const GRACE_MS = 30000;   // 切断した人の手番は、これだけ待ってから自動で終える
@@ -54,7 +54,7 @@
       this.timers = {};         // turn / bid / grace / cpu
       this.turnKey = null;      // いまの手番（"ラウンド:何番目"）
       this.turnDeadline = 0;
-      this.turnRemain = 0;      // 攻防で止めているときの残り時間
+      this.turnExpired = false; // 攻防のあいだに持ち時間が切れた（攻防が終わったらすぐ手番終了）
       this.bidFor = null;       // 時間を計っている攻防
       this.bidDeadline = 0;
       this.graceFor = null;
@@ -85,6 +85,7 @@
       let n = name, i = 2;
       while (this.players.some(p => p.name === n)) n = name + (i++);
       const p = { id: 'p' + (++this.seq), token, name: n, color: COLORS.find(c => !this.players.some(x => x.color === c)), connected: true, cpu };
+      if (cpu) p.level = 'normal';   // CPU の強さ（よわい・ふつう・つよい）
       this.players.push(p);
       return p;
     }
@@ -137,6 +138,14 @@
           let k = 1;
           while (this.players.some(x => x.name === 'CPU ' + k)) k++;
           this.addPlayer({ token: null, name: 'CPU ' + k, cpu: true });
+          this.changed();
+          return;
+        }
+        case 'cpuLevel': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          const t = this.players.find(x => x.id === msg.target && x.cpu);
+          if (!t || !CPU.LEVELS[msg.level] || msg.level === 'test') return;
+          t.level = msg.level;
           this.changed();
           return;
         }
@@ -259,8 +268,7 @@
       this.stop('abandon');
       this.abandonFor = null;
       if (g.pending) {
-        // 攻防のあいだは持ち時間を止める
-        if (this.timers.turn) { this.turnRemain = Math.max(0, this.turnDeadline - now); this.stop('turn'); }
+        // 攻防のあいだも持ち時間は止めない（切れたら、攻防が終わってから手番終了）
         this.stop('grace');
         this.graceFor = null;
         if (this.bidFor !== g.pending) {
@@ -275,12 +283,11 @@
       const key = `${g.round}:${g.turn}`;
       if (key !== this.turnKey) {
         this.turnKey = key;
-        this.turnRemain = E.turnMs(g);
-        this.stop('turn');
-      }
-      if (!this.timers.turn) {
-        this.turnDeadline = now + this.turnRemain;
-        this.timer('turn', () => this.turnTimeout(key, '持ち時間が切れました'), this.turnRemain);
+        this.turnExpired = false;
+        this.turnDeadline = now + E.turnMs(g);
+        this.timer('turn', () => this.turnTimeout(key, '持ち時間が切れました'), E.turnMs(g));
+      } else if (this.turnExpired && !this.timers.turn) {
+        this.timer('turn', () => this.turnTimeout(key, '持ち時間が切れました'), 0);
       }
       // 手番の人が切断していたら、持ち時間より早く（30秒で）進める
       const cur = E.current(g).id;
@@ -298,7 +305,8 @@
 
     turnTimeout(key, why) {
       const g = this.game;
-      if (this.closed || !g || g.over || g.pending || `${g.round}:${g.turn}` !== key) return;
+      if (this.closed || !g || g.over || `${g.round}:${g.turn}` !== key) return;
+      if (g.pending) { this.turnExpired = true; return; }   // 攻防が終わってから手番終了
       const p = E.current(g);
       this.note(`⏳ ${p.name}：${why}`);
       E.apply(g, p.id, { type: 'endTurn' });
@@ -345,7 +353,7 @@
       if (this.closed || !g || g.over) return;
       for (const id of E.waiting(g)) {
         if (!(this.player(id) || {}).cpu || !E.waiting(g).includes(id)) continue;
-        const action = CPU.decide(g, id, this.rng);
+        const action = CPU.decide(g, id, this.rng, (this.player(id) || {}).level);
         const r = action ? E.apply(g, id, action) : { ok: false };
         // 万一ルール上できない手を選んだら、止まらないように進める
         if (!r.ok) {
@@ -390,9 +398,8 @@
         phase: this.phase,
         hostId: this.hostId,
         settings: this.settings,
-        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu })),
-        turnLeftMs: live && !g.abandon ? (g.pending ? this.turnRemain : Math.max(0, this.turnDeadline - now)) : 0,
-        turnPaused: !!(live && g.pending),
+        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu, level: p.cpu ? p.level : undefined })),
+        turnLeftMs: live && !g.abandon ? Math.max(0, this.turnDeadline - now) : 0,
         abandonLeftMs: live && g.abandon ? Math.max(0, this.abandonDeadline - now) : 0,
         bidLeftMs: live && g.pending ? Math.max(0, this.bidDeadline - now) : 0,
         graceFor: live && this.graceFor ? E.current(g).id : null,

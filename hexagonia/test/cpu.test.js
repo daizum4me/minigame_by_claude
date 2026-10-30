@@ -11,7 +11,7 @@ function seeded(seed) {
 
 const PLAYERS = 'abcdefghijkl'.split('').map(id => ({ id, name: id.toUpperCase(), color: 'red' }));
 
-test('CPU どうしで最後まで遊べる（ルール違反の手を選ばない）', () => {
+test('CPU どうしで最後まで遊べる（ルール違反の手を選ばない。強さが混ざっていても）', () => {
   const stats = { core: 0, rounds: 0 };
   for (let seed = 1; seed <= 33; seed++) {
     const n = 2 + seed % 11;   // 2〜12人
@@ -21,7 +21,8 @@ test('CPU どうしで最後まで遊べる（ルール違反の手を選ばな�
     while (!g.over) {
       assert.ok(++steps < 5000, `seed ${seed} で終わらない`);
       for (const id of E.waiting(g)) {
-        const a = CPU.decide(g, id, rng);
+        const level = ['weak', 'normal', 'strong'][(id.charCodeAt(0) + seed) % 3];
+        const a = CPU.decide(g, id, rng, level);
         const r = E.apply(g, id, a);
         assert.ok(r.ok, `seed ${seed}: ${JSON.stringify(a)} → ${r.error}`);
       }
@@ -110,4 +111,21 @@ test('部屋に CPU を入れて遊べる', () => {
   assert.deepStrictEqual(Object.keys(inbox), [h]);
   room.handle(h, { type: 'lobby' });
   assert.strictEqual(room.players.length, 3);
+});
+
+test('CPU の強さ：つよいはふつうに勝ち越し、よわいはふつうに負け越す（2人戦）', () => {
+  const share = level => {
+    let w = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const rng = seeded(seed * 7);
+      const g = E.createGame(PLAYERS.slice(0, 2), rng);
+      const test = g.players[seed % 2].id;
+      while (!g.over) for (const id of E.waiting(g)) E.apply(g, id, CPU.decide(g, id, rng, id === test ? level : 'normal'));
+      if (g.winners.includes(test)) w += 1 / g.winners.length;
+    }
+    return w / 40;
+  };
+  const strong = share('strong'), weak = share('weak');
+  assert.ok(strong > 0.5, `つよい ${strong}`);
+  assert.ok(weak < 0.4, `よわい ${weak}`);
 });

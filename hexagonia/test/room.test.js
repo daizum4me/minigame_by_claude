@@ -83,28 +83,29 @@ test('行動はホストが検証して全員に配信', () => {
   assert.strictEqual(E.current(last(other).room.game).id, other);
 });
 
-test('持ち時間120秒で自動で手番終了、攻防のあいだは止まる', () => {
+test('持ち時間120秒で自動で手番終了。攻防のあいだも止まらず、攻防中に切れたら攻防のあとで手番終了', () => {
   const r = startTwo();
   const { room, h, g, clock, last, fire } = r;
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS);
   clock.t += 50000;
-  // 攻防が始まると持ち時間は止まる
-  const { gp } = declareOnCore(r, 2, 2);
+  // 攻防が始まっても持ち時間は進む
+  declareOnCore(r, 2, 2);
   assert.ok(room.game.pending);
-  assert.strictEqual(last(h).room.turnPaused, true);
   assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
   clock.t += 20000;
+  assert.strictEqual(room.view(h).turnLeftMs, TURN_MS - 70000);
+  // 攻防中に持ち時間が切れても、攻防が終わるまでは手番は終わらない
+  const before = `${room.game.round}:${room.game.turn}`;
+  fire(TURN_MS);
+  assert.ok(room.game.pending);
+  assert.strictEqual(`${room.game.round}:${room.game.turn}`, before);
   room.handle(g, { type: 'act', action: { type: 'bid', count: 2 } });
   room.handle(h, { type: 'act', action: { type: 'bid', count: 1 } });
   assert.strictEqual(room.game.pending, null);
-  assert.ok(gp.alive);   // 攻撃1 ＜ 防御2 で守られた
-  // 攻防のあとは残り70秒から再開
-  assert.strictEqual(last(h).room.turnLeftMs, TURN_MS - 50000);
-  const before = `${room.game.round}:${room.game.turn}`;
-  fire(TURN_MS - 50000);
-  assert.notStrictEqual(`${room.game.round}:${room.game.turn}`, before);   // 手番が進んだ
+  // 攻防が終わったらすぐ手番終了
+  fire(0);
+  assert.notStrictEqual(`${room.game.round}:${room.game.turn}`, before);
   assert.ok(room.game.log.some(l => l.text.includes('持ち時間が切れました')));
-  // 次の手番は120秒から（ラウンドが変わって同じ人が続けて手番になることもある）
   assert.strictEqual(last(g).room.turnLeftMs, TURN_MS);
 });
 
@@ -252,4 +253,20 @@ test('チャット：全員に届き、ロビーからゲームまで続く。�
   const chat = last(g).room.chat;
   assert.strictEqual(chat.length, CHAT_KEEP);
   assert.strictEqual(chat.at(-1).text, 'm' + (CHAT_KEEP + 4));
+});
+
+test('CPU の強さはホストだけがロビーで変えられ、配信される', () => {
+  const { room, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  const cpu = room.players.find(p => p.cpu);
+  assert.strictEqual(last(g).room.players.find(p => p.cpu).level, 'normal');
+  room.handle(g, { type: 'cpuLevel', target: cpu.id, level: 'strong' });   // ホスト以外は変えられない
+  assert.strictEqual(cpu.level, 'normal');
+  room.handle(h, { type: 'cpuLevel', target: cpu.id, level: 'unknown' });
+  assert.strictEqual(cpu.level, 'normal');
+  room.handle(h, { type: 'cpuLevel', target: cpu.id, level: 'strong' });
+  assert.strictEqual(last(g).room.players.find(p => p.cpu).level, 'strong');
+  assert.strictEqual(last(g).room.players.find(p => p.id === h).level, undefined);
 });
