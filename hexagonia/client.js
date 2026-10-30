@@ -141,7 +141,7 @@
     core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
     'hex-plain': tile('#3A3A38', '#6A695F'),
     'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L14.8 12 L12 16.5 L9.2 12 Z" fill="#A3A198"/>'),
-    'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 16 L15.5 9 L8.5 9 Z" fill="#A3A198"/>'),
+    'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 15.6 L15.2 9.4 L8.8 9.4 Z" fill="none" stroke="#A3A198" stroke-width="1.3" stroke-linejoin="round"/>'),
     'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
     'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
     'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
@@ -434,6 +434,27 @@
       hideTip();
     }
     render();
+    renderChat(msg.room, prev);
+  }
+
+  // チャット：新しい発言があるときだけ書き直す（入力中の文字はそのまま）
+  function renderChat(room, prev) {
+    const list = room.chat || [];
+    const lastSeq = list.length ? list[list.length - 1].seq : 0;
+    if (prev && app.chatSeq === lastSeq) return;
+    const fresh = prev ? list.filter(c => c.seq > (app.chatSeq || 0)) : [];
+    app.chatSeq = lastSeq;
+    const colorOfPlayer = c => { const p = room.players.find(x => x.id === c.from); return p ? p.color : c.color; };
+    const html = list.length
+      ? list.map(c => `<li class="${c.from === app.me ? 'mine' : ''}">${swatch(colorOfPlayer(c))}<b>${esc(c.name)}</b><span>${esc(c.text)}</span></li>`).join('')
+      : '<li class="muted empty">まだ発言はありません</li>';
+    document.querySelectorAll('.chat-list').forEach(el => {
+      el.innerHTML = html;
+      el.scrollTop = el.scrollHeight;
+    });
+    // ゲーム中は、ほかの人の発言をお知らせにも出す（スマホではチャット欄が画面の下にあるので）
+    const other = fresh.filter(c => c.from !== app.me).pop();
+    if (other && room.phase === 'game') toast(`💬 ${other.name}：${other.text}`, 'info');
   }
 
   function enterRoom(type) {
@@ -460,6 +481,7 @@
     app.room = null;
     app.me = null;
     app.tutorial = null;
+    app.chatSeq = 0;
     $('#coach').hidden = true;
     setReconnecting(false);
     hideTip();
@@ -1162,6 +1184,16 @@
     $('#set-focus').onchange = e => setFocus(e.target.checked);
     $('#set-actions').onchange = e => send({ type: 'settings', actions: Number(e.target.value) });
     $('#set-rounds').onchange = e => send({ type: 'settings', rounds: Number(e.target.value) });
+    document.querySelectorAll('.chat-form').forEach(f => {
+      f.addEventListener('submit', e => {
+        e.preventDefault();
+        const input = f.querySelector('input');
+        const text = input.value.trim();
+        if (!text) return;
+        send({ type: 'chat', text });
+        input.value = '';
+      });
+    });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && app.tip) hideTip();
     });

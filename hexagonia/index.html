@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
 
@@ -90,6 +90,15 @@
     <h3>自分の陣営色</h3>
     <div id="color-pick" class="color-pick"></div>
 
+    <section id="lobby-chat" class="chat">
+      <h3>チャット</h3>
+      <ol class="chat-list" aria-live="polite"></ol>
+      <form class="chat-form" autocomplete="off">
+        <input type="text" maxlength="80" placeholder="メッセージ（80文字まで）" aria-label="チャットのメッセージ" enterkeyhint="send">
+        <button type="submit">送信</button>
+      </form>
+    </section>
+
     <button id="btn-start" class="primary big" hidden>ゲーム開始</button>
     <p id="lobby-wait" class="note muted"></p>
     <div class="row links">
@@ -139,6 +148,14 @@
     <section>
       <h3>プレイヤー</h3>
       <ul id="players" class="players"></ul>
+    </section>
+    <section id="game-chat" class="chat">
+      <h3>チャット</h3>
+      <ol class="chat-list" aria-live="polite"></ol>
+      <form class="chat-form" autocomplete="off">
+        <input type="text" maxlength="80" placeholder="メッセージ（80文字まで）" aria-label="チャットのメッセージ" enterkeyhint="send">
+        <button type="submit">送信</button>
+      </form>
     </section>
     <section class="log-wrap">
       <h3>ログ</h3>
@@ -290,11 +307,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=23"></script>
-<script src="shared/cpu.js?v=23"></script>
-<script src="shared/room.js?v=23"></script>
-<script src="sound.js?v=23"></script>
-<script src="board.js?v=23"></script>
-<script src="client.js?v=23"></script>
+<script src="shared/engine.js?v=24"></script>
+<script src="shared/cpu.js?v=24"></script>
+<script src="shared/room.js?v=24"></script>
+<script src="sound.js?v=24"></script>
+<script src="board.js?v=24"></script>
+<script src="client.js?v=24"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const E = require('../shared/engine');
-const { Room, TURN_MS, BID_MS, GRACE_MS } = require('../shared/room');
+const { Room, TURN_MS, BID_MS, GRACE_MS, CHAT_KEEP, CHAT_LEN } = require('../shared/room');
 
 // タイマーと時計は手で進める
 function makeRoom() {
@@ -226,4 +226,30 @@ test('イベントを起こさない設定（チュートリアル用）', () =>
   room.events = false;
   room.handle(h, { type: 'start' });
   assert.ok(room.game.eventPlan.every(e => !e));
+});
+
+test('チャット：全員に届き、ロビーからゲームまで続く。文字数・件数・連投に上限がある', () => {
+  const { room, inbox, last, clock } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'chat', text: '  よろしく\n ' });
+  assert.deepStrictEqual(last(g).room.chat.map(c => [c.from, c.name, c.text]), [[h, 'A', 'よろしく']]);
+  assert.strictEqual(last(h).room.chat.length, 1);
+  // 空は送らない・すぐの連投は断る
+  room.handle(g, { type: 'chat', text: '   ' });
+  assert.strictEqual(last(h).room.chat.length, 1);
+  room.handle(h, { type: 'chat', text: 'もう一度' });
+  assert.match(inbox[h].at(-1).text, /少し待って/);
+  // 長すぎる分は切る
+  clock.t += 1000;
+  room.handle(g, { type: 'chat', text: 'あ'.repeat(200) });
+  assert.strictEqual(last(h).room.chat.at(-1).text.length, CHAT_LEN);
+  // ゲームが始まっても残る
+  room.handle(h, { type: 'start' });
+  assert.strictEqual(last(g).room.chat.length, 2);
+  // 古いものから消える
+  for (let i = 0; i < CHAT_KEEP + 5; i++) { clock.t += 1000; room.handle(h, { type: 'chat', text: 'm' + i }); }
+  const chat = last(g).room.chat;
+  assert.strictEqual(chat.length, CHAT_KEEP);
+  assert.strictEqual(chat.at(-1).text, 'm' + (CHAT_KEEP + 4));
 });
