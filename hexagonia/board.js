@@ -391,12 +391,13 @@
           ctx.closePath();
           ctx.fillStyle = COL.mark;
           ctx.fill();
-        } else if (c.terrain === 'forest') {
-          // 森林：▲
+        } else if (c.terrain === 'mountain' || c.terrain === 'forest') {
+          // 山岳：▲／森林：▽
+          const up = c.terrain === 'mountain' ? 1 : -1;
           ctx.beginPath();
-          ctx.moveTo(x, y - s * 0.25);
-          ctx.lineTo(x + s * 0.27, y + s * 0.2);
-          ctx.lineTo(x - s * 0.27, y + s * 0.2);
+          ctx.moveTo(x, y - s * 0.25 * up);
+          ctx.lineTo(x + s * 0.27, y + s * 0.2 * up);
+          ctx.lineTo(x - s * 0.27, y + s * 0.2 * up);
           ctx.closePath();
           ctx.fillStyle = COL.mark;
           ctx.fill();

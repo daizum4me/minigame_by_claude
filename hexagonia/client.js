@@ -141,7 +141,8 @@
     core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
     'hex-plain': tile('#3A3A38', '#6A695F'),
     'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L14.8 12 L12 16.5 L9.2 12 Z" fill="#A3A198"/>'),
-    'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
+    'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 16 L15.5 9 L8.5 9 Z" fill="#A3A198"/>'),
+    'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
     'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
     'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
     bridge: tile('#2E4250', '#5B7A8C', '<path d="M6.5 9.6 H17.5 M6.5 14.4 H17.5 M8.5 9.6 V14.4 M10.8 9.6 V14.4 M13.2 9.6 V14.4 M15.5 9.6 V14.4" stroke="#B9A88C" stroke-width="1.2"/>'),
@@ -781,7 +782,7 @@
     { title: 'ヘキサゴニアへようこそ', next: true,
       text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
     { title: '盤面の見方', next: true,
-      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　● <b>農地</b>：毎手番 食料 +1　▲ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源4で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　▲ <b>山岳</b>：取ると防御トークン +1<br>● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源4で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
     { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
       text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
       done: (g, base) => myCells(g).length > base.cells },
@@ -935,6 +936,7 @@
     mine: `拡張したとき（破壊で取ったときも）と強化したときに、攻撃トークン +${R.mineAttack}`,
     farm: `このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
     forest: `このセルがあると、手番終了時に資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
+    mountain: `拡張したとき（破壊で取ったときも）と強化したときに、防御トークン +${R.mountainDefense}`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
@@ -949,7 +951,7 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mine' ? `攻撃トークン +${R.mineAttack}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
+      gain = c.terrain === 'mine' ? `攻撃トークン +${R.mineAttack}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'mountain' ? `防御トークン +${R.mountainDefense}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
     } else if (c.owner === app.me) {
       if (c.strong) return { note: '強化済のセルです' };
       type = 'strengthen';
@@ -957,7 +959,7 @@
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
       const gives = R.strengthenGives;
       const foodNote = `・食料 +${R.food.strong}`;
-      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense}・手番終了時の資源 +${inc}${foodNote}。隣の相手セルを破壊できる拠点になり、隣の自分のセルを城壁で守る（防御 +${R.wallBonus}）`;
+      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? R.mountainDefense : 0)}・手番終了時の資源 +${inc}${foodNote}。隣の相手セルを破壊できる拠点になり、隣の自分のセルを城壁で守る（防御 +${R.wallBonus}）`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
@@ -1004,7 +1006,7 @@
       }
     }
     const el = $('#tooltip');
-    el.innerHTML = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▲ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    el.innerHTML = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▽ ', mountain: '▲ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;

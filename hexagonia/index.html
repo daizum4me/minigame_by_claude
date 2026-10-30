@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=22">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 
@@ -252,11 +252,12 @@
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="hex-river"></i>地形</h3>
-      <p class="r-hint">平原が約73%、鉱山・農地・森林が約9%ずつ。それに河川。</p>
+      <p class="r-hint">平原が約73%、鉱山・山岳・農地・森林が約7%ずつ。それに河川。</p>
       <div class="r-cards terrain">
         <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>効果なし</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山 ◆</b><small>拡張・強化したとき <span class="k-atk">攻撃 +1</span></small></div>
-        <div class="r-card"><i class="ic big" data-icon="hex-forest"></i><b>森林 ▲</b><small>このセルがあると手番終了時 <span class="k-res">資源 +1</span>（強化とは別）</small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-mountain"></i><b>山岳 ▲</b><small>拡張・強化したとき <span class="k-def">防御 +1</span></small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-forest"></i><b>森林 ▽</b><small>このセルがあると手番終了時 <span class="k-res">資源 +1</span>（強化とは別）</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-farm"></i><b>農地 ●</b><small>このセルがあると手番終了時 <span class="k-food">食料 +1</span>（強化とは別）</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">4</span> で橋をかけて渡る</small></div>
         <div class="r-card"><i class="ic big" data-icon="bridge"></i><b>橋</b><small>強化できる。壊されると河川に戻る</small></div>
@@ -289,11 +290,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=22"></script>
-<script src="shared/cpu.js?v=22"></script>
-<script src="shared/room.js?v=22"></script>
-<script src="sound.js?v=22"></script>
-<script src="board.js?v=22"></script>
-<script src="client.js?v=22"></script>
+<script src="shared/engine.js?v=23"></script>
+<script src="shared/cpu.js?v=23"></script>
+<script src="shared/room.js?v=23"></script>
+<script src="sound.js?v=23"></script>
+<script src="board.js?v=23"></script>
+<script src="client.js?v=23"></script>
 </body>
 </html>
