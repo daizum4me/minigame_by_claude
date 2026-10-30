@@ -208,7 +208,7 @@ test('ホストは行動回数とラウンド数を設定できる（0 は人数
   room.handle(h, { type: 'settings', actions: 9 });
   assert.strictEqual(inbox[h].at(-1).type, 'error');
   room.handle(h, { type: 'settings', actions: 5, rounds: 8 });
-  assert.deepStrictEqual(last(h).room.settings, { diameter: 0, actions: 5, rounds: 8 });
+  assert.deepStrictEqual(last(h).room.settings, { diameter: 0, actions: 5, rounds: 8, mode: 'turn', ticks: 0 });
   room.handle(h, { type: 'start' });
   assert.deepStrictEqual([room.game.actionsPerTurn, room.game.rounds], [5, 8]);
 });
@@ -299,4 +299,32 @@ test('取り消しの記録は手番の人にだけ、何を取り消せるか�
   room.handle(h, { type: 'act', action: { type: 'undo' } });
   assert.deepStrictEqual(last(h).room.game.undo, []);
   assert.strictEqual(room.game.log.length, logLen);            // 生産の取り消しはログに出ない
+});
+
+test('リアルタイムモード：ホストが選べる。15秒ごとに区切り、5秒ごとに行動力が回復。CPU も動く', () => {
+  const { room, last, fire, timers } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'settings', mode: 'nope' });
+  assert.strictEqual(room.settings.mode, 'turn');
+  room.handle(h, { type: 'settings', mode: 'realtime', ticks: 12 });
+  assert.deepStrictEqual([room.settings.mode, room.settings.ticks], ['realtime', 12]);
+  room.handle(h, { type: 'start' });
+  const g = room.game;
+  assert.deepStrictEqual([g.mode, g.rounds], ['realtime', 12]);
+  assert.strictEqual(last(h).room.tickLeftMs, 15000);
+  assert.strictEqual(last(h).room.turnLeftMs, 0);
+  const me = g.players.find(p => p.id === h);
+  me.ap = 0;
+  fire(5000);
+  assert.strictEqual(me.ap, 1);
+  fire(15000);
+  assert.strictEqual(g.round, 1);
+  assert.ok(timers.some(t => t.ms === 15000) && timers.some(t => t.ms === 5000));   // 次の区切り・回復も予約される
+  // CPU は2.5秒ごとに考える（資源と行動力があれば何かする）
+  const cpu = g.players.find(p => p.id !== h);
+  cpu.resource = 20; cpu.ap = 5;
+  const before = g.log.length;
+  for (let i = 0; i < 4; i++) fire(2500);
+  assert.ok(g.log.length > before);
 });

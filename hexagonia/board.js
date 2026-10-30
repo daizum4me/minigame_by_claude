@@ -497,6 +497,50 @@
         ctx.setLineDash([]);
         ctx.stroke();
       }
+      // 防御（リアルタイムモード）：辺に、置いた人の色の太い線と体力の数字
+      const edgeEnds = ek => {
+        const [ka, kb] = ek.split('|');
+        const [ax, ay] = this.screenOf(ka), [bx, by] = this.screenOf(kb);
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const px = -(by - ay) / len * s * 0.5, py = (bx - ax) / len * s * 0.5;   // 辺の長さはマスの大きさと同じ
+        return { mx, my, x1: mx + px, y1: my + py, x2: mx - px, y2: my - py };
+      };
+      for (const [ek, wall] of Object.entries(g.walls || {})) {
+        const e = edgeEnds(ek);
+        const col = d.colors[wall.owner] || { base: '#cccccc', light: '#ffffff' };
+        ctx.lineCap = 'round';
+        ctx.lineWidth = Math.max(3, s * 0.2);
+        ctx.strokeStyle = 'rgba(20,20,18,0.85)';
+        ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke();
+        ctx.lineWidth = Math.max(2, s * 0.13);
+        ctx.strokeStyle = col.light;
+        ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke();
+        ctx.lineCap = 'butt';
+        if (s >= 16) {
+          ctx.beginPath();
+          ctx.arc(e.mx, e.my, s * 0.2, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(20,20,18,0.92)';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = col.light;
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = `700 ${Math.round(s * 0.24)}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(wall.hp), e.mx, e.my + 0.5);
+        }
+      }
+      // ツールチップで選んでいる辺
+      if (d.wallSel && g.board[d.wallSel.split('|')[0]] && g.board[d.wallSel.split('|')[1]]) {
+        const e = edgeEnds(d.wallSel);
+        ctx.setLineDash([s * 0.12, s * 0.1]);
+        ctx.lineWidth = Math.max(2, s * 0.1);
+        ctx.strokeStyle = `rgba(255,211,107,${0.6 + 0.4 * pulse})`;
+        ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
       // 攻防中のマス
       if (g.pending && !g.over) {
         const [x, y] = this.screenOf(g.pending.target);

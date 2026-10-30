@@ -17,6 +17,15 @@
     minPlayers: 2,
     maxPlayers: 12,
     // 人数ごとの盤面の半径（直径 = 半径×2+1）。部屋の設定で変えられる
+    // リアルタイムモード（実験）：手番がなく、いつでも行動できる。15秒ごとの区切りで全員いっせいに資源・食料の処理をする
+    rt: {
+      tickSeconds: 15,                  // 区切りの間隔（ラウンドの代わり）
+      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾・破壊・防御の設置・防御を壊すで1使う
+      ticks: [[4, 40], [8, 36], [12, 32]],  // 区切りの回数（[この人数まで, 回数]）。部屋の設定で変えられる
+      ticksRange: [10, 80],
+      eventEvery: [4, 8],               // イベントは区切り4〜8回ごとに起き、区切り4回のあいだ続く
+      eventLength: 4,
+    },
     radius: { 2: 3, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6, 9: 7, 10: 7, 11: 7, 12: 7 },
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
@@ -314,10 +323,12 @@
     radius = radius || RULES.radius[players.length];
     const order = shuffle(players.slice(), rng);
     const auto = autoSettings(players.length);
+    const realtime = !!(opts && opts.mode === 'realtime');
     const actions = (opts && opts.actions) || auto.actions;
-    const rounds = (opts && opts.rounds) || auto.rounds;
+    const rounds = realtime ? (opts && opts.rounds) || autoTicks(players.length) : (opts && opts.rounds) || auto.rounds;
+    if (realtime && (rounds < RULES.rt.ticksRange[0] || rounds > RULES.rt.ticksRange[1])) throw new Error('区切りの回数が正しくありません');
     if (actions < RULES.actionsRange[0] || actions > RULES.actionsRange[1]) throw new Error('行動回数が正しくありません');
-    if (rounds < RULES.roundsRange[0] || rounds > RULES.roundsRange[1]) throw new Error('ラウンド数が正しくありません');
+    if (!realtime && (rounds < RULES.roundsRange[0] || rounds > RULES.roundsRange[1])) throw new Error('ラウンド数が正しくありません');
     const state = {
       radius,
       board,
@@ -350,6 +361,7 @@
       log: [],
       logSeq: 0,
     };
+    if (realtime) return startRealtime(state, rng, opts);
     addLog(state, `ゲーム開始。手番順：${state.players.map(p => p.name).join(' → ')}（1手番 ${actions} 行動・${rounds} ラウンド）`, 'info');
     // イベントを決めておく（ラウンドごとに 1/3 の確率）
     const keys = Object.keys(EVENTS);
@@ -374,6 +386,158 @@
   function autoSettings(count) {
     const row = RULES.auto.find(([n]) => count <= n) || RULES.auto[RULES.auto.length - 1];
     return { actions: row[1], rounds: row[2] };
+  }
+
+  // リアルタイムモードの区切りの回数（人数に合わせる）
+  function autoTicks(count) {
+    const row = RULES.rt.ticks.find(([n]) => count <= n) || RULES.rt.ticks[RULES.rt.ticks.length - 1];
+    return row[1];
+  }
+
+  // ---------- リアルタイムモード（実験） ----------
+  // 手番がなく、だれでもいつでも行動できる（行動力を使う）。区切りごとに資源・食料の処理をする。
+  // 破壊は戦力トークン1個ですぐ決まる（攻防はない）。かわりにマスの辺に「防御」を置いて守る
+
+  function startRealtime(state, rng, opts) {
+    const rt = RULES.rt;
+    Object.assign(state, {
+      mode: 'realtime',
+      round: 0,              // 済んだ区切りの回数
+      turn: -1,
+      actionsLeft: 0,
+      walls: {},             // 辺のキー → { owner, hp }（置いた人と体力）
+      tickInfo: {},          // 人ごとの、最後の区切りで増えた・減った資源と食料（画面の演出用）
+      events: !(opts && opts.events === false),
+      nextEventAt: rt.eventEvery[0] + Math.floor(rng() * (rt.eventEvery[1] - rt.eventEvery[0] + 1)),
+      eventUntil: 0,
+    });
+    for (const p of state.players) p.ap = rt.apStart;
+    addLog(state, `ゲーム開始（リアルタイム）。${rt.tickSeconds}秒ごとの区切りを ${state.rounds} 回。行動力は${rt.apSeconds}秒に1回復（上限${rt.apMax}）`, 'info');
+    return state;
+  }
+
+  // 辺のキー：隣り合う2マスのキーを並べたもの（向きによらず同じ）
+  const edgeKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+  // 行動力の回復（部屋が5秒ごとに呼ぶ）
+  function rtRegen(state) {
+    if (state.over) return;
+    for (const p of state.players) if (p.alive) p.ap = Math.min(RULES.rt.apMax, (p.ap || 0) + 1);
+  }
+
+  // 区切り（部屋が15秒ごとに呼ぶ）：全員いっせいに資源をもらい、食料を作って食べる。足りなければ自動でセルを捨てる
+  function rtTick(state, rng) {
+    if (state.over) return;
+    rng = rng || Math.random;
+    state.round++;
+    addLog(state, `区切り ${state.round} / ${state.rounds}`, 'round');
+    const seq = state.logSeq;
+    for (const p of state.players) {
+      if (!p.alive) continue;
+      const n = income(state, p.id);
+      const resBefore = p.resource, foodBefore = p.food || 0;
+      p.resource += n;
+      const made = foodMade(state, p.id), eaten = foodEaten(state, p.id);
+      p.food = foodBefore + made - eaten;
+      const hungry = Math.max(0, -p.food);
+      p.food = Math.max(0, p.food);
+      state.tickInfo[p.id] = { seq, player: p.id, resBefore, resource: n, foodBefore, made, eaten, hungry };
+      const spare = cellsOf(state, p.id).filter(c => !c.core).length;
+      if (hungry > 0 && spare > 0) {
+        state.abandon = { player: p.id, count: Math.min(hungry, spare) };
+        const keys = suggestAbandon(state, p.id);
+        state.abandon = null;
+        for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, core: false });
+        addLog(state, `${p.name} は食料が ${hungry} 足りないため、セル ${keys.map(k => cellLabel(state.board[k])).join(' ')} を捨てた`, 'abandon');
+      }
+    }
+    cleanWalls(state);
+    if (state.round >= state.rounds) { finishByGroup(state); return; }
+    // イベント：区切り4〜8回ごとに起き、区切り4回のあいだ続く
+    const rt = RULES.rt;
+    if (state.event && state.round >= state.eventUntil) {
+      addLog(state, `イベント「${EVENTS[state.event].name}」が終わった`, 'event');
+      state.event = null;
+    }
+    if (state.events && !state.event && state.round >= state.nextEventAt) {
+      const keys = Object.keys(EVENTS);
+      state.event = keys[Math.floor(rng() * keys.length)];
+      state.eventUntil = state.round + rt.eventLength;
+      state.nextEventAt = state.eventUntil + rt.eventEvery[0] + Math.floor(rng() * (rt.eventEvery[1] - rt.eventEvery[0] + 1));
+      addLog(state, `イベント：${EVENTS[state.event].name}（${EVENTS[state.event].text.replace('このラウンド', `区切り${rt.eventLength}回のあいだ`)}）`, 'event');
+    }
+  }
+
+  // 防御は、置いた人がどちらのマスも持っていなくなったら消える
+  function cleanWalls(state) {
+    if (!state.walls) return;
+    for (const [ek, w] of Object.entries(state.walls)) {
+      const [a, b] = ek.split('|');
+      if (![a, b].some(k => state.board[k] && state.board[k].owner === w.owner)) delete state.walls[ek];
+    }
+  }
+
+  // リアルタイムモード：そのマスを、防御のない辺から攻められるか（攻める人のセルが隣にあって、そのあいだに防御がない）
+  function rtCanDestroy(state, id, c) {
+    const k = key(c.q, c.r);
+    return neighbors(c.q, c.r).some(([q, r]) => {
+      const n = state.board[key(q, r)];
+      return n && n.owner === id && !state.walls[edgeKey(k, key(q, r))];
+    });
+  }
+
+  function rtBlocked(state, id, type) {
+    if (state.over) return 'ゲームは終わっています';
+    const p = playerById(state, id);
+    if (!p || !p.alive) return '脱落しています';
+    const RT_TYPES = ['expand', 'strengthen', 'cultivate', 'destroy', 'produce', 'wall', 'breakWall', 'unwall'];
+    if (!RT_TYPES.includes(type)) return 'リアルタイムモードではできない行動です';
+    if (type === 'unwall') return '';
+    if (type !== 'produce' && (p.ap || 0) < 1) return '行動力が足りません（5秒に1回復）';
+    if (['wall', 'breakWall', 'destroy'].includes(type)) return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
+    const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
+    if (p.resource < min) return '資源トークンが足りません';
+    return '';
+  }
+
+  // 防御の設置・壊す・外す。action：{ type, from: 自分のセルのキー, to: 隣のマスのキー, count }
+  function rtWallAction(state, id, action) {
+    const p = playerById(state, id);
+    const from = state.board[action.from], to = state.board[action.to];
+    if (!from || !to || dist([from.q, from.r], [to.q, to.r]) !== 1) return fail('隣り合う2つのマスを選んでください');
+    const ek = edgeKey(action.from, action.to);
+    const w = state.walls[ek];
+    const label = `${cellLabel(from)}と${cellLabel(to)}のあいだ`;
+    if (action.type === 'unwall') {
+      if (!w || w.owner !== id) return fail('外せる防御がありません');
+      delete state.walls[ek];
+      addLog(state, `${p.name} が${label}の防御を外した`, 'info');
+      return { ok: true };
+    }
+    const n = Number(action.count);
+    if (!Number.isInteger(n) || n < 1 || n > p.power) return fail('使う戦力トークンの数が正しくありません');
+    if (action.type === 'wall') {
+      if (from.owner !== id) return fail('自分のセルの辺にだけ置けます');
+      if (w && w.owner !== id) return fail('ほかの人の防御があります。先に壊してください');
+      state.walls[ek] = { owner: id, hp: (w ? w.hp : 0) + n };
+      p.power -= n;
+      p.powerSeen = Math.max(0, p.powerSeen - n);
+      p.ap--;
+      addLog(state, `${p.name} が${label}に防御を置いた（体力 ${state.walls[ek].hp}）`, 'strengthen');
+      return { ok: true };
+    }
+    // breakWall：自分のセルの辺にある、ほかの人の防御を壊す（戦力トークン1個で体力1）
+    if (from.owner !== id && to.owner !== id) return fail('自分のセルの辺の防御だけ壊せます');
+    if (!w || w.owner === id) return fail('壊せる防御がありません');
+    const used = Math.min(n, w.hp);
+    w.hp -= used;
+    p.power -= used;
+    p.powerSeen = Math.max(0, p.powerSeen - used);
+    p.ap--;
+    const owner = playerById(state, w.owner);
+    if (w.hp <= 0) { delete state.walls[ek]; addLog(state, `${p.name} が ${owner.name} の${label}の防御を壊した`, 'destroy'); }
+    else addLog(state, `${p.name} が ${owner.name} の${label}の防御を削った（残り体力 ${w.hp}）`, 'destroy');
+    return { ok: true };
   }
 
   function addLog(state, text, tone) {
@@ -445,6 +609,7 @@
 
   // 今その行動ができるか（マスの指定がいらない判定）。できなければ理由を返す
   function actionBlocked(state, id, type) {
+    if (state.mode === 'realtime') return rtBlocked(state, id, type);
     if (state.over) return 'ゲームは終わっています';
     const p = current(state);
     if (!p || p.id !== id) return 'あなたの手番ではありません';
@@ -479,7 +644,7 @@
       } else if (type === 'cultivate') {
         if (c.owner === id && !c.core && c.terrain === 'plain') out.push(k);
       } else if (type === 'destroy') {
-        if (c.owner && c.owner !== id && adjacentToStrong(state, id, c.q, c.r)) out.push(k);
+        if (c.owner && c.owner !== id && (state.mode === 'realtime' ? rtCanDestroy(state, id, c) : adjacentToStrong(state, id, c.q, c.r))) out.push(k);
       }
     }
     return out;
@@ -500,6 +665,7 @@
 
   // 手番の人が資源を使い切るなどして、もう何もできなければ自動で手番終了
   function autoEndIfStuck(state) {
+    if (state.mode === 'realtime') return;   // 手番がない
     // 取り消せる行動があるあいだは自動で終えない（取り消すかもしれないので）
     while (!state.over && !state.pending && !state.abandon && !(state.undo && state.undo.length) && !canAct(state, current(state).id)) {
       addLog(state, `${current(state).name} はもう行動できないため、自動で手番終了`, 'info');
@@ -520,6 +686,7 @@
     const blocked = actionBlocked(state, id, action.type);
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
+    if (state.mode === 'realtime' && ['wall', 'breakWall', 'unwall'].includes(action.type)) return rtWallAction(state, id, action);
     if (action.type === 'endTurn') { endTurn(state); return { ok: true }; }
     if (action.type === 'undo') { undoLast(state, p); return { ok: true }; }
     if (action.type === 'buyAction') {
@@ -533,7 +700,7 @@
     }
     // 生産：資源でトークンを作る。行動回数を使わず、ログにも出さない
     if (action.type === 'produce') {
-      pushUndo(state, p, null, '生産', true);
+      if (state.mode !== 'realtime') pushUndo(state, p, null, '生産', true);
       p.resource -= RULES.cost.produce;
       p.power += 1;
       return { ok: true };
@@ -544,7 +711,8 @@
     if (!targets(state, id, action.type).includes(k)) return fail('そのマスには' + ACTION_NAMES[action.type] + 'できません');
     // 破壊はほかの人を巻き込むので取り消せない（それより前の行動も取り消せなくなる）
     if (action.type === 'destroy') state.undo = [];
-    else pushUndo(state, p, cell, ACTION_NAMES[action.type]);
+    else if (state.mode !== 'realtime') pushUndo(state, p, cell, ACTION_NAMES[action.type]);
+    const spend = () => { if (state.mode === 'realtime') p.ap--; else state.actionsLeft--; };
 
     if (action.type === 'expand') {
       const cost = expandCost(cell);
@@ -553,13 +721,13 @@
       let extra = '';
       extra = terrainGain(p, cell);
       if (extra) extra = `（${extra}）`;
-      state.actionsLeft--;
+      spend();
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
     } else if (action.type === 'cultivate') {
       p.resource -= RULES.cost.cultivate;
       cell.terrain = 'farm';
-      state.actionsLeft--;
+      spend();
       addLog(state, `${p.name} がセル${cellLabel(cell)}を開墾して農地に（毎手番 食料 +${RULES.farmFood}）`, 'strengthen');
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
@@ -569,8 +737,16 @@
       let extra = `戦力トークン +${RULES.strengthenPower}`;
       const tg = terrainGain(p, cell);
       if (tg) extra += `・${tg}`;
-      state.actionsLeft--;
+      spend();
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
+    } else if (action.type === 'destroy' && state.mode === 'realtime') {
+      // リアルタイム：戦力トークン1個ですぐ破壊（攻防はない。防御のない辺からしか攻められない）
+      const def = playerById(state, cell.owner);
+      p.power -= 1;
+      p.powerSeen = Math.max(0, p.powerSeen - 1);
+      spend();
+      takeCell(state, p, def, cell);
+      cleanWalls(state);
     } else if (action.type === 'destroy') {
       const def = playerById(state, cell.owner);
       p.resource -= RULES.cost.destroy;
@@ -636,6 +812,12 @@
     const what = cell.core ? 'コア' : 'セル';
     addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
+    takeCell(state, a, d, cell);
+  }
+
+  // 破壊の成功：マスを奪う（橋なら河川に戻す）。コアなら d は脱落し、a がすべてを奪う
+  function takeCell(state, a, d, cell) {
+    const what = cell.core ? 'コア' : 'セル';
     const wasCore = cell.core;
     Object.assign(cell, { owner: null, strong: false, core: false });
     if (cell.terrain === 'river') {
@@ -828,7 +1010,7 @@
     const alive = state.players.filter(p => p.alive);
     const sizes = alive.map(p => largestGroup(state, p.id).length);
     const best = Math.max(...sizes);
-    finish(state, alive.filter((p, i) => sizes[i] === best), `${state.rounds}ラウンド終了・最大のかたまり ${best} セル`);
+    finish(state, alive.filter((p, i) => sizes[i] === best), `${state.rounds}${state.mode === 'realtime' ? '回の区切り' : 'ラウンド'}終了・最大のかたまり ${best} セル`);
   }
 
   // つながっている自分のセルのかたまりのうち、一番大きいもの（マスのキーの配列）
@@ -865,8 +1047,9 @@
     if (!p || !p.alive || state.over) return;
     if (state.pending && (state.pending.attacker === id || state.pending.defender === id)) state.pending = null;
     if (state.abandon && state.abandon.player === id) state.abandon = null;
-    const wasTurn = current(state).id === id;
+    const wasTurn = state.mode !== 'realtime' && current(state).id === id;
     eliminate(state, p);
+    cleanWalls(state);
     // 手番の人が抜けたら次へ（資源は受け取らない）
     if (!state.over && wasTurn) advance(state);
     autoEndIfStuck(state);
@@ -875,6 +1058,7 @@
   // 今だれの操作を待っているか（攻防中は、まだ数を決めていない人。2人のこともある）
   function waiting(state) {
     if (state.over) return [];
+    if (state.mode === 'realtime') return [];   // 手番がないので、だれも待たない
     const pd = state.pending;
     if (pd) return [pd.atk === null ? pd.attacker : null, pd.def === null ? pd.defender : null].filter(Boolean);
     if (state.abandon) return [state.abandon.player];
@@ -885,6 +1069,6 @@
     RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    adjacentToStrong, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
+    adjacentToStrong, autoTicks, rtTick, rtRegen, edgeKey, rtCanDestroy, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
   };
 });

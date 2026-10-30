@@ -20,6 +20,7 @@
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
   const CPU_REPLY_MS = 700;     // CPU が攻防で応答するまでの間
+  const CPU_RT_MS = 2500;       // リアルタイムモードで CPU が考える間隔
   const CHAT_KEEP = 30;         // 残して配信するチャットの件数
   const CHAT_LEN = 80;          // チャット1件の文字数の上限
   const CHAT_GAP_MS = 800;      // 続けて送れる間隔（連投よけ）
@@ -45,7 +46,8 @@
       this.hostId = null;
       this.phase = 'lobby';
       // 盤面の直径（マス）・1手番の行動回数・ラウンド数。0 は人数に合わせる
-      this.settings = { diameter: 0, actions: 0, rounds: 0 };
+      // mode：'turn'（ターン制）か 'realtime'（リアルタイム・実験）。ticks はリアルタイムの区切りの回数（0 は人数に合わせる）
+      this.settings = { diameter: 0, actions: 0, rounds: 0, mode: 'turn', ticks: 0 };
       this.events = true;       // イベントを起こすか（チュートリアルでは起こさない）
       this.chat = [];           // { seq, from, name, color, text }（ロビーとゲームで続けて使う）
       this.chatSeq = 0;
@@ -178,6 +180,16 @@
             if (r !== 0 && !(Number.isInteger(r) && r >= lo && r <= hi)) return err('ラウンド数が正しくありません');
             next.rounds = r;
           }
+          if ('mode' in msg) {
+            if (!['turn', 'realtime'].includes(msg.mode)) return err('モードが正しくありません');
+            next.mode = msg.mode;
+          }
+          if ('ticks' in msg) {
+            const t = Number(msg.ticks);
+            const [lo, hi] = E.RULES.rt.ticksRange;
+            if (t !== 0 && !(Number.isInteger(t) && t >= lo && t <= hi)) return err('区切りの回数が正しくありません');
+            next.ticks = t;
+          }
           this.settings = next;
           this.changed();
           return;
@@ -187,9 +199,10 @@
           if (this.phase !== 'lobby') return;
           if (this.players.length < E.RULES.minPlayers) return err(`${E.RULES.minPlayers}人以上でないと始められません`);
           const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
-          const { actions, rounds } = this.settings;
+          const { actions, mode, ticks } = this.settings;
+          const rounds = mode === 'realtime' ? ticks : this.settings.rounds;
           try {
-            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, actions, rounds, events: this.events });
+            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, actions, rounds, mode, events: this.events });
           } catch (e) {
             return err(e.message);
           }
@@ -250,8 +263,21 @@
       const g = this.game;
       const now = this.now();
       if (!g || this.phase !== 'game' || g.over) {
-        ['turn', 'bid', 'grace', 'abandon'].forEach(n => this.stop(n));
+        ['turn', 'bid', 'grace', 'abandon', 'rtTick', 'rtRegen'].forEach(n => this.stop(n));
         this.turnKey = this.bidFor = this.graceFor = this.abandonFor = null;
+        return;
+      }
+      if (g.mode === 'realtime') {
+        // リアルタイム：15秒ごとの区切りと、5秒ごとの行動力の回復だけ（手番の持ち時間はない）
+        const rt = E.RULES.rt;
+        if (!this.timers.rtTick) {
+          this.tickDeadline = now + rt.tickSeconds * 1000;
+          this.timer('rtTick', () => { E.rtTick(this.game, this.rng); this.changed(); }, rt.tickSeconds * 1000);
+        }
+        if (!this.timers.rtRegen) {
+          this.regenDeadline = now + rt.apSeconds * 1000;
+          this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, rt.apSeconds * 1000);
+        }
         return;
       }
       if (g.abandon) {
@@ -338,6 +364,13 @@
     // CPU の操作待ちなら、少し間をおいて CPU に打たせる（攻防では2人とも CPU のこともある）
     checkCpu() {
       const g = this.game;
+      if (g && g.mode === 'realtime') {
+        // リアルタイム：CPU は一定の間隔で考えて、行動力があれば1つずつ動く
+        const any = this.phase === 'game' && !g.over && this.players.some(p => p.cpu && g.players.some(x => x.id === p.id && x.alive));
+        if (!any) { this.stop('cpu'); return; }
+        if (!this.timers.cpu) this.timer('cpu', () => this.cpuActRealtime(), CPU_RT_MS);
+        return;
+      }
       const cpus = g && this.phase === 'game' && !g.over ? E.waiting(g).filter(id => (this.player(id) || {}).cpu) : [];
       if (!cpus.length) { this.stop('cpu'); this.cpuAt = null; return; }
       const pd = g.pending;
@@ -365,6 +398,18 @@
       this.changed();
     }
 
+    cpuActRealtime() {
+      const g = this.game;
+      if (this.closed || !g || g.over) return;
+      for (const p of g.players) {
+        const info = this.player(p.id);
+        if (!p.alive || !info || !info.cpu) continue;
+        const action = CPU.decideRealtime(g, p.id, this.rng, info.level);
+        if (action) E.apply(g, p.id, action);
+      }
+      this.changed();
+    }
+
     // その人に見せてよい情報：攻防で相手が決めた数は、公開されるまで「決めたかどうか」だけ
     view(forId) {
       const g = this.game;
@@ -377,7 +422,7 @@
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
           eventPlan: undefined,
           // 取り消しの記録は、手番の人にだけ、何を取り消せるかだけ届ける（生産したことや戦力トークンの数がわからないように）
-          undo: g.over || E.current(g).id !== forId ? [] : (g.undo || []).map(u => ({ label: u.label })),   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
+          undo: g.over || g.mode === 'realtime' || E.current(g).id !== forId ? [] : (g.undo || []).map(u => ({ label: u.label })),   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
           // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）
           lastClash: g.lastClash && Object.assign({}, g.lastClash, {
             atk: forId === g.lastClash.attacker ? g.lastClash.atk : null,
@@ -401,7 +446,9 @@
         hostId: this.hostId,
         settings: this.settings,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu, level: p.cpu ? p.level : undefined })),
-        turnLeftMs: live && !g.abandon ? Math.max(0, this.turnDeadline - now) : 0,
+        turnLeftMs: live && !g.abandon && g.mode !== 'realtime' ? Math.max(0, this.turnDeadline - now) : 0,
+        tickLeftMs: live && g.mode === 'realtime' ? Math.max(0, this.tickDeadline - now) : 0,
+        regenLeftMs: live && g.mode === 'realtime' ? Math.max(0, this.regenDeadline - now) : 0,
         abandonLeftMs: live && g.abandon ? Math.max(0, this.abandonDeadline - now) : 0,
         bidLeftMs: live && g.pending ? Math.max(0, this.bidDeadline - now) : 0,
         graceFor: live && this.graceFor ? E.current(g).id : null,

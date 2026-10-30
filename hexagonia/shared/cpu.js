@@ -128,7 +128,8 @@
         const foe = playerById(g, c.owner);
         // 相手が戦力トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
         const est = estPower(foe);
-        const canBreak = me.power >= est;                 // 同じ数なら攻撃側の勝ち
+        // リアルタイムモードは攻防がなく、狙えればかならず壊せる
+        const canBreak = g.mode === 'realtime' || me.power >= est;   // 同じ数なら攻撃側の勝ち
         let s;
         if (c.core) s = canBreak ? 30 : 6;                  // コアは最優先（破りきれなくても、読み合いで狙う）
         else if (est <= 1) s = 5;
@@ -208,5 +209,49 @@
     return best && best.s > lv.endBelow ? best.a : { type: 'endTurn' };
   }
 
-  return { decide, LEVELS, LEVEL_NAMES };
+  // リアルタイムモード：行動力があれば、一番よい行動を1つ選ぶ（よい行動がなければ何もしない＝待つ）
+  function decideRealtime(g, id, rng, level) {
+    rng = rng || Math.random;
+    const lv = LEVELS[level] || LEVELS.normal;
+    const me = playerById(g, id);
+    if (!me || !me.alive || g.over) return null;
+    const out = scoreActions(g, id, rng, lv);
+    const noise = () => (rng() - 0.5) * lv.noise;
+    const core = E.parseKey(me.core);
+    // 防御：コアとその周りのセルの、相手のセルと接する辺を固める（相手がすぐ壊せる辺から）
+    if (!lv.passive && me.power >= 1 && (me.ap || 0) >= 1) {
+      for (const c of E.cellsOf(g, id)) {
+        const d = E.dist([c.q, c.r], core);
+        if (d > 1) continue;
+        const ck = E.key(c.q, c.r);
+        for (const [q, r] of E.neighbors(c.q, c.r)) {
+          const n = cellAt(g, q, r);
+          if (!n || !n.owner || n.owner === id) continue;
+          const w = g.walls[E.edgeKey(ck, E.key(q, r))];
+          if (w && w.owner !== id) continue;
+          if (w && w.hp >= 3) continue;
+          const count = Math.min(me.power, c.core ? 2 : 1);
+          out.push({ s: (c.core ? 7 : 3.5) - (w ? w.hp : 0) + noise(), a: { type: 'wall', from: ck, to: E.key(q, r), count } });
+        }
+      }
+    }
+    // 防御を壊す：相手のコアの隣にいるのに、防御で攻められないとき
+    if (!lv.passive && me.power >= 1 && (me.ap || 0) >= 1) {
+      for (const f of g.players) {
+        if (!f.alive || f.id === id) continue;
+        const [fq, fr] = E.parseKey(f.core);
+        for (const [q, r] of E.neighbors(fq, fr)) {
+          const n = cellAt(g, q, r);
+          if (!n || n.owner !== id) continue;
+          const w = g.walls[E.edgeKey(f.core, E.key(q, r))];
+          if (!w || w.owner === id || me.power < w.hp + 1) continue;   // 壊したあと破壊する1個も残す
+          out.push({ s: 9 + noise(), a: { type: 'breakWall', from: E.key(q, r), to: f.core, count: w.hp } });
+        }
+      }
+    }
+    const best = out.sort((a, b) => b.s - a.s)[0];
+    return best && best.s > lv.endBelow ? best.a : null;
+  }
+
+  return { decide, decideRealtime, LEVELS, LEVEL_NAMES };
 });
