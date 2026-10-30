@@ -918,7 +918,7 @@ test('リアルタイム：ターンの終わりに全員いっせいに資源�
   assert.match(g.endReason, /ターン終了/);
 });
 
-test('リアルタイム：攻撃は戦力トークン1個ですぐ決まり、行動力を使わない。防御があれば防御が1減るだけで、0のときに奪える', () => {
+test('リアルタイム：攻撃は行動力1と戦力トークン1個ですぐ決まる。防御があれば防御が1減るだけで、0のときに奪える', () => {
   const { g, a, b } = rtGame();
   const core = P(g, a).core;
   const [cq, cr] = E.parseKey(core);
@@ -932,14 +932,18 @@ test('リアルタイム：攻撃は戦力トークン1個ですぐ決まり、�
   assert.ok(E.apply(g, b, { type: 'fortify', q: tq, r: tr }).ok);
   assert.deepStrictEqual([g.board[t].def, P(g, b).power, P(g, b).ap], [2, 1, 0]);
   assert.strictEqual(E.apply(g, b, { type: 'fortify', q: cq, r: cr }).ok, false);   // 相手のセルには置けない
-  // a は行動力 0 でも攻撃できる。1回目・2回目は防御が減るだけ、3回目で奪う
+  // 行動力が 0 だと攻撃できない。1回目・2回目は防御が減るだけ、3回目で奪う
   P(g, a).power = 3; P(g, a).ap = 0;
+  assert.strictEqual(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok, false);
+  P(g, a).ap = 3;
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.deepStrictEqual([g.board[t].owner, g.board[t].def], [b, 1]);
   assert.match(g.log.at(-1).text, /攻撃（防御を削った）/);
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.deepStrictEqual([g.board[t].owner, g.board[t].def || 0, P(g, a).power, P(g, a).ap, g.pending], [a, 0, 0, 0, null]);
+  // 攻撃の記録（攻撃されたことを画面で知らせる）
+  assert.deepStrictEqual(g.attacks.map(x => [x.by, x.victim, x.key, x.took]), [[a, b, t, false], [a, b, t, false], [a, b, t, true]]);
   assert.strictEqual(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok, false);   // 戦力がない
 });
 

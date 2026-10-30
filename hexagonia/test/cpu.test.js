@@ -160,7 +160,7 @@ test('リアルタイムの CPU：防御のある相手のコアは、攻撃を�
   const [nq, nr] = E.neighbors(fq, fr).find(([q, r]) => g.board[E.key(q, r)] && g.board[E.key(q, r)].terrain !== 'river');
   Object.assign(g.board[E.key(nq, nr)], { owner: a.id });
   g.board[b.core].def = 1;
-  a.resource = 0; a.power = 5; a.ap = 0;      // 攻撃は行動力を使わない
+  a.resource = 0; a.power = 5; a.ap = 2;      // 攻撃は行動力を1使う
   const act = CPU.decideRealtime(g, a.id, rng, 'strong');
   assert.deepStrictEqual([act.type, E.key(act.q, act.r)], ['destroy', b.core]);
   assert.ok(E.apply(g, a.id, act).ok);

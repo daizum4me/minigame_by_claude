@@ -119,6 +119,10 @@
     lose() {        // 敗北：低く下がる
       [392, 330, 262].forEach((f, i) => tone({ freq: f, t: i * 0.2, dur: 0.45, vol: 0.1 }));
     },
+    attacked() {    // 自分のセルが攻撃された：警報のように2回
+      [0, 0.16].forEach(t => tone({ freq: 880, freqEnd: 520, t, dur: 0.13, vol: 0.11, type: 'square' }));
+      noise({ t: 0, dur: 0.2, type: 'lowpass', freq: 1500, freqEnd: 300, vol: 0.15 });
+    },
     tick() {        // 持ち時間が残りわずか：こつ
       tone({ freq: 1500, dur: 0.05, vol: 0.06, type: 'square' });
     },

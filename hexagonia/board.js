@@ -123,9 +123,9 @@
     reset() { this.moved = false; this.fit(); this.draw(); }
 
     // 変化したマスを一瞬光らせる
-    flash(keys, color) {
+    flash(keys, color, ms) {
       const t = performance.now();
-      for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255' });
+      for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255', ms: ms || FLASH_MS });
       if (keys.length) this.animate();
     }
 
@@ -474,7 +474,7 @@
       }
       // 変化したマス：明るく光って消えていく
       for (const [k, f] of this.flashes) {
-        const age = (t - f.t) / FLASH_MS;
+        const age = (t - f.t) / f.ms;
         if (age >= 1 || !g.board[k]) { this.flashes.delete(k); continue; }
         const a = (1 - age) * (1 - age);
         const [x, y] = this.screenOf(k);

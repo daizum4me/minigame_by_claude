@@ -644,6 +644,7 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .floater .fl-food { color: #FFE27A; }
 .floater .fl-ev { color: var(--accent); font-size: 12px; }
 .floater .fl-short { color: var(--bad); font-size: 12px; }
+.floater .fl-hit { color: #fff; background: rgba(200, 40, 40, .85); font-weight: 700; font-size: 13px; }
 .floater.loss .fl-food { color: #FF9C94; }
 @keyframes float-up {
   0% { opacity: 0; transform: translate(-50%, -30%); }

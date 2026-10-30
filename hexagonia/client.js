@@ -688,7 +688,7 @@
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
     else if (g.abandon) hint = g.abandon.player === app.me ? '食料が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
     else if (g.pending) hint = '破壊の攻防中です';
-    else if (isRT(g)) hint = `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと戦力で防御を固められ、隣の相手のセルは戦力1個で攻撃できます（どちらも行動力は使わない）`;
+    else if (isRT(g)) hint = `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと戦力で防御を固められ（行動力は使わない）、隣の相手のセルは行動力1と戦力1個で攻撃できます`;
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
     else if (['produce', 'buyAction'].every(t => E.actionBlocked(g, app.me, t)) && ['expand', 'strengthen', 'cultivate', 'destroy'].every(t => !E.targets(g, app.me, t).length)) hint = 'もう行動できません。「手番終了」を押してください（「取り消す」で戻すこともできます）';
     else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
@@ -722,6 +722,18 @@
       if ((!isRT(g) && /^破壊(成功|失敗)/.test(l.text)) || l.tone === 'out' || l.tone === 'hit') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
       else if (me && l.text === `${me.name} はもう行動できないため、自動で手番終了`) toast('もう行動できないため、自動で手番を終えました', 'info');
     }
+    // リアルタイム：自分のセルが攻撃されたら、そのマスを赤く光らせ、音とお知らせで知らせる
+    if (isRT(g) && app.lastLogSeq) {
+      const hits = (g.attacks || []).filter(a => a.victim === app.me && a.seq > app.lastLogSeq);
+      if (hits.length) {
+        view.flash(hits.map(a => a.key), '255,70,70', 2600);
+        for (const a of hits) floater(a.key, `<span class="fl-hit">${a.took ? '奪われた！' : '攻撃された！'}</span>`, 'loss', 0);
+        const by = [...new Set(hits.map(a => (pl(a.by) || {}).name))].join('・');
+        const took = hits.filter(a => a.took).length;
+        toast(took ? `${by} にセルを${took}つ奪われました` : `${by} に攻撃されています（防御 −${hits.length}）`, 'bad');
+        window.HexSound.play('attacked');
+      }
+    }
     // コアに命中したら、コアを赤く光らせる（マスは変わらないので）
     if (g.lastClash && fresh.some(l => l.tone === 'hit')) view.flash([g.lastClash.target], '255,110,110');
     playSounds(g, fresh);
@@ -736,8 +748,7 @@
     // ターン（リアルタイム）・ラウンドが変わったらお知らせ（最初に開いたときは出さない）
     const progress = `${g.mode || 'turn'}:${g.round}`;
     if (app.lastProgress && app.lastProgress.split(':')[0] === progress.split(':')[0] && app.lastProgress !== progress && !g.over && g.round >= 1) {
-      if (isRT(g)) popout(`ターン ${g.round}`, `/ ${g.rounds}`, 'round', 'round');
-      else popout(`ラウンド ${g.round}`, `/ ${g.rounds}`, 'round', 'round');
+      if (!isRT(g)) popout(`ラウンド ${g.round}`, `/ ${g.rounds}`, 'round', 'round');   // リアルタイムのターンでは出さない
     }
     app.lastProgress = progress;
 
@@ -1157,14 +1168,14 @@
       }
       if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。手番終了時の食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
       if (isRT(g)) {
-        list.push({ type: 'fortify', name: '防御 +1', cost: 0, rtPower: 1, gain: `戦力トークンを1個つぎ込む（行動力は使わない）。攻撃1回ぶんを防ぐ。最大 ${R.rt.defMax}（解除すると戻ってくる）` });
+        list.push({ type: 'fortify', name: '防御 +1', cost: 0, rtPower: 1, gain: `戦力トークンを1個つぎ込む（行動力は使わない）。攻撃1回ぶんを防ぐ。最大 ${R.rt.defMax}。数はほかの人には見えない（解除すると戻ってくる）` });
         if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `つぎ込んだ戦力トークン ${c.def} 個が戻る` });
       }
       if (!list.length) return { note: c.strong ? '強化済のセルです' : 'このセルでできる行動はありません' };
     } else {
       const foe = g.players.find(p => p.id === c.owner);
       list.push(isRT(g) ? { type: 'destroy', name: '攻撃', cost: 0, rtPower: 1,
-        gain: '戦力トークン1個ですぐ決まる（行動力は使わない）。' + (c.def ? `防御が ${c.def} あるので、まず防御が1減る（あと ${c.def + 1} 回で奪える）` : (c.core ? `コアなら ${foe.name} は脱落し、セルとトークンをまるごと奪える` : '防御がなければ、このマスが自分のセルになる')) }
+        gain: '行動力1と戦力トークン1個ですぐ決まる。防御があれば、まず防御が1減る（相手の防御は見えない）。防御がなければ' + (c.core ? `コアを奪い、${foe.name} は脱落（セルとトークンをまるごと奪える）` : 'このマスが自分のセルになる') }
       : { type: 'destroy', cost: R.cost.destroy,
         gain: '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
           ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`

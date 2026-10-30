@@ -20,7 +20,7 @@
     // リアルタイムモード（実験）：手番がなく、いつでも行動できる。15秒ごとの「ターン」で全員いっせいに資源・食料の処理をする
     rt: {
       tickSeconds: 15,                  // 1ターンの長さ（ターン制のラウンドの代わり）
-      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾で1使う（攻撃・防御・生産は使わない）
+      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾・攻撃で1使う（防御・生産は使わない）
       defMax: 6,                            // セルの防御の上限（六角形の辺の数）
       ticks: [[4, 40], [8, 36], [12, 32]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
       ticksRange: [10, 80],
@@ -473,9 +473,9 @@
     if (!RT_TYPES.includes(type)) return 'リアルタイムモードではできない行動です';
     if (type === 'unfortify') return '';
     if (type === 'fortify') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
-    // 攻撃（destroy）は行動力を使わない。生産も使わない
-    if (type === 'destroy') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
+    // 生産・防御は行動力を使わない。攻撃は行動力1と戦力トークン1
     if (type !== 'produce' && (p.ap || 0) < 1) return '行動力が足りません（5秒に1回復）';
+    if (type === 'destroy') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
     if (p.resource < min) return '資源トークンが足りません';
     return '';
@@ -483,6 +483,7 @@
 
   // 防御（リアルタイムモード）：自分のセルに戦力トークンを1個つぎ込むと、そのセルの防御が1増える（上限6）。
   // 解除すると、つぎ込んだ戦力トークンが全部戻る。どちらも行動力は使わない。action：{ type: 'fortify' | 'unfortify', q, r }
+  // 防御の数はほかの人には見せないので、ログにも出さない
   function rtFortify(state, id, action) {
     const p = playerById(state, id);
     const k = key(Number(action.q), Number(action.r));
@@ -491,7 +492,6 @@
     if (action.type === 'unfortify') {
       if (!cell.def) return fail('このセルに防御はありません');
       p.power += cell.def;
-      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}の防御を解除した`, 'info');   // 数はほかの人にはわからない
       cell.def = 0;
       return { ok: true };
     }
@@ -499,7 +499,6 @@
     cell.def = (cell.def || 0) + 1;
     p.power -= 1;
     p.powerSeen = Math.max(0, p.powerSeen - 1);
-    addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}の防御を固めた`, 'strengthen');
     return { ok: true };
   }
 
@@ -703,12 +702,16 @@
       spend();
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
     } else if (action.type === 'destroy' && state.mode === 'realtime') {
-      // リアルタイム：攻撃。戦力トークン1個ですぐ決まり、行動力は使わない（攻防はない）。
+      // リアルタイム：攻撃。行動力1と戦力トークン1個ですぐ決まる（攻防はない）。
       // セルに防御があれば防御が1減るだけ。防御が0のときに攻撃すると、そのセルを奪う
       const def = playerById(state, cell.owner);
       p.power -= 1;
       p.powerSeen = Math.max(0, p.powerSeen - 1);
-      if (cell.def > 0) {
+      p.ap--;
+      const took = !(cell.def > 0);
+      // 攻撃されたことを画面で知らせるための記録（新しいものだけ残す）
+      state.attacks = (state.attacks || []).concat({ seq: state.logSeq + 1, by: id, victim: def.id, key: k, took }).slice(-20);
+      if (!took) {
         cell.def--;
         addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を攻撃（防御を削った）`, 'destroy');
       } else {
