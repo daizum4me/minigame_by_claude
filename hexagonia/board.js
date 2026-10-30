@@ -423,7 +423,7 @@
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
         // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印と同じ大きさ）のあいだを、1つにつき辺1本ぶんずつ埋める。6で一周
-        if (c.def > 0) this.defRing(ctx, x, y, s, Math.min(6, c.def), col);
+        if (c.def > 0) this.defRing(ctx, x, y, s, this.defSides(g, c).slice(0, Math.min(6, c.def)), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
         this.edge(ctx, x, y, s * 0.88, c.core ? Math.max(2.5, s * 0.11) : Math.max(1.5, s * 0.06), col.light, pat);
@@ -520,12 +520,26 @@
       if (this.h.onView) this.h.onView();
     }
 
-    // 防御の帯：上の頂点から時計回りに、辺 n 本ぶんの台形を塗る
-    defRing(ctx, x, y, s, n, col) {
+    // 防御を埋める辺の順番（0〜5。辺 i は頂点 i と i+1 のあいだ、上の頂点から時計回り）：
+    // 相手のセルと接している辺から。残りは、相手と接している辺に近いものから（どこにも接していなければ上から時計回り）
+    defSides(g, c) {
+      const foe = [];
+      for (const [dq, dr] of E.DIRS) {
+        const [wx, wy] = toWorld(dq, dr);
+        const i = ((Math.round(Math.atan2(wy, wx) * 180 / Math.PI / 60) + 1) % 6 + 6) % 6;
+        const n = g.board[E.key(c.q + dq, c.r + dr)];
+        if (n && n.owner && n.owner !== c.owner) foe.push(i);
+      }
+      const near = i => foe.length ? Math.min(...foe.map(f => { const d = Math.abs(f - i) % 6; return Math.min(d, 6 - d); })) : 0;
+      return [0, 1, 2, 3, 4, 5].sort((a, b) => near(a) - near(b) || a - b);
+    }
+
+    // 防御の帯：sides の辺ごとに、縁と内側の六角形のあいだの台形を塗る（セルの明るい色）
+    defRing(ctx, x, y, s, sides, col) {
       const ro = s * 0.86, ri = s * 0.62;
       const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
-      ctx.fillStyle = rgba(col.light, 0.65);
-      for (let i = 0; i < n; i++) {
+      ctx.fillStyle = col.light;
+      for (const i of sides) {
         ctx.beginPath();
         ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));
         ctx.lineTo(...pt(ri, i + 1)); ctx.lineTo(...pt(ri, i));

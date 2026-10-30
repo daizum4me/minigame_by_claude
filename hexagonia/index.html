@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=49">
+<link rel="stylesheet" href="style.css?v=50">
 </head>
 <body>
 
@@ -294,7 +294,7 @@
             <li>手番がなく、<b>いつでも行動できる</b>。拡張・強化・開墾で<b>行動力</b>を1使う（5秒に1回復・上限5。攻撃・防御・生産は使わない）。行動力は下のバーに丸で出る</li>
             <li><b>15秒ごとのターン</b>で、全員いっせいに資源と食料の処理（足りなければ自動でセルを捨てる）。次のターンまでの時間は下のバーに出る。決まった回数のターンが終わったら、一番大きなかたまりで勝敗</li>
             <li><b>攻撃</b>（破壊のかわり）は戦力トークン1個で、すぐ決まる（攻防はない・行動力は使わない）。自分のセルの隣なら、強化していなくても狙える</li>
-            <li><b>防御</b>：自分のセルを選んで「防御 +1」を押すと、戦力トークンを1個つぎ込んで、そのセルの防御が1増える（最大6・行動力は使わない）。攻撃されると、まず防御が1減り、防御が0のときに攻撃されるとセルを奪われる。「防御を解除」すると、つぎ込んだ戦力トークンが全部戻る。防御は、セルの縁と内側の小さな六角形のあいだが、1つにつき辺1本ぶんずつ埋まっていく形で出る（数は全員に見える）</li>
+            <li><b>防御</b>：自分のセルを選んで「防御 +1」を押すと、戦力トークンを1個つぎ込んで、そのセルの防御が1増える（最大6・行動力は使わない）。攻撃されると、まず防御が1減り、防御が0のときに攻撃されるとセルを奪われる。「防御を解除」すると、つぎ込んだ戦力トークンが全部戻る。防御は、セルの縁と内側の小さな六角形のあいだが、1つにつき辺1本ぶんずつ埋まっていく形で出る。相手のセルと接している辺から埋まる（数は全員に見える）</li>
             <li>イベントはターン4〜8回ごとに起き、ターン4回のあいだ続く。取り消しはできない</li>
           </ul>
         </section>
@@ -342,11 +342,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=49"></script>
-<script src="shared/cpu.js?v=49"></script>
-<script src="shared/room.js?v=49"></script>
-<script src="sound.js?v=49"></script>
-<script src="board.js?v=49"></script>
-<script src="client.js?v=49"></script>
+<script src="shared/engine.js?v=50"></script>
+<script src="shared/cpu.js?v=50"></script>
+<script src="shared/room.js?v=50"></script>
+<script src="sound.js?v=50"></script>
+<script src="board.js?v=50"></script>
+<script src="client.js?v=50"></script>
 </body>
 </html>

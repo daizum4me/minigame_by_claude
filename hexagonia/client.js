@@ -663,7 +663,7 @@
     const apDots = n => Array.from({ length: R.rt.apMax }, (_, i) => `<span class="ap-dot${i < n ? ' on' : ''}"></span>`).join('');
     const meAct = $('#me-actions');
     if (isRT(g) && me && me.alive) {
-      const html = `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${R.rt.apMax}）">行動力 ${apDots(me.ap || 0)}</span><span class="rt-net" title="次のターンで受け取る資源と、作る・食べる食料">${esc(netText(g))}</span>`;
+      const html = `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${R.rt.apMax}）">行動力 ${apDots(me.ap || 0)}</span>`;
       if (meAct._html !== html) { meAct.innerHTML = html; meAct._html = html; }
     } else {
       meAct._html = null;
@@ -793,6 +793,17 @@
     $('#me-tokens').innerHTML = me
       ? tokenChip('resource', v ? v.resource : me.resource, true) + tokenChip('power', me.power, true) + tokenChip('food', v ? v.food : me.food, true)
       : '';
+    // 食料の収支：次の手番終了（リアルタイムはターン）で作る − 食べる。チップの下に出し、内訳はタップ・ホバーで
+    const g = app.room && app.room.game;
+    const chip = $('#me-tokens .tk-food');
+    if (me && me.alive && g && !g.over && chip) {
+      const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me), net = made - eaten;
+      const per = isRT(g) ? 'ターン' : '手番';
+      const short = Math.max(0, eaten - made - (me.food || 0));
+      chip.insertAdjacentHTML('beforeend', `<em class="tnet ${net > 0 ? 'up' : net < 0 ? 'down' : ''}">${net > 0 ? '+' : net < 0 ? '−' : '±'}${Math.abs(net)}/${per}</em>`);
+      chip.title = `食料の収支（${per}ごと）：作る +${made}・食べる −${eaten} ＝ ${net >= 0 ? '+' : '−'}${Math.abs(net)}` + (short ? `。${short} 足りないので、セルを捨てることになる` : '');
+      chip.classList.toggle('short', !!short);
+    }
     if (v && v.flash) for (const [kind, cls] of Object.entries(v.flash)) {
       const chip = $(`#me-tokens .tk-${kind}`);
       if (chip) chip.classList.add(cls);
