@@ -441,20 +441,48 @@
   function renderChat(room, prev) {
     const list = room.chat || [];
     const lastSeq = list.length ? list[list.length - 1].seq : 0;
-    if (prev && app.chatSeq === lastSeq) return;
+    if (prev && app.chatSeq === lastSeq) { renderChatBox(); return; }
     const fresh = prev ? list.filter(c => c.seq > (app.chatSeq || 0)) : [];
     app.chatSeq = lastSeq;
+    const others = fresh.filter(c => c.from !== app.me);
     const colorOfPlayer = c => { const p = room.players.find(x => x.id === c.from); return p ? p.color : c.color; };
     const html = list.length
       ? list.map(c => `<li class="${c.from === app.me ? 'mine' : ''}">${swatch(colorOfPlayer(c))}<b>${esc(c.name)}</b><span>${esc(c.text)}</span></li>`).join('')
       : '<li class="muted empty">まだ発言はありません</li>';
-    document.querySelectorAll('.chat-list').forEach(el => {
-      el.innerHTML = html;
-      el.scrollTop = el.scrollHeight;
-    });
-    // ゲーム中は、ほかの人の発言をお知らせにも出す（スマホではチャット欄が画面の下にあるので）
-    const other = fresh.filter(c => c.from !== app.me).pop();
-    if (other && room.phase === 'game') toast(`💬 ${other.name}：${other.text}`, 'info');
+    const el = $('#chat .chat-list');
+    el.innerHTML = html;
+    el.scrollTop = el.scrollHeight;
+    // 閉じているときは、未読の数を出し、ほかの人の発言をお知らせにも出す
+    if (!app.chatOpen && others.length) {
+      app.chatUnread = (app.chatUnread || 0) + others.length;
+      const last = others[others.length - 1];
+      toast(`💬 ${last.name}：${last.text}`, 'info');
+    }
+    renderChatBox();
+  }
+
+  // チャット欄の開け閉めと未読の数
+  function renderChatBox() {
+    const box = $('#chat');
+    box.hidden = !app.room;
+    box.classList.toggle('closed', !app.chatOpen);
+    box.querySelector('[data-chat-toggle]').setAttribute('aria-expanded', String(app.chatOpen));
+    const badge = box.querySelector('.chat-unread');
+    badge.hidden = app.chatOpen || !app.chatUnread;
+    badge.textContent = app.chatUnread || '';
+    placeChat();
+  }
+
+  // チャット欄の高さ：左下の角に置けるなら角に、自分の情報のバーと重なるならバーの上に
+  function placeChat() {
+    const box = $('#chat');
+    let bottom = 12;
+    const dock = $('#dock');
+    if (!box.hidden && !$('#game').hidden && dock.offsetHeight && window.innerWidth > 820) {
+      const r = dock.getBoundingClientRect();
+      if (r.left < box.offsetWidth + 24) bottom = window.innerHeight - r.top + 10;
+    }
+    document.documentElement.style.setProperty('--chat-bottom', bottom + 'px');
   }
 
   function enterRoom(type) {
@@ -482,6 +510,8 @@
     app.me = null;
     app.tutorial = null;
     app.chatSeq = 0;
+    app.chatUnread = 0;
+    $('#chat').hidden = true;
     $('#coach').hidden = true;
     setReconnecting(false);
     hideTip();
@@ -1082,6 +1112,7 @@
     if (!h) return;
     $('.board-wrap').style.setProperty('--dock-h', h + 'px');
     if (view) view.setInsetBottom(h + 20);
+    placeChat();
   }
 
   // ルール説明などの <i data-icon="…"> にアイコンを入れる
@@ -1184,16 +1215,28 @@
     $('#set-focus').onchange = e => setFocus(e.target.checked);
     $('#set-actions').onchange = e => send({ type: 'settings', actions: Number(e.target.value) });
     $('#set-rounds').onchange = e => send({ type: 'settings', rounds: Number(e.target.value) });
-    document.querySelectorAll('.chat-form').forEach(f => {
-      f.addEventListener('submit', e => {
-        e.preventDefault();
-        const input = f.querySelector('input');
-        const text = input.value.trim();
-        if (!text) return;
-        send({ type: 'chat', text });
-        input.value = '';
-      });
+    // チャット：PC は開いた状態、スマホは閉じた状態から（前回の状態を覚えておく）
+    app.chatOpen = store.get('chatOpen') ? store.get('chatOpen') === '1' : window.innerWidth > 820;
+    $('#chat [data-chat-toggle]').onclick = () => {
+      app.chatOpen = !app.chatOpen;
+      store.set('chatOpen', app.chatOpen ? '1' : '0');
+      if (app.chatOpen) {
+        app.chatUnread = 0;
+        const list = $('#chat .chat-list');
+        list.scrollTop = list.scrollHeight;
+      }
+      renderChatBox();
+      if (app.chatOpen) $('#chat .chat-form input').focus();
+    };
+    $('#chat .chat-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const input = e.currentTarget.querySelector('input');
+      const text = input.value.trim();
+      if (!text) return;
+      send({ type: 'chat', text });
+      input.value = '';
     });
+    window.addEventListener('resize', placeChat);
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && app.tip) hideTip();
     });
