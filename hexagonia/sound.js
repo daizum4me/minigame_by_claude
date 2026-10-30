@@ -76,6 +76,11 @@
       noise({ dur: 0.28, type: 'bandpass', freq: 600, freqEnd: 2400, q: 2, vol: 0.18 });
       tone({ freq: 220, freqEnd: 330, type: 'sawtooth', dur: 0.25, vol: 0.05 });
     },
+    block() {       // 攻撃が防御に当たった（防御を削った）：かきん
+      tone({ freq: 1320, dur: 0.25, vol: 0.08, type: 'square' });
+      tone({ freq: 1760, dur: 0.2, vol: 0.05, type: 'square' });
+      noise({ dur: 0.08, type: 'highpass', freq: 4000, vol: 0.1 });
+    },
     success() {     // 攻撃成功（セルを奪った）：がしゃん
       noise({ dur: 0.45, type: 'lowpass', freq: 3000, freqEnd: 300, vol: 0.3 });
       tone({ freq: 140, freqEnd: 60, dur: 0.35, vol: 0.2 });

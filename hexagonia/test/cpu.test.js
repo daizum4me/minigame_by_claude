@@ -11,11 +11,11 @@ function seeded(seed) {
 
 const PLAYERS = 'abcdefghijkl'.split('').map(id => ({ id, name: id.toUpperCase(), color: 'red' }));
 
-// 部屋と同じ間隔で進める：CPU は2.5秒ごと、行動力の回復は5秒ごと、ターンは15秒ごと。
+// 部屋と同じ間隔で進める：CPU は2.5秒ごと、行動力の回復は5秒ごと、ターンは20秒ごと。
 // levelOf(id) が null の人は何もしない。CPU が選んだ手は、ルール上できるものでなければならない
 function play(g, rng, levelOf) {
   for (let t = 0; t < 200 && !g.over; t++) {
-    for (let step = 1; step <= 6 && !g.over; step++) {
+    for (let step = 1; step <= E.RULES.rt.tickSeconds / 2.5 && !g.over; step++) {
       for (const p of g.players) {
         const level = levelOf(p.id);
         if (!p.alive || !level || g.over) continue;
@@ -55,14 +55,14 @@ test('CPU は何もしない相手に勝つ', () => {
 
 test('CPU の強さ：よわいはふつうに負け越す（2人戦）', () => {
   let w = 0;
-  for (let seed = 1; seed <= 20; seed++) {
+  for (let seed = 1; seed <= 60; seed++) {
     const rng = seeded(seed * 7);
     const g = E.createGame(PLAYERS.slice(0, 2), rng);
     const weak = g.players[seed % 2].id;
     play(g, rng, id => (id === weak ? 'weak' : 'normal'));
     if (g.winners.includes(weak)) w += 1 / g.winners.length;
   }
-  assert.ok(w / 20 < 0.4, `よわい ${w / 20}`);
+  assert.ok(w / 60 < 0.4, `よわい ${w / 60}`);
 });
 
 test('部屋に CPU を入れて遊べる（CPU は2.5秒ごとに考える。CPU には何も送らない）', () => {
@@ -121,11 +121,11 @@ test('CPU：相手のセルが近づいてきたら、コアに先に防御を�
   assert.strictEqual(g.board[a.core].def, 1);
 });
 
-test('CPU：防御のある相手のコアは、攻撃を重ねて防御を削ってから奪う（相手の防御の数は見ずに見積もる）', () => {
+test('CPU：防御のある相手のコアは、攻撃を重ねて防御を削ってから壊す（相手の防御の数は見ずに見積もる）', () => {
   const { g, a, b, rng } = rtSetup();
   const [fq, fr] = E.parseKey(b.core);
   const [nq, nr] = E.neighbors(fq, fr).find(([q, r]) => g.board[E.key(q, r)] && g.board[E.key(q, r)].terrain !== 'river');
-  Object.assign(g.board[E.key(nq, nr)], { owner: a.id });
+  Object.assign(g.board[E.key(nq, nr)], { owner: a.id, strong: true });   // 攻撃の拠点
   g.board[b.core].def = 1;
   a.resource = 0; a.power = 5; a.ap = 2;      // 攻撃は行動力を1使う
   const act = CPU.decideRealtime(g, a.id, rng, 'strong');
@@ -134,5 +134,5 @@ test('CPU：防御のある相手のコアは、攻撃を重ねて防御を削�
   assert.strictEqual(g.board[b.core].def, 0);   // 1回目は防御が減るだけ
   const act2 = CPU.decideRealtime(g, a.id, rng, 'strong');
   assert.ok(E.apply(g, a.id, act2).ok);
-  assert.strictEqual(b.alive, false);          // 2回目でコアを奪う
+  assert.strictEqual(b.alive, false);          // 2回目でコアを壊す
 });

@@ -534,12 +534,15 @@
     $('#set-ticks').disabled = !isHost;
     $('#set-ticks').value = String(st.ticks || 0);
     const autoT = E.autoTicks(Math.max(R.minPlayers, room.players.length));
-    $('#ticks-note').textContent = `いまの人数なら自動で ${autoT} ターン（${Math.round(autoT * R.rt.tickSeconds / 60)}分）`;
-    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2人 7・4人 11・8人 15・12人 17 など）';
+    $('#ticks-note').textContent = `いまの人数なら自動で ${autoT} ターン（${ticksTime(autoT)}）`;
+    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2〜3人 9・4人 11・5〜6人 13・7〜8人 15・9〜12人 17）';
     $('#lobby-wait').textContent = isHost
       ? (enough ? `${room.players.length}人で始められます（盤面の直径 ${dia || autoDia}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
       : 'ホストがゲームを始めるのを待っています…';
   }
+
+  // ターン数 → 遊ぶ時間（「7分」「約9分」）
+  const ticksTime = n => { const m = n * R.rt.tickSeconds / 60; return Number.isInteger(m) ? `${m}分` : `約${Math.round(m)}分`; };
 
   // 直径 d の六角形の盤面のマスの数
   const diameterCells = d => { const r = (d - 1) / 2; return 3 * r * (r + 1) + 1; };
@@ -596,10 +599,10 @@
 
     // 拡張・強化・攻撃・防御はマスを選んで出るツールチップから。マスに関係ない生産はここ
     const canAct = me && canPlay(g);
-    $('#actions').innerHTML = `<button class="act prod" data-act="produce" ${canAct && !E.actionBlocked(g, app.me, 'produce') ? '' : 'disabled'} title="生産：資源 ${R.cost.produce} で戦力トークン +1（行動力を使わない・ログに出ない）">${TOKEN_SVG.power}<b>生産</b><small>資源 ${R.cost.produce} → 戦力 +1</small></button>`;
+    $('#actions').innerHTML = `<button class="act prod" data-act="produce" ${canAct && !E.actionBlocked(g, app.me, 'produce') ? '' : 'disabled'} title="生産：資源 ${R.cost.produce} で戦力トークン +1（行動力を使わない・ログに出ない）">${TOKEN_SVG.power}<b>生産</b><small>資源${R.cost.produce} → 戦力+1</small></button>`;
 
     $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと戦力で防御を固められ（行動力は使わない）、隣の相手のセルは行動力1と戦力1個で攻撃できます`;
+      : 'マスを選ぶと行動のボタンが出ます。防御と生産は行動力を使いません';
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
@@ -625,13 +628,16 @@
     const hits = app.lastLogSeq ? (g.attacks || []).filter(a => a.victim === app.me && a.seq > app.lastLogSeq) : [];
     if (hits.length) {
       view.flash(hits.map(a => a.key), '255,70,70', 2600);
-      for (const a of hits) floater(a.key, `<span class="fl-hit">${a.took ? '奪われた！' : '攻撃された！'}</span>`, 'loss', 0);
+      for (const a of hits) floater(a.key, `<span class="fl-hit">${a.took ? '壊された！' : '攻撃された！'}</span>`, 'loss', 0);
       const by = [...new Set(hits.map(a => (pl(a.by) || {}).name))].join('・');
       const took = hits.filter(a => a.took).length;
-      toast(took ? `${by} にセルを${took}つ奪われました` : `${by} に攻撃されています（防御 −${hits.length}）`, 'bad');
+      toast(took ? `${by} にセルを${took}つ壊されました` : `${by} に攻撃されています（防御 −${hits.length}）`, 'bad');
       window.HexSound.play('attacked');
     } else {
-      playSounds(g, fresh);
+      // 自分の攻撃が防御に当たったら「かきん」、壊したら「がしゃん」（ほかの音より優先）
+      const mine = app.lastLogSeq ? (g.attacks || []).filter(a => a.by === app.me && a.seq > app.lastLogSeq) : [];
+      if (mine.length) window.HexSound.play(mine.some(a => a.took) ? 'success' : 'block');
+      else playSounds(g, fresh);
     }
     // ターンの終わり：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
     const ti = g.tickInfo && g.tickInfo[app.me];
@@ -771,10 +777,10 @@
 
   const TERRAIN_EFFECTS = {
     plain: `効果なし。自分のセルなら、資源 ${R.cost.cultivate} で開墾して農地にできる`,
-    mine: `拡張したとき（攻撃で取ったときも）と強化したときに、戦力トークン +${R.minePower}`,
+    mine: `拡張したときと強化したときに、戦力トークン +${R.minePower}`,
     farm: `開墾した土地。このセルがあると、ターンごとに食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
     forest: `このセルがあると、ターンごとに資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
-    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。奪われると橋が落ちて河川に戻る`,
+    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。壊されると橋が落ちて河川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
@@ -792,7 +798,7 @@
       if (!c.strong) {
         const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
         list.push({ type: 'strengthen', cost: R.cost.strengthen,
-          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・ターンごとの資源 +${inc}・食料 +${R.food.strong}` });
+          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・ターンごとの資源 +${inc}・食料 +${R.food.strong}。隣の相手のセルを攻撃できる拠点になる` });
       }
       if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。ターンごとの食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
       list.push({ type: 'fortify', name: '防御 +1', cost: 0, power: 1, gain: `戦力トークンを1個つぎ込む（行動力は使わない）。攻撃1回ぶんを防ぐ。最大 ${R.rt.defMax}。数はほかの人には見えない（解除すると戻ってくる）` });
@@ -801,13 +807,14 @@
       const foe = g.players.find(p => p.id === c.owner);
       list.push({ type: 'destroy', name: '攻撃', cost: 0, power: 1,
         gain: '行動力1と戦力トークン1個ですぐ決まる。防御があれば、まず防御が1減る（相手の防御は見えない）。防御がなければ'
-          + (c.core ? `コアを奪い、${foe.name} は脱落（セルとトークンをまるごと奪える）` : c.terrain === 'river' ? '橋が落ちて河川に戻る' : 'このマスが自分のセルになる') });
+          + (c.core ? `コアを壊し、${foe.name} は脱落（残りのセルとトークンをまるごと受け継ぐ）` : c.terrain === 'river' ? '橋が落ちて河川に戻る' : 'セルを壊して空きマスに戻す（自分のセルにはならない）') });
     }
     for (const a of list) {
       a.why = '';
       if (E.targets(g, app.me, a.type).includes(key)) continue;
       a.why = E.actionBlocked(g, app.me, a.type)
-        || (a.type === 'fortify' ? `防御は ${R.rt.defMax} までです` : a.type === 'expand' && me.resource < a.cost ? `資源トークンが足りません（あと ${a.cost - me.resource}）` : '自分のセルに隣接していません');
+        || (a.type === 'fortify' ? `防御は ${R.rt.defMax} までです` : a.type === 'expand' && me.resource < a.cost ? `資源トークンが足りません（あと ${a.cost - me.resource}）`
+          : a.type === 'destroy' ? '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると攻撃できます' : '自分のセルに隣接していません');
     }
     return { list };
   }
@@ -930,6 +937,7 @@
 
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
     $('#set-ticks').onchange = e => send({ type: 'settings', ticks: Number(e.target.value) });
+    document.querySelectorAll('#set-ticks option').forEach(o => { const n = Number(o.value); if (n) o.textContent = `${n}ターン（${ticksTime(n)}）`; });
     $('#actions').onclick = e => {
       const b = e.target.closest('[data-act]');
       if (!b || b.disabled) return;

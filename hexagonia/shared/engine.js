@@ -1,7 +1,7 @@
 /*
  * ヘキサゴニア — ルール判定
  * 盤面の生成・行動の検証と実行・ターンの処理・脱落・勝敗をここで扱う。
- * 手番はなく、だれでもいつでも行動できる（行動力を使う）。15秒ごとの「ターン」で全員いっせいに資源・食料の処理をする。
+ * 手番はなく、だれでもいつでも行動できる（行動力を使う）。20秒ごとの「ターン」で全員いっせいに資源・食料の処理をする。
  * 状態（state）はただのオブジェクト（JSON にそのまま変換できる）。
  * ホストのブラウザでもテスト（Node.js）でも同じものを使う。
  *
@@ -18,16 +18,16 @@
     minPlayers: 2,
     maxPlayers: 12,
     rt: {
-      tickSeconds: 15,                      // 1ターンの長さ
+      tickSeconds: 20,                      // 1ターンの長さ（秒）
       apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾・攻撃で1使う（防御・生産は使わない）
       defMax: 6,                            // セルの防御の上限（六角形の辺の数）
-      ticks: [[4, 40], [8, 36], [12, 32]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
+      ticks: [[4, 28], [8, 24], [12, 20]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
       ticksRange: [10, 80],
       eventEvery: [4, 8],                   // イベントはターン4〜8回ごとに起き、4ターンのあいだ続く
       eventLength: 4,
     },
     // 人数ごとの盤面の半径（直径 = 半径×2+1）。部屋の設定で変えられる
-    radius: { 2: 3, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6, 9: 7, 10: 7, 11: 7, 12: 7 },
+    radius: { 2: 4, 3: 4, 4: 5, 5: 6, 6: 6, 7: 7, 8: 7, 9: 8, 10: 8, 11: 8, 12: 8 },
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     // 平原：鉱山：森林（河川は別に流す）。効果のあるマスは合わせて約20%（4/20）で、2種類に均等に分ける。農地は「開墾」で作る
@@ -36,7 +36,7 @@
     centerShare: 0.1,                   // コアの近くの2種類とは別に、少なくとも空きマスの 10% は効果のあるマスとして散らす
     centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
-    minePower: 1,                       // 鉱山マス：拡張（攻撃で取ったときも）と強化のときに戦力トークン +1
+    minePower: 1,                       // 鉱山マス：拡張と強化のときに戦力トークン +1
     farmFood: 1,                        // 農地（開墾したセル）：ターンごとに食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあるとターンごとに資源 +1（強化の +1 とは別）
     startResource: 3,
@@ -49,6 +49,7 @@
     // 余りは持ち越す。足りなければ、足りない数だけ自動でセルを捨てる
     food: { start: 0, core: 6, strong: 1, perCell: 1 },
     strengthenPower: 1,                 // 強化でもらえる戦力トークン
+    // 拠点：攻撃できるのは、自分の強化済のセル（強化済のコアも）に隣接する相手のセルだけ
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -322,7 +323,7 @@
       }),
       rounds,
       round: 0,              // 済んだターンの数
-      // セルの防御は、セルの def（数）に持つ（攻撃1回で1減る。0 のときに攻撃されると奪われる）
+      // セルの防御は、セルの def（数）に持つ（攻撃1回で1減る。0 のときに攻撃されると壊される）
       tickInfo: {},          // 人ごとの、最後のターンで増えた・減った資源と食料（画面の演出用）
       attacks: [],           // 最近の攻撃（攻撃されたことを画面で知らせる）
       events: opts.events !== false,
@@ -415,6 +416,11 @@
     return neighbors(q, r).some(([nq, nr]) => { const c = state.board[key(nq, nr)]; return c && c.owner === id; });
   }
 
+  // 自分の強化済のセルに隣接しているか（攻撃の拠点）
+  function adjacentToStrong(state, id, q, r) {
+    return neighbors(q, r).some(([nq, nr]) => { const c = state.board[key(nq, nr)]; return c && c.owner === id && c.strong; });
+  }
+
   // 河川の隣にある自分のセルの数（橋は除く。豊漁・洪水で使う）
   function riversideCells(state, id) {
     return cellsOf(state, id).filter(c => c.terrain !== 'river' && neighbors(c.q, c.r).some(([q, r]) => { const n = state.board[key(q, r)]; return n && n.terrain === 'river'; })).length;
@@ -481,7 +487,7 @@
       } else if (type === 'cultivate') {
         if (c.owner === id && !c.core && c.terrain === 'plain') out.push(k);
       } else if (type === 'destroy') {
-        if (c.owner && c.owner !== id && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
+        if (c.owner && c.owner !== id && adjacentToStrong(state, id, c.q, c.r)) out.push(k);
       } else if (type === 'fortify') {
         if (c.owner === id && (c.def || 0) < RULES.rt.defMax) out.push(k);
       } else if (type === 'unfortify') {
@@ -549,7 +555,7 @@
       if (tg) extra += `・${tg}`;
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を強化（${extra}）`, 'strengthen');
     } else if (action.type === 'destroy') {
-      // 攻撃：行動力1と戦力トークン1個ですぐ決まる。セルに防御があれば防御が1減るだけ。防御が0のときに攻撃すると、そのセルを奪う
+      // 攻撃：行動力1と戦力トークン1個ですぐ決まる。セルに防御があれば防御が1減るだけ。防御が0のときに攻撃すると、そのセルを壊す（空きマスに戻る）
       const def = playerById(state, cell.owner);
       p.power -= 1;
       const took = !(cell.def > 0);
@@ -559,39 +565,30 @@
         cell.def--;
         addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を攻撃（防御を削った）`, 'destroy');
       } else {
-        takeCell(state, p, def, cell);
+        breakCell(state, p, def, cell);
       }
     }
     return { ok: true };
   }
 
-  // 攻撃の成功：マスを奪う（橋なら河川に戻す）。コアなら d は脱落し、a がすべてを奪う
-  function takeCell(state, a, d, cell) {
-    const what = cell.core ? 'コア' : 'セル';
+  // 攻撃の成功：マスを壊して空きマスに戻す（橋なら河川に戻す。攻撃側のセルにはならない）。
+  // コアなら d は脱落し、a が残りのセルとトークンをまるごと受け継ぐ
+  function breakCell(state, a, d, cell) {
+    const what = cell.terrain === 'river' ? '橋' : cell.core ? 'コア' : 'セル';
     const wasCore = cell.core;
     Object.assign(cell, { owner: null, strong: false, core: false, def: 0 });
-    if (cell.terrain === 'river') {
-      // 橋は奪われると落ちて、河川に戻る（攻撃側のセルにはならない）
-      addLog(state, `攻撃成功：${a.name} が ${d.name} の橋${cellLabel(cell)}を落とした（河川に戻る）`, 'destroy');
-      return;
-    }
-    addLog(state, `攻撃成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を奪った`, 'destroy');
-    if (wasCore) eliminate(state, d, a);   // コアを奪った人が、相手のセルとトークンをまるごと奪う
-    // 奪ったマスはそのまま攻撃側のセル（未強化）になる。鉱山マスなら拡張と同じく戦力トークン +1
-    Object.assign(cell, { owner: a.id, strong: false, core: false });
-    let extra = terrainGain(a, cell);
-    if (extra) extra = `（${extra}）`;
-    addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
+    addLog(state, `攻撃成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を壊した（${cell.terrain === 'river' ? '河川' : '空きマス'}に戻る）`, 'destroy');
+    if (wasCore) eliminate(state, d, a);
   }
 
-  // 鉱山マスを拡張・強化したとき（攻撃で取ったときも）にもらえる戦力トークン。ログ用の文を返す
+  // 鉱山マスを拡張・強化したときにもらえる戦力トークン。ログ用の文を返す
   function terrainGain(p, cell) {
     if (cell.terrain !== 'mine') return '';
     p.power += RULES.minePower;
     return `鉱山：戦力トークン +${RULES.minePower}`;
   }
 
-  // 脱落。heir（コアを奪った人）がいれば、セル（強化済・防御はそのまま）・資源・戦力・食料をまるごと受け継ぐ。
+  // 脱落。heir（コアを壊した人）がいれば、残りのセル（強化済・防御はそのまま）・資源・戦力・食料をまるごと受け継ぐ。
   // いなければ（切断などで脱落させたとき）、セルは空きマスに戻り、トークンもなくなる
   function eliminate(state, p, heir) {
     p.alive = false;
@@ -604,7 +601,7 @@
     }
     p.resource = 0; p.power = 0; p.food = 0; p.ap = 0;
     addLog(state, heir
-      ? `💀 ${p.name} のコアが奪われ、脱落。セル ${cells.length} 個とトークンはすべて ${heir.name} のものに`
+      ? `💀 ${p.name} のコアが壊され、脱落。セル ${cells.length} 個とトークンはすべて ${heir.name} のものに`
       : `💀 ${p.name} が脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);
@@ -674,6 +671,6 @@
     RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, forfeit,
-    autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, riversideCells,
+    adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, riversideCells,
   };
 });
