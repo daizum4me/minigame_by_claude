@@ -114,16 +114,14 @@
   // ---------- トークンの絵（すべて半透明・平面的・形がすべて違う） ----------
 
   const TOKEN_SVG = {
-    // 資源：オレンジの六角形
-    resource: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 2.5 L20.2 7.25 L20.2 16.75 L12 21.5 L3.8 16.75 L3.8 7.25 Z" fill="rgba(255,150,40,.5)" stroke="#FFB868" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
-    // 攻撃：赤の六芒星
-    attack: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 2 L14.89 7 L20.66 7 L17.77 12 L20.66 17 L14.89 17 L12 22 L9.11 17 L3.34 17 L6.23 12 L3.34 7 L9.11 7 Z" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
-    // 防御：青の正方形
-    defense: `<svg viewBox="0 0 24 24" class="tk"><rect x="4.5" y="4.5" width="15" height="15" rx="1.2" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.6"/></svg>`,
+    // 資源：オレンジの四角（セルの六角形と見分けがつくように）
+    resource: `<svg viewBox="0 0 24 24" class="tk"><rect x="4.5" y="4.5" width="15" height="15" rx="1.2" fill="rgba(255,150,40,.5)" stroke="#FFB868" stroke-width="1.6"/></svg>`,
+    // 戦力：赤の六芒星（攻めにも守りにも使う）
+    power: `<svg viewBox="0 0 24 24" class="tk"><path d="M12 2 L14.89 7 L20.66 7 L17.77 12 L20.66 17 L14.89 17 L12 22 L9.11 17 L3.34 17 L6.23 12 L3.34 7 L9.11 7 Z" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
     // 食料：黄色の丸
     food: `<svg viewBox="0 0 24 24" class="tk"><circle cx="12" cy="12" r="8" fill="rgba(240,200,40,.5)" stroke="#FFE27A" stroke-width="1.6"/></svg>`,
   };
-  const TOKEN_NAMES = { resource: '資源', attack: '攻撃', defense: '防御', food: '食料' };
+  const TOKEN_NAMES = { resource: '資源', power: '戦力', food: '食料' };
 
   // ルール説明のアイコン（盤面の見た目に合わせた小さな絵）
   const HEX = 'M12 2 L20.7 7 L20.7 17 L12 22 L3.3 17 L3.3 7 Z';
@@ -134,21 +132,18 @@
   const ICONS = {
     resource: TOKEN_SVG.resource,
     food: TOKEN_SVG.food,
-    attack: TOKEN_SVG.attack,
-    defense: TOKEN_SVG.defense,
+    power: TOKEN_SVG.power,
     cell: tile(CELL_FILL, CELL_LINE),
     'cell-strong': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.2"/>`),
     core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
     'hex-plain': tile('#3A3A38', '#6A695F'),
     'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L14.8 12 L12 16.5 L9.2 12 Z" fill="#A3A198"/>'),
     'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 15.6 L15.2 9.4 L8.8 9.4 Z" fill="none" stroke="#A3A198" stroke-width="1.3" stroke-linejoin="round"/>'),
-    'hex-mountain': tile('#3A3A38', '#6A695F', '<path d="M12 8 L15.5 15 L8.5 15 Z" fill="#A3A198"/>'),
     'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
     'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
     bridge: tile('#2E4250', '#5B7A8C', '<path d="M6.5 9.6 H17.5 M6.5 14.4 H17.5 M8.5 9.6 V14.4 M10.8 9.6 V14.4 M13.2 9.6 V14.4 M15.5 9.6 V14.4" stroke="#B9A88C" stroke-width="1.2"/>'),
     'act-expand': svg(`<path d="${HEX}" fill="none" stroke="#9CC6F2" stroke-width="1.4" stroke-dasharray="2.5 1.8"/><path d="M12 8 V16 M8 12 H16" stroke="#9CC6F2" stroke-width="2" stroke-linecap="round"/>`),
     'act-destroy': svg(`<path d="${HEX}" fill="rgba(255,120,120,.18)" stroke="#FF9C94" stroke-width="1.3"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" stroke="#FF9C94" stroke-width="2.2" stroke-linecap="round"/>`),
-    'act-reinforce': svg('<rect x="3" y="7" width="10" height="10" rx="1" fill="rgba(100,175,255,.5)" stroke="#A8D6FF" stroke-width="1.3"/><path d="M16 5 L17.5 8.6 L21.4 8.6 L18.3 11 L19.4 14.8 L16 12.6 L12.6 14.8" fill="rgba(255,105,130,.5)" stroke="#FFA8B8" stroke-width="1.2" stroke-linejoin="round"/>'),
     group: svg(`<g fill="rgba(76,142,218,.45)" stroke="#9CC6F2" stroke-width="1"><path d="M7 3.5 L11 5.8 L11 10.2 L7 12.5 L3 10.2 L3 5.8 Z"/><path d="M15 3.5 L19 5.8 L19 10.2 L15 12.5 L11 10.2 L11 5.8 Z"/><path d="M11 10.5 L15 12.8 L15 17.2 L11 19.5 L7 17.2 L7 12.8 Z"/></g>`),
     event: svg('<path d="M12 3 L13.8 8.6 L19.6 8.6 L14.9 12 L16.7 17.6 L12 14.2 L7.3 17.6 L9.1 12 L4.4 8.6 L10.2 8.6 Z" fill="rgba(255,211,107,.35)" stroke="#FFD36B" stroke-width="1.3" stroke-linejoin="round"/>'),
     clock: svg('<circle cx="12" cy="12" r="8.5" fill="none" stroke="#C9C6BC" stroke-width="1.6"/><path d="M12 7 V12 L15.5 14" fill="none" stroke="#C9C6BC" stroke-width="1.8" stroke-linecap="round"/>'),
@@ -642,13 +637,13 @@
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
     $('#me-actions').textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
-    $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('attack', me.attack, true) + tokenChip('defense', me.defense, true) + tokenChip('food', me.food, true) : '';
+    $('#me-tokens').innerHTML = me ? tokenChip('resource', me.resource, true) + tokenChip('power', me.power, true) + tokenChip('food', me.food, true) : '';
 
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない生産と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
     // 生産：資源でトークンを作る（行動回数を使わない）
     const prod = (type, kind, label) => `<button class="act prod" data-act="${type}" ${canAct && !E.actionBlocked(g, app.me, type) ? '' : 'disabled'} title="生産：資源 ${R.cost[type]} で${label}トークン +1（行動回数を使わない・ログに出ない）">${TOKEN_SVG[kind]}<b>生産</b><small>資源 ${R.cost[type]} → ${label} +1</small></button>`;
-    $('#actions').innerHTML = prod('reinforce', 'defense', '防御') + prod('produceAttack', 'attack', '攻撃')
+    $('#actions').innerHTML = prod('produce', 'power', '戦力')
       + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
       + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
@@ -674,7 +669,7 @@
       const turn = !g.over && p.id === cur.id;
       return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
         <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
-        <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('attack', p.attack)}${tokenChip('defense', p.defense)}${tokenChip('food', p.food)}</div>
+        <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('power', p.power)}${tokenChip('food', p.food)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
     }).join('');
@@ -734,7 +729,7 @@
       // 公開された結果
       el.innerHTML = `${head}
         <p class="clash-result ${res.success ? 'bad' : 'good'}">${res.success ? '破壊成功' : '破壊失敗（守られた）'}</p>
-        <p class="muted small" style="text-align:center">${res.atk != null ? `あなたは攻撃トークンを ${res.atk} 個出しました。` : res.def != null ? `あなたは防御トークンを ${res.def} 個出しました。` : ''}出した数はほかの人には公開されません</p>`;
+        <p class="muted small" style="text-align:center">${res.atk != null ? `あなたは戦力トークンを ${res.atk} 個出しました。` : res.def != null ? `あなたは戦力トークンを ${res.def} 個出しました。` : ''}出した数はほかの人には公開されません</p>`;
       el.hidden = false;
       return;
     }
@@ -744,22 +739,21 @@
     if (side && pd[side] === null) {
       const me = side === 'atk' ? a : d;
       const foe = side === 'atk' ? d : a;
-      const have = side === 'atk' ? me.attack : me.defense;
-      const foeAtk = foe.attack;   // 攻撃トークンの数は見える。防御トークンの数は見えない
+      const have = me.power;   // 相手の戦力トークンの数は見えない
       const key = `${pd.attacker}|${pd.target}|${g.round}|${g.turn}|${side}`;
       const lo = E.minBid(side);
       const wall = pd.wall || 0;
-      if (!app.bid || app.bid.key !== key) app.bid = { key, n: side === 'atk' ? Math.min(have, 1 + wall) : Math.min(have, Math.max(0, foeAtk + 1 - wall)) };
+      if (!app.bid || app.bid.key !== key) app.bid = { key, n: side === 'atk' ? Math.min(have, 2 + wall) : Math.min(have, 2) };
       // 同じ手番に同じマスへもう一度宣言したときなど、前の数が持っている数を超えていたら直す
       app.bid.n = Math.max(lo, Math.min(have, app.bid.n));
       app.bid.lo = lo;
       const n = app.bid.n;
-      const kind = side === 'atk' ? 'attack' : 'defense';
+      const kind = 'power';
       body = `<p class="ask">${side === 'atk'
-        ? `出す攻撃トークンの数を決めてください（1個以上。${esc(foe.name)} の防御トークンの数は見えません）`
-        : `あなたの${what}が狙われています。出す防御トークンの数を決めてください（${esc(foe.name)} の攻撃トークンは ${foeAtk} 個）`}</p>
+        ? `出す戦力トークンの数を決めてください（1個以上。${esc(foe.name)} の戦力トークンの数は見えません）`
+        : `あなたの${what}が狙われています。出す戦力トークンの数を決めてください（${esc(foe.name)} の戦力トークンの数は見えません）`}</p>
         ${wall ? `<p class="wall-note">城壁：このセルは隣の強化済のセルに守られていて、防御側に +${wall}</p>` : ''}
-        <p class="muted small">相手には公開まで見えません。攻撃 ≧ 防御${wall ? `＋${wall}` : ''}なら破壊成功。出したトークンはなくなります</p>
+        <p class="muted small">相手には公開まで見えません。攻撃側が${wall ? `「防御側＋${wall}」` : '防御側'}より多く出したら破壊成功（同じ数なら守られる）。出したトークンはなくなります</p>
         <div class="bid">
           <button class="step" data-bid-step="-1" ${n <= lo ? 'disabled' : ''} aria-label="1個減らす">−</button>
           <span class="bid-n tk-${kind}">${TOKEN_SVG[kind]}<b>${n}</b><small>/ ${have}</small></span>
@@ -842,25 +836,25 @@
     { title: 'ヘキサゴニアへようこそ', next: true,
       text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
     { title: '盤面の見方', next: true,
-      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　▲ <b>山岳</b>：取ると防御トークン +1<br>● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると戦力トークン +1　● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
     { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
       text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
       done: (g, base) => myCells(g).length > base.cells },
     { title: 'やってみよう：強化', myTurn: true, target: '#tooltip [data-cell-act="strengthen"]',
-      text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、攻撃トークン +1・防御トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。<br>強化済のセルは、あとで説明する<b>拠点</b>と<b>城壁</b>にもなります。',
+      text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、戦力トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。<br>強化済のセルは、あとで説明する<b>拠点</b>と<b>城壁</b>にもなります。',
       done: g => myCells(g).some(c => c.strong) },
     { title: 'トークンと食料', next: true, target: '#me-tokens',
-      text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-atk">攻撃</span>：破壊に使う　<span class="k-def">防御</span>：守りに使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。' },
-    { title: 'やってみよう：生産', myTurn: true, target: '#actions [data-act="reinforce"]', skippable: true,
-      text: '下のバーの<b>「生産」</b>で、資源からトークンを作れます。行動回数は使いません。<br>防御トークン（資源2）を作ってみましょう。資源が足りなければ「次へ」で進めます。',
-      done: (g, base) => { const me = g.players.find(p => p.id === app.me); return me && me.defense > base.defense; } },
+      text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-pow">戦力</span>：攻めにも守りにも使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。' },
+    { title: 'やってみよう：生産', myTurn: true, target: '#actions [data-act="produce"]', skippable: true,
+      text: '下のバーの<b>「生産」</b>で、資源から戦力トークンを作れます（資源2）。行動回数は使いません。<br>作ってみましょう。資源が足りなければ「次へ」で進めます。',
+      done: (g, base) => { const me = g.players.find(p => p.id === app.me); return me && me.power > base.power; } },
     { title: 'やってみよう：手番終了', myTurn: true, target: '#actions [data-act="endTurn"]',
       text: '行動を使ったら<b>「手番終了」</b>を押します。資源と食料をもらい、食料を食べてから次の人の番です。<br>ボタンに、もらえる量と食べる量が出ています。',
       done: (g, base) => g.turnNo !== base.turnNo },
     { title: '破壊と読み合い', next: true,
-      text: '相手のセルは<b>破壊</b>できます（資源2・攻撃トークンが1個以上必要）。<br>攻撃側と防御側が、出すトークンの数を<b>伏せて</b>決め、<b>攻撃 ≧ 防御</b>なら成功。成功したマスは自分のセルになります。<br>結果は成功か失敗かだけが知らされ、出した数は相手にはわかりません。' },
+      text: '相手のセルは<b>破壊</b>できます（資源2・戦力トークンが1個以上必要）。<br>攻撃側と防御側が、出す戦力トークンの数を<b>伏せて</b>決め、<b>攻撃側のほうが多ければ</b>成功（同じ数なら守られる）。成功したマスは自分のセルになります。<br>結果は成功か失敗かだけが知らされ、出した数は相手にはわかりません。' },
     { title: 'どこを強化するか：拠点と城壁', next: true,
-      text: '<b>拠点</b>：破壊できるのは、<b>自分の強化済のセルの隣</b>にある相手のセルだけ。攻めたい方向のセルを強化しましょう。<br><b>城壁</b>：<b>強化済のセルの隣</b>のセルが狙われると、守る側に <span class="k-def">防御 +1</span>。<br>前線に強化すれば攻めと守りの要になるけれど、狙われやすい。後方に強化すれば安全に稼げるけれど、攻めにも守りにも使えません。' },
+      text: '<b>拠点</b>：破壊できるのは、<b>自分の強化済のセルの隣</b>にある相手のセルだけ。攻めたい方向のセルを強化しましょう。<br><b>城壁</b>：<b>強化済のセルの隣</b>のセルが狙われると、守る側に <span class="k-pow">+1</span>。<br>前線に強化すれば攻めと守りの要になるけれど、狙われやすい。後方に強化すれば安全に稼げるけれど、攻めにも守りにも使えません。' },
     { title: 'もう少しだけ', next: true,
       text: 'ラウンドの始まりに、ときどき<b>イベント</b>（豊作・不作など）が起きます。起きたイベントは画面上部に出ます。<br>行動回数を使い切ったら、資源を払って<b>行動 +1</b> もできます。' },
     { title: 'これでおしまい', next: true, last: true,
@@ -869,7 +863,7 @@
 
   function tutorialBase(g) {
     const me = g.players.find(p => p.id === app.me) || {};
-    return { cells: myCells(g).length, defense: me.defense || 0, turnNo: g.turnNo };
+    return { cells: myCells(g).length, power: me.power || 0, turnNo: g.turnNo };
   }
 
   function renderCoach() {
@@ -903,7 +897,7 @@
   // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
   function playSounds(g, fresh) {
     if (!fresh.length) return;
-    const order = ['win', 'out', 'success', 'fail', 'abandon', 'event', 'declare', 'buy', 'strengthen', 'reinforce', 'expand', 'endTurn'];
+    const order = ['win', 'out', 'success', 'fail', 'abandon', 'event', 'declare', 'buy', 'strengthen', 'expand', 'endTurn'];
     const found = new Set();
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
@@ -913,7 +907,7 @@
       else if (l.tone === 'event' && l.text.startsWith('イベント：')) found.add('event');
       else if (/^破壊失敗/.test(l.text)) found.add('fail');
       else if (l.tone === 'destroy') found.add('declare');
-      else if (l.tone in { strengthen: 1, reinforce: 1, expand: 1, buy: 1 }) found.add(l.tone);
+      else if (l.tone in { strengthen: 1, expand: 1, buy: 1 }) found.add(l.tone);
       else if (l.tone === 'income') found.add('endTurn');
     }
     const name = order.find(n => found.has(n));
@@ -995,10 +989,9 @@
 
   const TERRAIN_EFFECTS = {
     plain: '効果なし',
-    mine: `拡張したとき（破壊で取ったときも）と強化したときに、攻撃トークン +${R.mineAttack}`,
+    mine: `拡張したとき（破壊で取ったときも）と強化したときに、戦力トークン +${R.minePower}`,
     farm: `このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
     forest: `このセルがあると、手番終了時に資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
-    mountain: `拡張したとき（破壊で取ったときも）と強化したときに、防御トークン +${R.mountainDefense}`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
@@ -1013,21 +1006,20 @@
     if (!c.owner) {
       type = 'expand';
       cost = E.expandCost(c);
-      gain = c.terrain === 'mine' ? `攻撃トークン +${R.mineAttack}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'mountain' ? `防御トークン +${R.mountainDefense}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
+      gain = c.terrain === 'mine' ? `戦力トークン +${R.minePower}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '';
     } else if (c.owner === app.me) {
       if (c.strong) return { note: '強化済のセルです' };
       type = 'strengthen';
       cost = R.cost.strengthen;
       const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
-      const gives = R.strengthenGives;
       const foodNote = `・食料 +${R.food.strong}`;
-      gain = `攻撃トークン +${gives.attack + (c.terrain === 'mine' ? R.mineAttack : 0)}・防御トークン +${gives.defense + (c.terrain === 'mountain' ? R.mountainDefense : 0)}・手番終了時の資源 +${inc}${foodNote}。隣の相手セルを破壊できる拠点になり、隣の自分のセルを城壁で守る（防御 +${R.wallBonus}）`;
+      gain = `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・手番終了時の資源 +${inc}${foodNote}。隣の相手セルを破壊できる拠点になり、隣の自分のセルを城壁で守る（守る側 +${R.wallBonus}）`;
     } else {
       type = 'destroy';
       cost = R.cost.destroy;
       const foe = g.players.find(p => p.id === c.owner);
       const wall = E.wallOf(g, c);
-      gain = '攻撃トークンが1個以上必要（相手の防御トークンの数は見えない）。' + (wall ? `城壁で守られている（防御側 +${wall}）。` : '') + (c.core
+      gain = '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (wall ? `城壁で守られている（守る側 +${wall}）。` : '') + (c.core
         ? `成功するとコアを破壊（${foe.name} は脱落）`
         : c.terrain === 'river'
           ? '成功すると橋が落ちて河川に戻る'
@@ -1041,7 +1033,7 @@
       else if (g.abandon) why = '捨てるセルを選んでいるところです';
       else if (g.actionsLeft <= 0) why = '行動回数を使い切りました';
       else if (me.resource < cost) why = `資源トークンが足りません（あと ${cost - me.resource}）`;
-      else if (type === 'destroy' && me.attack < 1) why = '攻撃トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
+      else if (type === 'destroy' && me.power < 1) why = '戦力トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
       else if (type === 'destroy') why = '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると狙えます';
       else why = '自分のセルに隣接していません';
     }
@@ -1068,7 +1060,7 @@
       }
     }
     const el = $('#tooltip');
-    el.innerHTML = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▽ ', mountain: '▲ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    el.innerHTML = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▽ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
@@ -1195,7 +1187,7 @@
       const b = e.target.closest('[data-act]');
       if (!b || b.disabled) return;
       // 生産はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
-      if (b.dataset.act === 'reinforce' || b.dataset.act === 'produceAttack') window.HexSound.play('reinforce');
+      if (b.dataset.act === 'produce') window.HexSound.play('produce');
       send({ type: 'act', action: { type: b.dataset.act } });
     };
     // ツールチップの上でホイールを回しても、盤面を拡大・縮小する

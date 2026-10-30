@@ -391,23 +391,17 @@
           ctx.closePath();
           ctx.fillStyle = COL.mark;
           ctx.fill();
-        } else if (c.terrain === 'mountain' || c.terrain === 'forest') {
-          // 山岳：▲（塗り）／森林：▽（縁取りだけ）
-          const up = c.terrain === 'mountain' ? 1 : -1;
+        } else if (c.terrain === 'forest') {
+          // 森林：▽（縁取りだけ）
           ctx.beginPath();
-          ctx.moveTo(x, y - s * 0.25 * up);
-          ctx.lineTo(x + s * 0.27, y + s * 0.2 * up);
-          ctx.lineTo(x - s * 0.27, y + s * 0.2 * up);
+          ctx.moveTo(x, y + s * 0.25);
+          ctx.lineTo(x + s * 0.27, y - s * 0.2);
+          ctx.lineTo(x - s * 0.27, y - s * 0.2);
           ctx.closePath();
-          if (up > 0) {
-            ctx.fillStyle = COL.mark;
-            ctx.fill();
-          } else {
-            ctx.strokeStyle = COL.mark;
-            ctx.lineWidth = Math.max(1.2, s * 0.06);
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-          }
+          ctx.strokeStyle = COL.mark;
+          ctx.lineWidth = Math.max(1.2, s * 0.06);
+          ctx.lineJoin = 'round';
+          ctx.stroke();
         } else if (c.terrain === 'farm') {
           // 農地：●
           ctx.beginPath();

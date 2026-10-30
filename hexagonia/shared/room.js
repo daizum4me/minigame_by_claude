@@ -371,10 +371,10 @@
       const now = this.now();
       let game = null;
       if (g) {
-        // ほかの人の防御トークンの数は見せない
+        // ほかの人の戦力トークンの数は見せない
         game = Object.assign({}, g, {
           log: g.log.slice(-LOG_SEND),
-          players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { defense: null })),
+          players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
           eventPlan: undefined,   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
           // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）
           lastClash: g.lastClash && Object.assign({}, g.lastClash, {

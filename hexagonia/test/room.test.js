@@ -37,12 +37,12 @@ function startTwo() {
 }
 
 // h のセルを g のコアの隣に置いて、g のコアに破壊を宣言する
-function declareOnCore(r, gDefense, hAttack) {
+function declareOnCore(r, gPower, hPower) {
   const { room, h, g } = r;
   const gp = room.game.players.find(p => p.id === g);
   const hp = room.game.players.find(p => p.id === h);
-  gp.defense = gDefense;
-  hp.attack = hAttack;
+  gp.power = gPower;
+  hp.power = hPower;
   const [cq, cr] = E.parseKey(gp.core);
   const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => room.game.board[E.key(q, r)]);
   Object.assign(room.game.board[E.key(nq, nr)], { owner: h, strong: true });
@@ -77,7 +77,7 @@ test('行動はホストが検証して全員に配信', () => {
   room.handle(h, { type: 'start' });
   const turn = E.current(room.game).id;
   const other = turn === h ? g : h;
-  room.handle(other, { type: 'act', action: { type: 'reinforce' } });
+  room.handle(other, { type: 'act', action: { type: 'produce' } });
   assert.strictEqual(inbox[other].at(-1).type, 'error');
   room.handle(turn, { type: 'act', action: { type: 'endTurn' } });
   assert.strictEqual(E.current(last(other).room.game).id, other);
@@ -191,14 +191,14 @@ test('ホストは盤面の直径を設定できる', () => {
   assert.strictEqual(Object.keys(room.game.board).length, 127);
 });
 
-test('ほかの人の防御トークンの数は届かない', () => {
+test('ほかの人の戦力トークンの数は届かない', () => {
   const r = startTwo();
   const { room, h, g, last } = r;
   const mine = last(h).room.game.players.find(p => p.id === h);
   const other = last(h).room.game.players.find(p => p.id === g);
-  assert.strictEqual(mine.defense, 2);
-  assert.strictEqual(other.defense, null);
-  assert.strictEqual(last(g).room.game.players.find(p => p.id === g).defense, 2);
+  assert.strictEqual(mine.power, 2);
+  assert.strictEqual(other.power, null);
+  assert.strictEqual(last(g).room.game.players.find(p => p.id === g).power, 2);
 });
 
 test('ホストは行動回数とラウンド数を設定できる（0 は人数に合わせる）', () => {

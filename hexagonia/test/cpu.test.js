@@ -61,21 +61,22 @@ test('CPU は何もしない相手に勝つ', () => {
   assert.strictEqual(wins, 10);
 });
 
-test('CPU はコアを守れる数を出し、攻撃では相手の防御トークンを（実際の数を見ずに）見積もって出す', () => {
+test('CPU はコアを守れる数を出し、攻撃では相手の戦力トークンを（実際の数を見ずに）見積もって出す', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(3));
   const [a, b] = g.players;
   const [cq, cr] = E.parseKey(b.core);
   const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => g.board[E.key(q, r)]);
   Object.assign(g.board[E.key(nq, nr)], { owner: a.id, strong: true });
-  b.defense = 3;
-  a.attack = 2;
+  b.power = 3;
+  a.power = 2;
   a.resource = 10;
   E.apply(g, a.id, { type: 'destroy', q: cq, r: cr });
-  // 相手の攻撃トークンは2個なので、3個出せば必ず守れる
+  // 相手の数は見えないので、見えている数（最初の2個）＋見えない生産の分1個 = 3個と見積もる。
+  // 同じ数なら守れるので、3個出せば守れる
   assert.deepStrictEqual(CPU.decide(g, b.id, Math.random), { type: 'bid', count: 3 });
-  // 攻撃側は相手の防御トークンの実際の数は見ない。見えている数（最初の2個）＋見えない生産の分1個 = 3個と見積もって出す
-  a.attack = 5; b.defense = 0;
-  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 3 });
+  // 攻撃側も、相手を3個と見積もり、それより1個多い4個を出す
+  a.power = 5; b.power = 0;
+  assert.deepStrictEqual(CPU.decide(g, a.id, Math.random), { type: 'bid', count: 4 });
 });
 
 test('部屋に CPU を入れて遊べる', () => {

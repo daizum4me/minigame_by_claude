@@ -63,7 +63,7 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形：どのコアにも距離2〜3のマスに4種類が1つずつあり、ほかにも散らす。効果のあるマスは4種類に均等', () => {
+test('地形：どのコアにも距離2〜3のマスに3種類が1つずつあり、ほかにも散らす。効果のあるマスは3種類に均等', () => {
   for (const n of [2, 4, 8, 12]) {
     for (const seed of [1, 2, 3]) {
       const g = newGame(n, seed);
@@ -80,16 +80,16 @@ test('地形：どのコアにも距離2〜3のマスに4種類が1つずつあ�
       const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
       const kinds = E.TERRAIN_KINDS.map(t => cnt[t] || 0);
       const sum = kinds.reduce((a, b) => a + b, 0);
-      assert.strictEqual(sum, Math.max(4 * n + Math.round(free * E.RULES.centerShare), Math.round(free * 6 / 22)), JSON.stringify(cnt));
+      assert.strictEqual(sum, Math.max(3 * n + Math.round(free * E.RULES.centerShare), Math.round(free * 6 / 22)), JSON.stringify(cnt));
       assert.ok(Math.max(...kinds) - Math.min(...kinds) <= 1, JSON.stringify(cnt));
     }
   }
 });
 
-test('初期状態：資源3・攻撃0・防御2・コア未強化', () => {
+test('初期状態：資源3・戦力2・コア未強化', () => {
   const g = newGame(3);
   for (const p of g.players) {
-    assert.deepStrictEqual([p.resource, p.attack, p.defense, p.alive], [3, 0, 2, true]);
+    assert.deepStrictEqual([p.resource, p.power, p.alive], [3, 2, true]);
     const c = g.board[p.core];
     assert.ok(c.core && !c.strong && c.owner === p.id);
   }
@@ -112,11 +112,11 @@ test('拡張：隣接する空きマスだけ、資源1', () => {
   assert.strictEqual(g.board[E.key(nq, nr)].owner, me);
 });
 
-test('行動は最大3回（補強は行動回数を使わない）、資源不足は不可、他人の手番は不可', () => {
+test('行動は最大3回（生産は行動回数を使わない）、資源不足は不可、他人の手番は不可', () => {
   const g = newGame(2);
   const me = cur(g), other = g.players.find(p => p.id !== me).id;
   P(g, me).resource = 20;
-  assert.strictEqual(E.apply(g, other, { type: 'reinforce' }).ok, false);
+  assert.strictEqual(E.apply(g, other, { type: 'produce' }).ok, false);
   const [cq, cr] = E.parseKey(P(g, me).core);
   assert.ok(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok);
   for (let i = 0; i < 2; i++) {
@@ -126,33 +126,33 @@ test('行動は最大3回（補強は行動回数を使わない）、資源不�
   assert.strictEqual(g.actionsLeft, 0);
   const [q, r] = E.parseKey(E.targets(g, me, 'expand').length ? E.targets(g, me, 'expand')[0] : Object.keys(g.board).find(k => !g.board[k].owner));
   assert.strictEqual(E.apply(g, me, { type: 'expand', q, r }).ok, false);
-  // 補強は行動回数を使い切っていてもできる。防御トークン +1 だけ（攻撃トークンは増えない）。ログには出ない
+  // 生産は行動回数を使い切っていてもできる。戦力トークン +1。ログには出ない
   const logLen = g.log.length;
-  assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
-  assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
+  assert.ok(E.apply(g, me, { type: 'produce' }).ok);
+  assert.ok(E.apply(g, me, { type: 'produce' }).ok);
   assert.strictEqual(g.log.length, logLen);
-  // 防御：最初の2 + 強化の1 + 補強の2、攻撃：強化の1だけ
-  assert.deepStrictEqual([P(g, me).defense, P(g, me).attack], [5, 1]);
+  // 最初の2 + 強化の1 + 生産の2
+  assert.strictEqual(P(g, me).power, 5);
   assert.strictEqual(g.actionsLeft, 0);
   E.apply(g, me, { type: 'endTurn' });
   P(g, other).resource = 1;
-  const res = E.apply(g, other, { type: 'reinforce' });
+  const res = E.apply(g, other, { type: 'produce' });
   assert.strictEqual(res.ok, false);
   assert.match(res.error, /資源/);
 });
 
-test('強化：攻撃+1・防御+1。強化済はもう強化できない', () => {
+test('強化：戦力+1。強化済はもう強化できない', () => {
   const g = newGame(2);
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
   P(g, me).resource = 10;
   assert.ok(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok);
-  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 3, 8]);
+  assert.deepStrictEqual([P(g, me).power, P(g, me).resource], [3, 8]);
   assert.strictEqual(E.apply(g, me, { type: 'strengthen', q: cq, r: cr }).ok, false);
   const [nq, nr] = nb(g, cq, cr)[1];
   setCell(g, nq, nr, { owner: me });
   assert.ok(E.apply(g, me, { type: 'strengthen', q: nq, r: nr }).ok);
-  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense], [2, 4]);
+  assert.strictEqual(P(g, me).power, 4);
 });
 
 test('ターン終了時の資源：強化済+1（鉱山も同じ）、コア+2（強化済のコアは+3）', () => {
@@ -183,80 +183,80 @@ function clashSetup() {
   setCell(g, tq, tr, { owner: b });
   g.board[P(g, a).core].strong = true;   // 破壊できるのは、自分の強化済のセルに隣接するセルだけ
   P(g, a).resource = 10;
-  P(g, a).attack = 1;   // 破壊には攻撃トークンが1個以上必要
+  P(g, a).power = 1;   // 破壊には戦力トークンが1個以上必要
   return { g, a, b, t: E.key(tq, tr), tq, tr };
 }
 
-test('破壊：資源2・攻撃トークン1個以上が必要。防御トークンがなくても攻防になり、0個なら成功してそのマスが攻撃側のセルになる', () => {
+test('破壊：資源2・戦力トークン1個以上が必要。相手が戦力トークンを持っていなくても攻防になり、0個なら成功してそのマスが攻撃側のセルになる', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
-  P(g, b).defense = 0;
-  P(g, a).attack = 0;
+  P(g, b).power = 0;
+  P(g, a).power = 0;
   const r = E.apply(g, a, { type: 'destroy', q: tq, r: tr });
   assert.strictEqual(r.ok, false);
-  assert.match(r.error, /攻撃トークン/);
+  assert.match(r.error, /戦力トークン/);
   assert.deepStrictEqual(E.targets(g, a, 'destroy'), []);
-  P(g, a).attack = 1;                         // 1個しかなければ1個に決まる
+  P(g, a).power = 1;                         // 1個しかなければ1個に決まる
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
-  assert.deepStrictEqual(E.waiting(g), [b]);  // 防御トークンがなくても、防御側は（0個を）選ぶ
+  assert.deepStrictEqual(E.waiting(g), [b]);  // 戦力トークンがなくても、防御側は（0個を）選ぶ
   assert.ok(E.apply(g, b, { type: 'bid', count: 0 }).ok);
   assert.strictEqual(g.pending, null);
   assert.deepStrictEqual([g.board[t].owner, g.board[t].strong], [a, false]);
   assert.strictEqual(P(g, a).resource, 8);
-  assert.strictEqual(P(g, a).attack, 0);      // 出した1個はなくなる
+  assert.strictEqual(P(g, a).power, 0);      // 出した1個はなくなる
   assert.strictEqual(g.actionsLeft, 2);       // そのまま拡張しても行動回数は減らない
   assert.ok(P(g, b).alive);
 });
 
-test('破壊：出す数を伏せて決め、そろったら公開。攻撃 ≧ 防御なら成功', () => {
-  for (const [atk, def, ok] of [[2, 1, true], [1, 1, true], [1, 0, true], [1, 2, false], [2, 2, true]]) {
+test('破壊：出す数を伏せて決め、そろったら公開。多いほうの勝ちで、同じ数なら守られる', () => {
+  for (const [atk, def, ok] of [[2, 1, true], [1, 1, false], [1, 0, true], [1, 2, false], [2, 2, false], [3, 2, true]]) {
     const { g, a, b, t, tq, tr } = clashSetup();
-    P(g, a).attack = 3;
-    P(g, b).defense = 2;
+    P(g, a).power = 3;
+    P(g, b).power = 2;
     E.apply(g, a, { type: 'destroy', q: tq, r: tr });
     assert.deepStrictEqual(E.waiting(g).sort(), [a, b].sort());
     // 攻防中は他の行動はできない
-    assert.strictEqual(E.apply(g, a, { type: 'reinforce' }).ok, false);
+    assert.strictEqual(E.apply(g, a, { type: 'produce' }).ok, false);
     // 持っている数より多くは出せない・2回は決められない
     assert.strictEqual(E.apply(g, b, { type: 'bid', count: 3 }).ok, false);
     assert.ok(E.apply(g, b, { type: 'bid', count: def }).ok);
     assert.strictEqual(E.apply(g, b, { type: 'bid', count: 0 }).ok, false);
     assert.deepStrictEqual(E.waiting(g), [a]);
-    assert.strictEqual(P(g, b).defense, 2); // 公開まではまだ減らない
+    assert.strictEqual(P(g, b).power, 2); // 公開まではまだ減らない
     assert.strictEqual(E.apply(g, a, { type: 'bid', count: 0 }).ok, false);   // 攻撃は1個以上
     assert.ok(E.apply(g, a, { type: 'bid', count: atk }).ok);
     assert.strictEqual(g.pending, null);
     assert.strictEqual(g.board[t].owner, ok ? a : b, `${atk} vs ${def}`);
     // 出したトークンはすべてなくなる
-    assert.deepStrictEqual([P(g, a).attack, P(g, b).defense], [3 - atk, 2 - def]);
+    assert.deepStrictEqual([P(g, a).power, P(g, b).power], [3 - atk, 2 - def]);
     assert.deepStrictEqual([g.lastClash.atk, g.lastClash.def, g.lastClash.success], [atk, def, ok]);
     assert.strictEqual(P(g, a).resource, 8); // 失敗しても資源は戻らない
   }
 });
 
-test('破壊：防御トークンがなくても、攻撃側は出す数を選ぶ（相手の防御トークンは見えないので）', () => {
+test('破壊：相手が戦力トークンを持っていなくても、攻撃側は出す数を選ぶ（相手の数は見えないので）', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
-  P(g, b).defense = 0;
-  P(g, a).attack = 3;
+  P(g, b).power = 0;
+  P(g, a).power = 3;
   E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-  assert.deepStrictEqual(E.waiting(g).sort(), [a, b].sort());   // 防御トークンがなくても、防御側は選ぶ（0個しか出せない）
+  assert.deepStrictEqual(E.waiting(g).sort(), [a, b].sort());   // 戦力トークンがなくても、防御側は選ぶ（0個しか出せない）
   assert.strictEqual(E.apply(g, b, { type: 'bid', count: 1 }).ok, false);
   E.apply(g, b, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 2 });
   assert.strictEqual(g.board[t].owner, a);
-  assert.strictEqual(P(g, a).attack, 1);
+  assert.strictEqual(P(g, a).power, 1);
 });
 
 test('破壊の取りやめ：決着する前なら攻撃側が取り消せる。資源と行動回数が戻り、何回でもできる', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
-  P(g, a).attack = 3;
-  P(g, b).defense = 2;
+  P(g, a).power = 3;
+  P(g, b).power = 2;
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.deepStrictEqual([P(g, a).resource, g.actionsLeft], [8, 2]);
   assert.ok(E.apply(g, b, { type: 'bid', count: 2 }).ok);           // 防御側が決めたあとでも取りやめられる
   assert.strictEqual(E.apply(g, b, { type: 'cancelDestroy' }).ok, false);   // 防御側は取りやめられない
   assert.ok(E.apply(g, a, { type: 'cancelDestroy' }).ok);
   assert.strictEqual(g.pending, null);
-  assert.deepStrictEqual([P(g, a).resource, g.actionsLeft, P(g, a).attack, P(g, b).defense, g.board[t].owner], [10, 3, 3, 2, b]);
+  assert.deepStrictEqual([P(g, a).resource, g.actionsLeft, P(g, a).power, P(g, b).power, g.board[t].owner], [10, 3, 3, 2, b]);
   assert.match(g.log.at(-1).text, /取りやめ/);
   // 同じ手番に2回目もできる
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
@@ -274,15 +274,15 @@ test('拠点：破壊できるのは、自分の強化済のセルに隣接す�
   assert.strictEqual(E.apply(g, a, { type: 'destroy', q: E.parseKey(t)[0], r: E.parseKey(t)[1] }).ok, false);
 });
 
-test('城壁：強化済のセルに隣接するセルが狙われたら、防御側に +1（攻撃 ≧ 防御 + 1 で成功）', () => {
-  for (const [atk, def, ok] of [[1, 0, true], [1, 1, false], [2, 1, true], [2, 2, false], [3, 2, true]]) {
+test('城壁：強化済のセルに隣接するセルが狙われたら、防御側に +1（攻撃 ＞ 防御 + 1 で成功）', () => {
+  for (const [atk, def, ok] of [[1, 0, false], [2, 0, true], [2, 1, false], [3, 1, true], [3, 2, false]]) {
     const { g, a, b, t, tq, tr } = clashSetup();
     // 狙われるマスの隣（a のセルではないところ）に、b の強化済のセルを置く
     const [wq, wr] = nb(g, tq, tr).find(([q, r]) => !g.board[E.key(q, r)].owner);
     setCell(g, wq, wr, { owner: b, strong: true });
     assert.strictEqual(E.wallOf(g, g.board[t]), 1);
-    P(g, a).attack = 3;
-    P(g, b).defense = 2;
+    P(g, a).power = 3;
+    P(g, b).power = 2;
     E.apply(g, a, { type: 'destroy', q: tq, r: tr });
     assert.strictEqual(g.pending.wall, 1);
     E.apply(g, b, { type: 'bid', count: def });
@@ -300,16 +300,16 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   setCell(g, nq, nr, { owner: a, strong: true });
   const [oq, or] = nb(g, ...bc).at(-1);
   setCell(g, oq, or, { owner: b, strong: true });
-  P(g, b).resource = 5; P(g, b).attack = 2; P(g, b).defense = 0;
-  P(g, a).attack = 5;
+  P(g, b).resource = 5; P(g, b).power = 2; P(g, b).power = 0;
+  P(g, a).power = 5;
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
   E.apply(g, b, { type: 'bid', count: 0 });
-  E.apply(g, a, { type: 'bid', count: 1 });   // 相手の防御トークンは見えないので、攻撃側は数を選ぶ
+  E.apply(g, a, { type: 'bid', count: 2 });   // b のコアは城壁で +1 なので、2個で上回る（相手の数は見えないので、攻撃側は数を選ぶ）
   assert.strictEqual(P(g, b).alive, false);
   assert.strictEqual(E.cellsOf(g, b).length, 0);
   assert.strictEqual(g.board[E.key(...bc)].owner, a); // コアのマスも攻撃側のセルになる
   assert.strictEqual(g.board[E.key(oq, or)].owner, null);
-  assert.deepStrictEqual([P(g, b).resource, P(g, b).attack], [0, 0]);
+  assert.deepStrictEqual([P(g, b).resource, P(g, b).power], [0, 0]);
   E.apply(g, a, { type: 'endTurn' });
   assert.strictEqual(cur(g), c);                       // 脱落した b は飛ばされる
   E.apply(g, c, { type: 'endTurn' });
@@ -319,7 +319,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   const cc = E.parseKey(P(g, c).core);
   const [mq, mr] = nb(g, ...cc)[0];
   setCell(g, mq, mr, { owner: a, strong: true });
-  P(g, c).defense = 0;
+  P(g, c).power = 0;
   P(g, a).resource = 10;
   E.apply(g, a, { type: 'destroy', q: cc[0], r: cc[1] });
   E.apply(g, c, { type: 'bid', count: 0 });
@@ -438,12 +438,12 @@ test('もう何もできなくなったら自動で手番終了', () => {
   const h = newGame(2, 2);
   const hm = cur(h);
   P(h, hm).resource = 2;
-  E.apply(h, hm, { type: 'reinforce' });
+  E.apply(h, hm, { type: 'produce' });
   assert.notStrictEqual(cur(h), hm);   // 資源0で何もできない（行動回数は残っているが、拡張も資源1が要る）
   const k = newGame(2, 3);
   const km = cur(k);
   P(k, km).resource = 10;
-  E.apply(k, km, { type: 'reinforce' });
+  E.apply(k, km, { type: 'produce' });
   assert.strictEqual(cur(k), km);      // まだできる
 });
 
@@ -457,7 +457,7 @@ test('セルを捨てる：数が違う・コア・ほかの人のセルは不�
   assert.deepStrictEqual(g.abandon, { player: me, count: 2 });
   assert.strictEqual(cur(g), me);                       // 捨てるまで次の人に回らない
   assert.deepStrictEqual(E.waiting(g), [me]);
-  assert.strictEqual(E.apply(g, me, { type: 'reinforce' }).ok, false);
+  assert.strictEqual(E.apply(g, me, { type: 'produce' }).ok, false);
   // 数が違う・コア・他人のセルは不可
   const k = E.key(mine[0].q, mine[0].r), k2 = E.key(mine[1].q, mine[1].r);
   assert.strictEqual(E.apply(g, me, { type: 'abandon', cells: [k] }).ok, false);
@@ -524,10 +524,11 @@ test('橋：河川マスへの拡張は資源3。強化できる。破壊され�
   untilTurn(g, b);
   setCell(g, ...nb(g, rq, rr).find(([q, r]) => !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river'), { owner: b, strong: true });
   P(g, b).resource = 5;
-  P(g, b).attack = 1;
-  P(g, a).defense = 0;
+  P(g, b).power = 2;
+  P(g, a).power = 0;
   assert.ok(E.apply(g, b, { type: 'destroy', q: rq, r: rr }).ok);
   assert.ok(E.apply(g, a, { type: 'bid', count: 0 }).ok);
+  assert.ok(E.apply(g, b, { type: 'bid', count: 2 }).ok);   // 橋は a の強化済のコアの隣なので城壁 +1。2個で上回る
   assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain, g.board[rk].strong], [null, 'river', false]);
 });
 
@@ -634,19 +635,19 @@ test('鉱山マス：拡張したとき・強化したとき・破壊で取っ�
   const ac = E.parseKey(P(g, a).core);
   const [mq, mr] = nb(g, ...ac).find(([q, r]) => !g.board[E.key(q, r)].owner);
   setCell(g, mq, mr, { terrain: 'mine' });
-  P(g, a).attack = 0;
+  P(g, a).power = 0;
   assert.ok(E.apply(g, a, { type: 'expand', q: mq, r: mr }).ok);
-  assert.strictEqual(P(g, a).attack, 1);
+  assert.strictEqual(P(g, a).power, 1);
   assert.ok(E.apply(g, a, { type: 'strengthen', q: mq, r: mr }).ok);
-  assert.strictEqual(P(g, a).attack, 1 + 1 + 1);       // 強化の +1 と鉱山の +1
+  assert.strictEqual(P(g, a).power, 1 + 1 + 1);       // 強化の +1 と鉱山の +1
   // 破壊で鉱山マスを取ったときも +1
   g.board[t].terrain = 'mine';
-  P(g, b).defense = 0;
+  P(g, b).power = 0;
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   E.apply(g, b, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 1 });
   assert.strictEqual(g.board[t].owner, a);
-  assert.strictEqual(P(g, a).attack, 3 - 1 + 1);
+  assert.strictEqual(P(g, a).power, 3 - 1 + 1);
 });
 
 test('農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）', () => {
@@ -659,22 +660,6 @@ test('農地マス：このセルがあると手番終了時に食料 +1（強�
   assert.strictEqual(E.foodMade(g, me), 6 + 1);
   g.board[E.key(fq, fr)].strong = true;
   assert.strictEqual(E.foodMade(g, me), 6 + 1 + 1);
-});
-
-test('山岳マス：拡張・強化・破壊で取ったときに防御トークン +1（ほかの人にも見える）', () => {
-  const g = newGame(2);
-  const me = cur(g);
-  const [cq, cr] = E.parseKey(P(g, me).core);
-  const [mq, mr] = nb(g, cq, cr)[0];
-  setCell(g, mq, mr, { terrain: 'mountain' });
-  P(g, me).resource = 10;
-  const d0 = P(g, me).defense, s0 = P(g, me).defenseSeen;
-  assert.ok(E.apply(g, me, { type: 'expand', q: mq, r: mr }).ok);
-  assert.deepStrictEqual([P(g, me).defense, P(g, me).defenseSeen], [d0 + 1, s0 + 1]);
-  assert.match(g.log.at(-1).text, /山岳：防御トークン \+1/);
-  assert.ok(E.apply(g, me, { type: 'strengthen', q: mq, r: mr }).ok);
-  assert.strictEqual(P(g, me).defense, d0 + 3);   // 強化の +1 と山岳の +1
-  assert.strictEqual(P(g, me).attack, 1);
 });
 
 test('森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）', () => {
@@ -736,33 +721,46 @@ test('イベントの効果：不作・豊作・枯渇・発見・豊漁・洪�
   assert.strictEqual(as('plague').act, 1);
 });
 
-test('生産：資源2で防御トークン +1、資源3で攻撃トークン +1。行動回数を使わず、ログに出ない', () => {
+test('生産：資源2で戦力トークン +1。行動回数を使わず、ログに出ない', () => {
   const g = newGame(2);
   const me = cur(g);
-  P(g, me).resource = 10;
-  g.actionsLeft = 0;
+  P(g, me).resource = 5;
+  g.actionsLeft = 1;   // 資源1が残っても、拡張できるので手番は続く
   const logLen = g.log.length;
-  assert.ok(E.apply(g, me, { type: 'produceAttack' }).ok);
-  assert.ok(E.apply(g, me, { type: 'reinforce' }).ok);
-  assert.deepStrictEqual([P(g, me).attack, P(g, me).defense, P(g, me).resource], [1, 3, 5]);
+  assert.ok(E.apply(g, me, { type: 'produce' }).ok);
+  assert.ok(E.apply(g, me, { type: 'produce' }).ok);
+  assert.deepStrictEqual([P(g, me).power, P(g, me).resource, g.actionsLeft], [4, 1, 1]);
   assert.strictEqual(g.log.length, logLen);
-  P(g, me).resource = 2;
-  assert.strictEqual(E.apply(g, me, { type: 'produceAttack' }).ok, false);
+  assert.strictEqual(E.apply(g, me, { type: 'produce' }).ok, false);   // 資源1では足りない
 });
 
-test('攻防の結果は成功か失敗かだけがログに出る（出した数は出ない）。守られたら、防御側の見える数の目安が減る', () => {
+test('攻防の結果は成功か失敗かだけがログに出る（出した数は出ない）。見える数の目安は、少なくとも出したはずの分だけ減る', () => {
   const { g, a, b, tq, tr } = clashSetup();
-  P(g, a).attack = 2;
-  P(g, b).defense = 3;
-  assert.strictEqual(P(g, b).defenseSeen, 2);
+  P(g, a).power = 2;
+  P(g, b).power = 3;
+  assert.deepStrictEqual([P(g, a).powerSeen, P(g, b).powerSeen], [2, 2]);
   E.apply(g, a, { type: 'destroy', q: tq, r: tr });
   E.apply(g, b, { type: 'bid', count: 3 });
   E.apply(g, a, { type: 'bid', count: 1 });
   assert.strictEqual(g.lastClash.success, false);
   assert.ok(!g.log.some(l => /トークン \d+ 個/.test(l.text)));
   assert.ok(g.log.some(l => l.text.includes('出した数は非公開')));
-  // 攻撃1で守られた → 防御側は2個以上出したはず
-  assert.strictEqual(P(g, b).defenseSeen, 0);
+  // 攻撃側は少なくとも1個出した。守られた（城壁なし）→ 防御側は少なくとも1個出したはず
+  assert.deepStrictEqual([P(g, a).powerSeen, P(g, b).powerSeen], [1, 1]);
+});
+
+test('鉱山・強化で増えた戦力トークンは、見える数の目安にも足される', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const [mq, mr] = nb(g, cq, cr)[0];
+  setCell(g, mq, mr, { terrain: 'mine' });
+  P(g, me).resource = 10;
+  assert.ok(E.apply(g, me, { type: 'expand', q: mq, r: mr }).ok);
+  assert.ok(E.apply(g, me, { type: 'strengthen', q: mq, r: mr }).ok);
+  assert.deepStrictEqual([P(g, me).power, P(g, me).powerSeen], [2 + 1 + 2, 2 + 1 + 2]);   // 最初の2・拡張で鉱山+1・強化で+1と鉱山+1
+  E.apply(g, me, { type: 'produce' });
+  assert.deepStrictEqual([P(g, me).power, P(g, me).powerSeen], [6, 5]);   // 生産は見えない
 });
 
 test('河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の島を持つ', () => {
