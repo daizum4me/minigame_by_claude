@@ -535,7 +535,7 @@
     $('#set-ticks').value = String(st.ticks || 0);
     const autoT = E.autoTicks(Math.max(R.minPlayers, room.players.length));
     $('#ticks-note').textContent = `いまの人数なら自動で ${autoT} ターン（${Math.round(autoT * R.rt.tickSeconds / 60)}分）`;
-    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2人 7・4人 11・8人 15・12人 17 など）';
+    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2〜3人 9・4人 11・5〜6人 13・7〜8人 15・9〜12人 17）';
     $('#lobby-wait').textContent = isHost
       ? (enough ? `${room.players.length}人で始められます（盤面の直径 ${dia || autoDia}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
       : 'ホストがゲームを始めるのを待っています…';
@@ -596,10 +596,10 @@
 
     // 拡張・強化・攻撃・防御はマスを選んで出るツールチップから。マスに関係ない生産はここ
     const canAct = me && canPlay(g);
-    $('#actions').innerHTML = `<button class="act prod" data-act="produce" ${canAct && !E.actionBlocked(g, app.me, 'produce') ? '' : 'disabled'} title="生産：資源 ${R.cost.produce} で戦力トークン +1（行動力を使わない・ログに出ない）">${TOKEN_SVG.power}<b>生産</b><small>資源 ${R.cost.produce} → 戦力 +1</small></button>`;
+    $('#actions').innerHTML = `<button class="act prod" data-act="produce" ${canAct && !E.actionBlocked(g, app.me, 'produce') ? '' : 'disabled'} title="生産：資源 ${R.cost.produce} で戦力トークン +1（行動力を使わない・ログに出ない）">${TOKEN_SVG.power}<b>生産</b><small>資源${R.cost.produce} → 戦力+1</small></button>`;
 
     $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと戦力で防御を固められ（行動力は使わない）、隣の相手のセルは行動力1と戦力1個で攻撃できます`;
+      : 'マスを選ぶと行動のボタンが出ます。防御と生産は行動力を使いません';
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
@@ -631,7 +631,10 @@
       toast(took ? `${by} にセルを${took}つ奪われました` : `${by} に攻撃されています（防御 −${hits.length}）`, 'bad');
       window.HexSound.play('attacked');
     } else {
-      playSounds(g, fresh);
+      // 自分の攻撃が防御に当たったら「かきん」、奪ったら「がしゃん」（ほかの音より優先）
+      const mine = app.lastLogSeq ? (g.attacks || []).filter(a => a.by === app.me && a.seq > app.lastLogSeq) : [];
+      if (mine.length) window.HexSound.play(mine.some(a => a.took) ? 'success' : 'block');
+      else playSounds(g, fresh);
     }
     // ターンの終わり：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
     const ti = g.tickInfo && g.tickInfo[app.me];

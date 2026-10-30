@@ -55,14 +55,14 @@ test('CPU は何もしない相手に勝つ', () => {
 
 test('CPU の強さ：よわいはふつうに負け越す（2人戦）', () => {
   let w = 0;
-  for (let seed = 1; seed <= 20; seed++) {
+  for (let seed = 1; seed <= 60; seed++) {
     const rng = seeded(seed * 7);
     const g = E.createGame(PLAYERS.slice(0, 2), rng);
     const weak = g.players[seed % 2].id;
     play(g, rng, id => (id === weak ? 'weak' : 'normal'));
     if (g.winners.includes(weak)) w += 1 / g.winners.length;
   }
-  assert.ok(w / 20 < 0.4, `よわい ${w / 20}`);
+  assert.ok(w / 60 < 0.4, `よわい ${w / 60}`);
 });
 
 test('部屋に CPU を入れて遊べる（CPU は2.5秒ごとに考える。CPU には何も送らない）', () => {

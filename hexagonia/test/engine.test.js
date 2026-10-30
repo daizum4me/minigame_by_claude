@@ -35,8 +35,8 @@ function rtGame(seed) {
 // 自分のコアの隣の空きマス（河川以外）
 const freeNext = (g, id) => nb(g, ...E.parseKey(P(g, id).core)).find(([q, r]) => !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river');
 
-test('人数ごとの盤面の大きさ（2〜3人は直径 7・4人は 9・5〜6人は 11）と、大きさの指定', () => {
-  for (const [n, cells] of [[2, 37], [3, 37], [4, 61], [6, 91]]) {
+test('人数ごとの盤面の大きさ（2〜3人は直径 9・4人は 11・5〜6人は 13）と、大きさの指定', () => {
+  for (const [n, cells] of [[2, 61], [3, 61], [4, 91], [6, 127]]) {
     const g = newGame(n);
     assert.strictEqual(Object.keys(g.board).length, cells);
     assert.strictEqual(g.radius, E.RULES.radius[n]);
@@ -171,7 +171,7 @@ test('12人まで遊べる：6人までは全員が外周、7人以上は約3分
     assert.ok(gap >= 3, `${n}人のコアの間隔 ${gap}`);
     assert.strictEqual(g.rounds, E.autoTicks(n));
   }
-  assert.deepStrictEqual([E.autoTicks(2), E.autoTicks(8), E.autoTicks(12)], [40, 36, 32]);
+  assert.deepStrictEqual([E.autoTicks(2), E.autoTicks(8), E.autoTicks(12)], [28, 24, 20]);
   assert.throws(() => E.createGame([...PLAYERS, { id: 'm', name: 'M', color: 'red' }], seeded(1)));   // 13人は不可
   assert.throws(() => E.createGame(PLAYERS.slice(0, 12), seeded(1), { radius: 3 }));   // 盤面が小さすぎる
   assert.strictEqual(E.createGame(PLAYERS.slice(0, 2), seeded(1), { rounds: 10 }).rounds, 10);

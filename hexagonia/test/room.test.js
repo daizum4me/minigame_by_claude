@@ -50,7 +50,7 @@ test('参加・色・開始・状態の配信', () => {
   room.handle(h, { type: 'start' });
   const st = last(g).room;
   assert.strictEqual(st.phase, 'game');
-  assert.strictEqual(Object.keys(st.game.board).length, 37);
+  assert.strictEqual(Object.keys(st.game.board).length, 61);
   // 5人目は入れない・ゲーム中は新規参加できない
   assert.ok(room.join('t3', 'x').error);
 });
