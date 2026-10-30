@@ -422,7 +422,7 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
-        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印と同じ大きさ）のあいだを、1つにつき辺1本ぶんずつ埋める。6で一周
+        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印）のあいだ（印とは接しないように）を、1つにつき辺1本ぶんずつ埋める。6で一周
         if (c.def > 0) this.defRing(ctx, x, y, s, this.defSides(g, c).slice(0, Math.min(6, c.def)), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
@@ -534,9 +534,9 @@
       return [0, 1, 2, 3, 4, 5].sort((a, b) => near(a) - near(b) || a - b);
     }
 
-    // 防御の帯：sides の辺ごとに、縁と内側の六角形のあいだの台形を塗る（セルの明るい色）
+    // 防御の帯：sides の辺ごとに、縁と内側の六角形（強化の印より少し外）のあいだの台形を塗る（セルの明るい色）
     defRing(ctx, x, y, s, sides, col) {
-      const ro = s * 0.86, ri = s * 0.62;
+      const ro = s * 0.86, ri = s * 0.71;   // 内側は強化の印（0.62）とすき間をあける
       const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
       ctx.fillStyle = col.light;
       for (const i of sides) {
