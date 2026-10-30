@@ -144,7 +144,7 @@
         case 'cpuLevel': {
           if (id !== this.hostId || this.phase !== 'lobby') return;
           const t = this.players.find(x => x.id === msg.target && x.cpu);
-          if (!t || !CPU.LEVELS[msg.level] || msg.level === 'test') return;
+          if (!t || !CPU.LEVELS[msg.level] || msg.level === 'test') return;   // tutorial はチュートリアルで使う
           t.level = msg.level;
           this.changed();
           return;

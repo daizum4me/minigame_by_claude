@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=38">
+<link rel="stylesheet" href="style.css?v=40">
 </head>
 <body>
 
@@ -121,6 +121,7 @@
     <div id="clash" class="clash" hidden></div>
     <div id="coach" class="coach" hidden></div>
     <div id="extra" class="extra" hidden></div>
+    <div id="floaters" class="floaters" aria-hidden="true"></div>
     <div id="tooltip" class="tooltip" hidden></div>
     <!-- 自分の情報と、生産・手番終了のボタン（盤面の下に浮かせる） -->
     <section id="dock" class="dock me">
@@ -195,6 +196,7 @@
         <tr><th></th><th>行動</th><th>資源</th><th>内容</th></tr>
         <tr><td><i class="ic" data-icon="act-expand"></i></td><td><b>拡張</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>1</span><small>河川 3</small></td><td>自分のセルの隣の空きマスにセルを置く。河川には<b>橋をかける</b></td></tr>
         <tr><td><i class="ic" data-icon="cell-strong"></i></td><td><b>強化</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>未強化 → 強化済。<i class="ic" data-icon="power"></i><span class="k-pow">戦力 +1</span>。以後、毎手番 <span class="k-res">資源 +1</span>・<span class="k-food">食料 +1</span></td></tr>
+        <tr><td><i class="ic" data-icon="hex-farm"></i></td><td><b>開墾</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span></td><td>自分の平原のセル（コア以外）を<b>農地</b>にする。以後、毎手番 <span class="k-food">食料 +1</span>（強化の +1 とは別）</td></tr>
         <tr><td><i class="ic" data-icon="act-destroy"></i></td><td><b class="k-bad">破壊</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>戦力トークン1個以上</small></td><td><b>自分の強化済のセルの隣</b>の相手セルを狙う（下の攻防）。成功するとそのマスが<b>自分のセル</b>になる（橋は落ちて河川に戻る）</td></tr>
         <tr><td><i class="ic" data-icon="power"></i></td><td><b>生産</b></td><td><span class="cost"><i class="ic" data-icon="resource"></i>2</span><small>行動回数を使わない</small></td><td><i class="ic" data-icon="power"></i><span class="k-pow">戦力トークン +1</span>。行動回数を使い切っていてもできる。ログには出ない</td></tr>
       </table>
@@ -251,12 +253,12 @@
 
     <section class="r-sec">
       <h3><i class="ic" data-icon="hex-river"></i>地形</h3>
-      <p class="r-hint">平原が約7割、鉱山・農地・森林が約1割ずつ。それに河川。どのコアの近く（距離2〜3）にも3種類が1つずつある。<b>盤面の真ん中ほど効果のあるマスが多い</b>。</p>
+      <p class="r-hint">平原が約8割、鉱山・森林が約1割ずつ。それに河川。どのコアの近く（距離2〜3）にも鉱山と森林が1つずつある。農地は最初はなく、<b>開墾</b>で作る。<b>盤面の真ん中ほど効果のあるマスが多い</b>。</p>
       <div class="r-cards terrain">
         <div class="r-card"><i class="ic big" data-icon="hex-plain"></i><b>平原</b><small>効果なし</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-mine"></i><b>鉱山 ◆</b><small>拡張・強化したとき <span class="k-pow">戦力 +1</span></small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-forest"></i><b>森林 ▽</b><small>このセルがあると手番終了時 <span class="k-res">資源 +1</span>（強化とは別）</small></div>
-        <div class="r-card"><i class="ic big" data-icon="hex-farm"></i><b>農地 ●</b><small>このセルがあると手番終了時 <span class="k-food">食料 +1</span>（強化とは別）</small></div>
+        <div class="r-card"><i class="ic big" data-icon="hex-farm"></i><b>農地 ●</b><small>開墾で作る。このセルがあると手番終了時 <span class="k-food">食料 +1</span>（強化とは別）</small></div>
         <div class="r-card"><i class="ic big" data-icon="hex-river"></i><b>河川</b><small>資源 <span class="k-res">3</span> で橋をかけて渡る</small></div>
         <div class="r-card"><i class="ic big" data-icon="bridge"></i><b>橋</b><small>強化できる。壊されると河川に戻る</small></div>
       </div>
@@ -301,11 +303,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=38"></script>
-<script src="shared/cpu.js?v=38"></script>
-<script src="shared/room.js?v=38"></script>
-<script src="sound.js?v=38"></script>
-<script src="board.js?v=38"></script>
-<script src="client.js?v=38"></script>
+<script src="shared/engine.js?v=40"></script>
+<script src="shared/cpu.js?v=40"></script>
+<script src="shared/room.js?v=40"></script>
+<script src="sound.js?v=40"></script>
+<script src="board.js?v=40"></script>
+<script src="client.js?v=40"></script>
 </body>
 </html>

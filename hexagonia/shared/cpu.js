@@ -21,8 +21,10 @@
     weak: { noise: 4, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {} },
     normal: { noise: 0.6, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: {} },
     strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 1.5, expand: -0.5 } },
+    // チュートリアルの相手：破壊をせず、相手から離れる向きにゆっくり広げる（passive）
+    tutorial: { noise: 2, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {}, passive: true },
   };
-  const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
+  const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };   // ロビーで選べる強さ（tutorial はチュートリアル専用）
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
   const playerById = (g, id) => g.players.find(p => p.id === id);
 
@@ -65,7 +67,7 @@
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
         // 相手のコアに近づくほど高い（コアを破壊すれば、相手のセルとトークンをまるごと奪える）
-        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.35;
+        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * (lv.passive ? -0.4 : 0.35);   // passive は相手から離れる向きに
         if (c.terrain === 'mine') s += me.power <= 1 ? 2.5 : 1.2;    // 鉱山は取ると戦力トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
@@ -109,7 +111,18 @@
         out.push({ s: s + noise() + (lv.bias.strengthen || 0), a: { type: 'strengthen', q: c.q, r: c.r } });
       }
     }
-    if (!E.actionBlocked(g, id, 'destroy')) {
+    if (!E.actionBlocked(g, id, 'cultivate')) {
+      // 開墾：食料が足りなくなりそうなら、前線から遠い（奪われにくい）平原のセルを農地にする
+      const ks = E.targets(g, id, 'cultivate');
+      if (ks.length) {
+        const k = ks.map(k => ({ k, f: foeNeighbors(g, id, g.board[k]) })).sort((a, b) => a.f - b.f)[0].k;
+        let s = foodLeft < 0 ? 5 : foodLeft < 2 ? 3.5 : foodLeft < 4 ? 1.8 : 0.4;
+        if (late) s -= 1.5;                                  // 終盤は元が取れない
+        const [q, r] = E.parseKey(k);
+        out.push({ s: s + noise(), a: { type: 'cultivate', q, r } });
+      }
+    }
+    if (!lv.passive && !E.actionBlocked(g, id, 'destroy')) {
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
         const foe = playerById(g, c.owner);

@@ -17,18 +17,18 @@
     minPlayers: 2,
     maxPlayers: 12,
     // 人数ごとの盤面の半径（直径 = 半径×2+1）。部屋の設定で変えられる
-    radius: { 2: 3, 3: 4, 4: 5, 5: 6, 6: 6, 7: 7, 8: 7, 9: 8, 10: 8, 11: 8, 12: 8 },
+    radius: { 2: 3, 3: 3, 4: 4, 5: 5, 6: 5, 7: 6, 8: 6, 9: 7, 10: 7, 11: 7, 12: 7 },
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：鉱山：農地：森林（河川は別に流す）。効果のあるマスは合わせて約27%（6/22）で、3種類に均等に分ける
-    terrainRatio: { plain: 16, mine: 2, farm: 2, forest: 2 },
-    // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに3種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
-    centerShare: 0.1,                   // コアの近くの3種類とは別に、少なくとも空きマスの 10% は効果のあるマスとして散らす
+    // 平原：鉱山：森林（河川は別に流す）。効果のあるマスは合わせて約20%（4/20）で、2種類に均等に分ける。農地は「開墾」で作る
+    terrainRatio: { plain: 16, mine: 2, forest: 2 },
+    // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに2種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
+    centerShare: 0.1,                   // コアの近くの2種類とは別に、少なくとも空きマスの 10% は効果のあるマスとして散らす
     centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
     minePower: 1,                       // 鉱山マス：拡張（破壊で取ったときも）と強化のときに戦力トークン +1
-    farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
+    farmFood: 1,                        // 農地（開墾したセル）：手番終了時に食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
     // イベント：ラウンドの始まりに 1/3 の確率で、どれか1つが起きてそのラウンドの間続く（予告はしない）
     eventChance: 1 / 3,
@@ -47,7 +47,8 @@
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     // 破壊は資源2で、戦力トークンが1個以上必要（攻防で1個以上出す）。
     // 生産：資源で戦力トークンを作る（行動回数を使わない・ログに出ない）
-    cost: { expand: 1, bridge: 3, strengthen: 2, destroy: 2, produce: 2 },
+    // 開墾：自分の平原のセル（コア以外）を農地にする
+    cost: { expand: 1, bridge: 3, strengthen: 2, cultivate: 2, destroy: 2, produce: 2 },
     // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
     // 食料：手番終了時に、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
@@ -76,9 +77,9 @@
     plague: { name: '疫病', text: 'このラウンド、行動可能回数 −1', actions: -1 },
   };
 
-  const TERRAIN_KINDS = ['mine', 'farm', 'forest'];   // 効果のある地形
+  const TERRAIN_KINDS = ['mine', 'forest'];   // 盤面を作るときに置く、効果のある地形（農地は開墾で作る）
 
-  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', produce: '生産（戦力トークン）' };
+  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', cultivate: '開墾', destroy: '破壊', produce: '生産（戦力トークン）' };
   const PRODUCE = ['produce'];   // 生産（行動回数を使わない）
 
   function shuffle(arr, rng) {
@@ -340,6 +341,7 @@
       actionsLeft: actions,
       extraBought: 0,        // この手番で行動 +1 を買った回数
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
+      lastEndTurn: null,     // 最後の手番終了で増えた・減った資源と食料（画面の演出用）
       abandon: null,         // 食料が足りず、セルを捨てる途中： { player, count }
       over: false,
       winners: [],
@@ -472,6 +474,8 @@
         if (!c.owner && p.resource >= expandCost(c) && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
       } else if (type === 'strengthen') {
         if (c.owner === id && !c.strong) out.push(k);
+      } else if (type === 'cultivate') {
+        if (c.owner === id && !c.core && c.terrain === 'plain') out.push(k);
       } else if (type === 'destroy') {
         if (c.owner && c.owner !== id && adjacentToStrong(state, id, c.q, c.r)) out.push(k);
       }
@@ -502,7 +506,7 @@
 
   function canAct(state, id) {
     if (PRODUCE.some(t => !actionBlocked(state, id, t)) || !actionBlocked(state, id, 'buyAction')) return true;
-    return ['expand', 'strengthen', 'destroy'].some(t => targets(state, id, t).length > 0);
+    return ['expand', 'strengthen', 'cultivate', 'destroy'].some(t => targets(state, id, t).length > 0);
   }
 
   function applyAction(state, id, action) {
@@ -543,6 +547,11 @@
       state.actionsLeft--;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
+    } else if (action.type === 'cultivate') {
+      p.resource -= RULES.cost.cultivate;
+      cell.terrain = 'farm';
+      state.actionsLeft--;
+      addLog(state, `${p.name} がセル${cellLabel(cell)}を開墾して農地に（毎手番 食料 +${RULES.farmFood}）`, 'strengthen');
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
@@ -676,11 +685,14 @@
   function endTurn(state) {
     const p = current(state);
     const n = income(state, p.id);
+    const resBefore = p.resource, foodBefore = p.food || 0;
     p.resource += n;
     const made = foodMade(state, p.id), eaten = foodEaten(state, p.id);
-    p.food = (p.food || 0) + made - eaten;
+    p.food = foodBefore + made - eaten;
     const hungry = Math.max(0, -p.food);
     p.food = Math.max(0, p.food);
+    // 画面で「増えてから減る」を見せるための記録（どのマスがいくつ作ったかは、画面の側で盤面から数える）
+    state.lastEndTurn = { seq: state.logSeq + 1, player: p.id, resBefore, resource: n, foodBefore, made, eaten, hungry };
     addLog(state, `${p.name} が手番終了（資源トークン +${n}・食料 +${made} −${eaten}）`, 'income');
     const spare = cellsOf(state, p.id).filter(c => !c.core).length;
     if (hungry > 0 && spare > 0) {
@@ -691,7 +703,7 @@
     advance(state);
   }
 
-  // 手番終了時に作る食料：コア +6、強化済のセル（コアも）1つにつき +1、農地マスのセル1つにつき +1
+  // 手番終了時に作る食料：コア +6、強化済のセル（コアも）1つにつき +1、農地のセル1つにつき +1
   function foodMade(state, id) {
     const f = RULES.food;
     const ev = eventOf(state);
