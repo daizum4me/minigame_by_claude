@@ -129,9 +129,12 @@
         // 相手が戦力トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
         const est = estPower(foe);
         // リアルタイムモードは攻防がなく、狙えればかならず壊せる
-        const canBreak = g.mode === 'realtime' || me.power >= est;   // 同じ数なら攻撃側の勝ち
+        // リアルタイム：攻防はなく、防御の分だけ攻撃を重ねれば奪える。相手の防御の数は見えないので、セルの種類から見積もる
+        const rtNeed = g.mode === 'realtime' ? (c.def ? (c.core ? 3 : c.strong ? 2 : 1) : 0) + 1 : 0;
+        const canBreak = g.mode === 'realtime' ? me.power >= rtNeed : me.power >= est;   // 同じ数なら攻撃側の勝ち
         let s;
-        if (c.core) s = canBreak ? 30 : 6;                  // コアは最優先（破りきれなくても、読み合いで狙う）
+        if (g.mode === 'realtime') s = c.core ? (canBreak ? 30 : 3) : canBreak ? (c.def ? 3.5 : 5) : -1.5;   // 防御を削りきれないなら控える
+        else if (c.core) s = canBreak ? 30 : 6;             // コアは最優先（破りきれなくても、読み合いで狙う）
         else if (est <= 1) s = 5;
         else s = canBreak ? 3.2 : -1.5;   // 守る側はためた数を全部使えるので、破りきれないなら控える
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
@@ -220,42 +223,16 @@
     const foeCells = [];
     for (const f of g.players) if (f.alive && f.id !== id) foeCells.push(...E.cellsOf(g, f.id));
     const foeDist = (q, r) => foeCells.reduce((m, f) => Math.min(m, E.dist([q, r], [f.q, f.r])), 99);
-    // 防御：相手のセルに面した辺を固める。コアは特に厚く。相手が近づいてきた（2マス以内）辺には、攻められる前に先に置く
+    // 防御：相手のセルと接している（または相手が2マス以内に来ている）自分のセルに、戦力トークンをつぎ込む。
+    // 欲しい防御はコア3・強化済のセル2・ほかは1。コア以外は、攻める分の戦力を1個残す
     if (!lv.passive && (me.ap || 0) >= 1) {
       for (const c of E.cellsOf(g, id)) {
-        const ck = E.key(c.q, c.r);
-        const want = c.core ? 3 : c.strong ? 2 : 1;                 // 欲しい体力
-        if (me.power < (c.core ? 1 : 2)) continue;                  // コア以外は、攻める分を1個残す
-        for (const [q, r] of E.neighbors(c.q, c.r)) {
-          const n = cellAt(g, q, r);
-          if (!n || n.terrain === 'river' && !n.owner) continue;
-          const hostile = !!n.owner && n.owner !== id;
-          const near = !n.owner && foeDist(q, r) <= 2;              // 空きマスだが、相手がすぐ隣に広げてくる
-          if (!hostile && !near) continue;
-          const w = g.walls[E.wallKey(ck, E.key(q, r))];
-          const hp = w ? w.hp : 0;
-          if (hp >= want) continue;
-          const base = c.core ? 8 : c.strong ? 4.5 : 2.8;
-          const count = Math.max(1, Math.min(want - hp, me.power - (c.core ? 0 : 1)));
-          out.push({ s: base * (hostile ? 1 : 0.8) - hp * 1.5 + noise(), a: { type: 'wall', from: ck, to: E.key(q, r), count } });
-        }
-      }
-    }
-    // 防御を壊す：防御で攻められない相手のセルのうち、壊す価値のあるもの（コア＞強化済のセル＞ふつうのセル）
-    if (!lv.passive && (me.ap || 0) >= 2) {
-      for (const f of g.players) {
-        if (!f.alive || f.id === id) continue;
-        for (const x of E.cellsOf(g, f.id)) {
-          const xk = E.key(x.q, x.r);
-          for (const [q, r] of E.neighbors(x.q, x.r)) {
-            const y = cellAt(g, q, r);
-            if (!y || y.owner !== id) continue;
-            const w = g.walls[E.wallKey(xk, E.key(q, r))];          // 相手のセルの、こちらに面した辺
-            if (!w || w.owner === id || me.power < w.hp + 1) continue;   // 壊したあと破壊する1個も残す
-            const value = x.core ? 9 : x.strong ? 4.5 : 2.5;
-            out.push({ s: value - w.hp * 0.6 + noise(), a: { type: 'breakWall', from: xk, to: E.key(q, r), count: w.hp } });
-          }
-        }
+        const want = c.core ? 3 : c.strong ? 2 : 1;
+        if ((c.def || 0) >= want || me.power < (c.core ? 1 : 2)) continue;
+        const hostile = E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id; });
+        if (!hostile && foeDist(c.q, c.r) > 2) continue;
+        const base = c.core ? 8 : c.strong ? 4.5 : 2.8;
+        out.push({ s: base * (hostile ? 1 : 0.8) - (c.def || 0) * 1.5 + noise(), a: { type: 'fortify', q: c.q, r: c.r } });
       }
     }
     const best = out.sort((a, b) => b.s - a.s)[0];

@@ -65,6 +65,10 @@
       tone({ freq: 660, dur: 0.18, vol: 0.12 });
       tone({ freq: 990, t: 0.12, dur: 0.3, vol: 0.12 });
     },
+    round() {       // ターン・ラウンドが変わった：低めの2音（自分の手番の音より落ち着いた感じ）
+      tone({ freq: 392, dur: 0.22, vol: 0.1, type: 'triangle' });
+      tone({ freq: 523, t: 0.14, dur: 0.34, vol: 0.1, type: 'triangle' });
+    },
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
     },

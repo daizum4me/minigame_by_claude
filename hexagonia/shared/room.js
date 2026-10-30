@@ -46,7 +46,7 @@
       this.hostId = null;
       this.phase = 'lobby';
       // 盤面の直径（マス）・1手番の行動回数・ラウンド数。0 は人数に合わせる
-      // mode：'turn'（ターン制）か 'realtime'（リアルタイム・実験）。ticks はリアルタイムの区切りの回数（0 は人数に合わせる）
+      // mode：'turn'（ターン制）か 'realtime'（リアルタイム・実験）。ticks はリアルタイムのターン数（0 は人数に合わせる）
       this.settings = { diameter: 0, actions: 0, rounds: 0, mode: 'turn', ticks: 0 };
       this.events = true;       // イベントを起こすか（チュートリアルでは起こさない）
       this.chat = [];           // { seq, from, name, color, text }（ロビーとゲームで続けて使う）
@@ -187,7 +187,7 @@
           if ('ticks' in msg) {
             const t = Number(msg.ticks);
             const [lo, hi] = E.RULES.rt.ticksRange;
-            if (t !== 0 && !(Number.isInteger(t) && t >= lo && t <= hi)) return err('区切りの回数が正しくありません');
+            if (t !== 0 && !(Number.isInteger(t) && t >= lo && t <= hi)) return err('ターン数が正しくありません');
             next.ticks = t;
           }
           this.settings = next;
@@ -268,7 +268,7 @@
         return;
       }
       if (g.mode === 'realtime') {
-        // リアルタイム：15秒ごとの区切りと、5秒ごとの行動力の回復だけ（手番の持ち時間はない）
+        // リアルタイム：15秒ごとのターンと、5秒ごとの行動力の回復だけ（手番の持ち時間はない）
         const rt = E.RULES.rt;
         if (!this.timers.rtTick) {
           this.tickDeadline = now + rt.tickSeconds * 1000;
@@ -421,6 +421,8 @@
           log: g.log.slice(-LOG_SEND),
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
           eventPlan: undefined,
+          // セルの防御の数は、そのセルの持ち主にしか見せない（ほかの人には、防御があることだけ：def = -1）
+          board: g.mode === 'realtime' ? Object.fromEntries(Object.entries(g.board).map(([k, c]) => [k, c.def > 0 && c.owner !== forId ? Object.assign({}, c, { def: -1 }) : c])) : g.board,
           // 取り消しの記録は、手番の人にだけ、何を取り消せるかだけ届ける（生産したことや戦力トークンの数がわからないように）
           undo: g.over || g.mode === 'realtime' || E.current(g).id !== forId ? [] : (g.undo || []).map(u => ({ label: u.label })),   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
           // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）

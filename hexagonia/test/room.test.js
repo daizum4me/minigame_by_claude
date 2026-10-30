@@ -301,7 +301,7 @@ test('取り消しの記録は手番の人にだけ、何を取り消せるか�
   assert.strictEqual(room.game.log.length, logLen);            // 生産の取り消しはログに出ない
 });
 
-test('リアルタイムモード：ホストが選べる。15秒ごとに区切り、5秒ごとに行動力が回復。CPU も動く', () => {
+test('リアルタイムモード：ホストが選べる。15秒ごとにターンが進み、5秒ごとに行動力が回復。CPU も動く', () => {
   const { room, last, fire, timers } = makeRoom();
   const h = room.join('t1', 'A').id;
   room.handle(h, { type: 'addCpu' });
@@ -320,11 +320,28 @@ test('リアルタイムモード：ホストが選べる。15秒ごとに区切
   assert.strictEqual(me.ap, 1);
   fire(15000);
   assert.strictEqual(g.round, 1);
-  assert.ok(timers.some(t => t.ms === 15000) && timers.some(t => t.ms === 5000));   // 次の区切り・回復も予約される
+  assert.ok(timers.some(t => t.ms === 15000) && timers.some(t => t.ms === 5000));   // 次のターン・回復も予約される
   // CPU は2.5秒ごとに考える（資源と行動力があれば何かする）
   const cpu = g.players.find(p => p.id !== h);
   cpu.resource = 20; cpu.ap = 5;
   const before = g.log.length;
   for (let i = 0; i < 4; i++) fire(2500);
   assert.ok(g.log.length > before);
+});
+
+test('セルの防御の数は、そのセルの持ち主にしか届かない（ほかの人には防御があることだけ）', () => {
+  const { room, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'settings', mode: 'realtime' });
+  room.handle(h, { type: 'start' });
+  const gm = room.game, me = gm.players.find(p => p.id === h);
+  const [cq, cr] = E.parseKey(me.core);
+  me.power = 4; me.ap = 3;
+  room.handle(h, { type: 'act', action: { type: 'fortify', q: cq, r: cr } });
+  room.handle(h, { type: 'act', action: { type: 'fortify', q: cq, r: cr } });
+  assert.strictEqual(gm.board[me.core].def, 2);
+  assert.strictEqual(last(h).room.game.board[me.core].def, 2);
+  assert.strictEqual(last(g).room.game.board[me.core].def, -1);
+  assert.ok(!gm.log.some(l => /[0-9]+ ?(個|つ)/.test(l.text) && /防御/.test(l.text)));
 });

@@ -422,6 +422,7 @@
     }
     if (!prev || prev.phase !== msg.room.phase) {
       app.lastLogSeq = 0;
+      app.lastProgress = null;
       app.prevCells = null;
       app.clashResult = null;
       app.resultHidden = false;
@@ -585,9 +586,9 @@
     $('#rt-settings').hidden = !rt;
     $('#turn-settings').hidden = rt;
     const autoT = E.autoTicks(Math.max(R.minPlayers, room.players.length));
-    $('#ticks-note').textContent = `いまの人数なら自動で ${autoT} 回（${Math.round(autoT * R.rt.tickSeconds / 60)}分）`;
+    $('#ticks-note').textContent = `いまの人数なら自動で ${autoT} ターン（${Math.round(autoT * R.rt.tickSeconds / 60)}分）`;
     $('#mode-note').textContent = rt
-      ? `手番がなく、いつでも行動できます。行動力（${R.rt.apSeconds}秒に1回復・上限${R.rt.apMax}）を使い、${R.rt.tickSeconds}秒ごとの区切りで資源と食料の処理。破壊は戦力1個ですぐ決まり、守りはマスの辺に置く「防御」で固めます`
+      ? `手番がなく、いつでも行動できます。行動力（${R.rt.apSeconds}秒に1回復・上限${R.rt.apMax}）を使い、${R.rt.tickSeconds}秒ごとのターンで資源と食料の処理。攻撃は戦力1個ですぐ決まり（行動力は使わない）、守りはセルに戦力をつぎ込む「防御」で固めます`
       : '順番に手番が回ってくる、いつものモードです';
     $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2人 7・4人 11・8人 15・12人 17 など）';
     $('#lobby-wait').textContent = isHost
@@ -624,11 +625,11 @@
 
     const colors = {};
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
-    boardView().setData({ game: g, colors, patterns: patternsOn(), targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, marked: abandoning(g) ? [...app.abandonSel] : [], me: app.me, wallSel: wallSelKey(g) });
+    boardView().setData({ game: g, colors, patterns: patternsOn(), targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, marked: abandoning(g) ? [...app.abandonSel] : [], me: app.me });
 
     // 変化したマス（拡張・強化・破壊・脱落）を一瞬光らせる
     const cells = {};
-    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.strong}|${c.core}`;
+    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.strong}|${c.core}|${c.def || 0}`;
     const changedCells = app.prevCells ? Object.keys(cells).filter(k => cells[k] !== app.prevCells[k]) : [];
     if (app.prevCells) view.flash(changedCells);
     // フォーカスモード：ほかの人の行動があったマス、自分が狙われた攻防のマスへ視点を動かす
@@ -642,22 +643,33 @@
 
     // 上部の表示
     $('#hud-round').textContent = g.round === 0 && !isRT(g) ? '先行' : `${g.round} / ${g.rounds}`;
-    $('#hud-round').previousElementSibling.textContent = isRT(g) ? '区切り' : 'ラウンド';
+    $('#hud-round').previousElementSibling.textContent = isRT(g) ? 'ターン' : 'ラウンド';
     // このラウンドのイベント
     const EV = E.EVENTS;
     const evNow = !g.over && g.round >= 1 && g.event ? EV[g.event] : null;
     const good = k => ['harvest', 'discovery', 'fishing', 'festival'].includes(k);
     $('#hud-event').hidden = !evNow;
     $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '');
-    const apDots = n => Array.from({ length: R.rt.apMax }, (_, i) => `<span class="ap-dot${i < n ? ' on' : ''}"></span>`).join('');
+    // リアルタイムでは手番がないので出さない（行動力は下のバーに）
+    $('#hud-turn').hidden = isRT(g) && !g.over;
     $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
-      : isRT(g) ? `<strong>リアルタイム</strong><span class="muted">（実験）</span>${me && me.alive ? `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${R.rt.apMax}）">行動力 ${apDots(me.ap || 0)}</span>` : ''}`
+      : isRT(g) ? ''
       : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}・残り行動 ${g.actionsLeft}</span>`;
 
     // 自分
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
-    $('#me-actions').textContent = !me ? '' : !me.alive ? '脱落' : isRT(g) ? `行動力 ${me.ap || 0} / ${R.rt.apMax}` : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
+    // リアルタイム：行動力は丸で（光らせない）、次のターンまではバーで、食料の収支も
+    const apDots = n => Array.from({ length: R.rt.apMax }, (_, i) => `<span class="ap-dot${i < n ? ' on' : ''}"></span>`).join('');
+    const meAct = $('#me-actions');
+    if (isRT(g) && me && me.alive) {
+      const html = `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${R.rt.apMax}）">行動力 ${apDots(me.ap || 0)}</span><span class="rt-net" title="次のターンで受け取る資源と、作る・食べる食料">${esc(netText(g))}</span>`;
+      if (meAct._html !== html) { meAct.innerHTML = html; meAct._html = html; }
+    } else {
+      meAct._html = null;
+      meAct.textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
+    }
+    $('#dock-tickbar').hidden = !isRT(g) || g.over;
     renderMyTokens(me);
 
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない生産と手番終了はここ
@@ -676,7 +688,7 @@
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
     else if (g.abandon) hint = g.abandon.player === app.me ? '食料が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
     else if (g.pending) hint = '破壊の攻防中です';
-    else if (isRT(g)) hint = `いつでも行動できます（行動力を1使う）。${R.rt.tickSeconds}秒ごとの区切りで、資源と食料の処理をします。自分のセルを選ぶと、辺に防御を置けます`;
+    else if (isRT(g)) hint = `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと防御を固められ、隣の相手のセルは戦力1個で攻撃できます`;
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
     else if (['produce', 'buyAction'].every(t => E.actionBlocked(g, app.me, t)) && ['expand', 'strengthen', 'cultivate', 'destroy'].every(t => !E.targets(g, app.me, t).length)) hint = 'もう行動できません。「手番終了」を押してください（「取り消す」で戻すこともできます）';
     else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
@@ -707,7 +719,7 @@
     if (atBottom || !app.lastLogSeq) logEl.scrollTop = logEl.scrollHeight;
     const fresh = app.lastLogSeq ? g.log.filter(l => l.seq > app.lastLogSeq) : [];
     for (const l of fresh) {
-      if (/^破壊(成功|失敗)/.test(l.text) || l.tone === 'out' || l.tone === 'hit') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
+      if ((!isRT(g) && /^破壊(成功|失敗)/.test(l.text)) || l.tone === 'out' || l.tone === 'hit') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
       else if (me && l.text === `${me.name} はもう行動できないため、自動で手番終了`) toast('もう行動できないため、自動で手番を終えました', 'info');
     }
     // コアに命中したら、コアを赤く光らせる（マスは変わらないので）
@@ -716,10 +728,18 @@
     // 自分の手番終了：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
     const le = g.lastEndTurn;
     if (le && le.player === app.me && fresh.some(l => l.seq === le.seq)) playEndTurn(g, le);
-    // リアルタイム：区切りごとに同じ演出
+    // リアルタイム：ターンごとに同じ演出
     const ti = isRT(g) && g.tickInfo && g.tickInfo[app.me];
     if (ti && fresh.some(l => l.seq === ti.seq)) playEndTurn(g, ti);
     app.lastLogSeq = g.log.length ? g.log[g.log.length - 1].seq : 0;
+
+    // ターン（リアルタイム）・ラウンドが変わったらお知らせ（最初に開いたときは出さない）
+    const progress = `${g.mode || 'turn'}:${g.round}`;
+    if (app.lastProgress && app.lastProgress.split(':')[0] === progress.split(':')[0] && app.lastProgress !== progress && !g.over && g.round >= 1) {
+      if (isRT(g)) popout(`ターン ${g.round}`, `/ ${g.rounds}`, 'round', 'round');
+      else popout(`ラウンド ${g.round}`, `/ ${g.rounds}`, 'round', 'round');
+    }
+    app.lastProgress = progress;
 
     // 公開された攻防の結果を少しのあいだ見せる
     const lc = g.lastClash;
@@ -732,7 +752,7 @@
     // 自分の番が来たら知らせる
     // 攻防のあいだも自分の手番は続いているので、攻防の前後では知らせない
     const mine = !g.over && !isRT(g) && E.current(g).id === app.me && !!me && me.alive;
-    if (mine && !app.wasMyTurn) { toast('あなたの手番です', 'good'); window.HexSound.play('turn'); }
+    if (mine && !app.wasMyTurn) popout('あなたの手番', '', 'mine', 'turn');
     app.wasMyTurn = mine;
 
     updateDock();
@@ -744,6 +764,27 @@
     tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
+  }
+
+  // 画面の真ん中に大きく出るお知らせ（ターン・ラウンドが変わったとき、自分の手番になったとき）。続けて出るときは順番に
+  const popQueue = [];
+  let popBusy = false;
+  function popout(title, sub, kind, sound) {
+    popQueue.push({ title, sub, kind, sound });
+    if (!popBusy) nextPopout();
+  }
+  function nextPopout() {
+    const item = popQueue.shift();
+    const el = $('#popout');
+    if (!item) { popBusy = false; el.hidden = true; return; }
+    popBusy = true;
+    el.className = `popout ${item.kind || ''}`;
+    el.innerHTML = `<b>${esc(item.title)}</b>${item.sub ? `<small>${esc(item.sub)}</small>` : ''}`;
+    el.hidden = false;
+    // アニメーションを毎回やり直す
+    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    if (item.sound) window.HexSound.play(item.sound);
+    setTimeout(nextPopout, popQueue.length ? 700 : 1300);
   }
 
   // 下のバーの自分のトークン。手番終了の演出中は、演出の途中の数を見せる
@@ -984,7 +1025,7 @@
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
       else if (l.tone === 'out') found.add('out');
-      else if (/^破壊成功/.test(l.text) || l.tone === 'hit') found.add('success');
+      else if (/^(破壊|攻撃)成功/.test(l.text) || l.tone === 'hit') found.add('success');
       else if (l.tone === 'abandon') found.add('abandon');
       else if (l.tone === 'event' && l.text.startsWith('イベント：')) found.add('event');
       else if (/^破壊失敗/.test(l.text)) found.add('fail');
@@ -1007,11 +1048,12 @@
     const pass = Date.now() - (app.graceAt || Date.now());
     const sec = ms => Math.max(0, Math.ceil(ms / 1000));
     if (isRT(g)) {
-      // リアルタイム：次の区切りまでの秒数
-      const t = sec(room.tickLeftMs - pass);
-      el.hidden = false;
-      el.className = 'pill timer' + (t <= 3 ? ' low' : '');
-      el.innerHTML = `<span class="muted">次の区切りまで</span> <strong>${t}秒</strong>`;
+      // リアルタイム：次のターンまでを、バーで（満タンから減っていく）
+      const left = Math.max(0, room.tickLeftMs - pass), total = R.rt.tickSeconds * 1000;
+      el.hidden = true;
+      const bar = $('#dock-tickbar');
+      bar.classList.toggle('low', left <= 3000);
+      bar.firstElementChild.style.width = `${Math.min(100, left / total * 100)}%`;
       return;
     }
     const turnSec = sec(room.turnLeftMs - pass);
@@ -1053,7 +1095,7 @@
   // ---------- 盤面の操作 ----------
 
   // マスを選ぶ：そのマスの情報と、できる行動のボタンをツールチップに出す
-  function onCellSelect(key, side) {
+  function onCellSelect(key) {
     const g = app.room && app.room.game;
     if (abandoning(g)) {
       // 捨てるセルを選ぶあいだは、ツールチップは出さない（出ていたら閉じる）。盤面の外や自分以外のマスを選んでも閉じるだけ
@@ -1067,11 +1109,8 @@
       render();
       return;
     }
-    // リアルタイムモード：マスのふちの近くを選ぶと、その辺（防御を置く・壊す辺）を直接選べる。中央ならこれまでどおりマスを選ぶ
-    const sideOk = isRT(g) && key && side !== null && side !== undefined && wallSideOk(g, key, side);
-    const tipSide = sideOk ? side : null;
-    if (!key || (app.tip && app.tip.pinned && app.tip.key === key && (app.tip.side === undefined ? null : app.tip.side) === tipSide)) { hideTip(); return; }
-    showTip({ key, pinned: true, side: tipSide });
+    if (!key || (app.tip && app.tip.pinned && app.tip.key === key)) { hideTip(); return; }
+    showTip({ key, pinned: true });
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
@@ -1103,14 +1142,18 @@
       if (!c.strong) {
         const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
         list.push({ type: 'strengthen', cost: R.cost.strengthen,
-          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・手番終了時の資源 +${inc}・食料 +${R.food.strong}。隣の相手セルを破壊できる拠点になる` });
+          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・手番終了時の資源 +${inc}・食料 +${R.food.strong}${isRT(g) ? '' : '。隣の相手セルを破壊できる拠点になる'}` });
       }
       if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。手番終了時の食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
+      if (isRT(g)) {
+        list.push({ type: 'fortify', name: '防御 +1', cost: 0, rtPower: 1, gain: '戦力トークンを1個つぎ込む。攻撃1回ぶんを防ぐ（解除すると戻ってくる）' });
+        if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `つぎ込んだ戦力トークン ${c.def} 個が戻る（行動力は使わない）` });
+      }
       if (!list.length) return { note: c.strong ? '強化済のセルです' : 'このセルでできる行動はありません' };
     } else {
       const foe = g.players.find(p => p.id === c.owner);
-      list.push(isRT(g) ? { type: 'destroy', cost: 0, rtPower: 1,
-        gain: '戦力トークン1個で、すぐ壊せる（攻防はない）。' + (c.core ? `コアなら ${foe.name} は脱落し、セルとトークンをまるごと奪える` : '壊したマスは自分のセルになる') }
+      list.push(isRT(g) ? { type: 'destroy', name: '攻撃', cost: 0, rtPower: 1,
+        gain: '戦力トークン1個ですぐ決まる（行動力は使わない）。' + (c.def ? '防御があるので、まず防御が1減る（残りの数はわからない）' : (c.core ? `コアなら ${foe.name} は脱落し、セルとトークンをまるごと奪える` : '防御がなければ、このマスが自分のセルになる')) }
       : { type: 'destroy', cost: R.cost.destroy,
         gain: '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
           ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`
@@ -1120,16 +1163,9 @@
     }
     for (const a of list) {
       a.why = '';
+      if (isRT(g) && ['fortify', 'unfortify'].includes(a.type)) { a.why = E.actionBlocked(g, app.me, a.type); continue; }
       if (E.targets(g, app.me, a.type).includes(key)) continue;
-      if (isRT(g)) {
-        a.why = E.actionBlocked(g, app.me, a.type)
-          || (a.type === 'destroy'
-            ? (E.neighbors(c.q, c.r).some(([q, r]) => { const n = g.board[E.key(q, r)]; return n && n.owner === app.me; })
-              ? '自分のセルとのあいだに防御があります。自分のセルを選んで、先に防御を壊してください'
-              : '自分のセルに隣接していません')
-            : '自分のセルに隣接していません');
-        continue;
-      }
+      if (isRT(g)) { a.why = E.actionBlocked(g, app.me, a.type) || '自分のセルに隣接していません'; continue; }
       const cur = E.current(g);
       if (g.pending) a.why = '破壊の攻防が終わるまで待ってください';
       else if (cur.id !== app.me) a.why = `${cur.name} の手番です`;
@@ -1146,12 +1182,12 @@
   function showTip(tip) {
     const g = app.room && app.room.game;
     if (!g || !g.board[tip.key]) { hideTip(); return; }
-    const changed = !app.tip || app.tip.key !== tip.key || app.tip.pinned !== tip.pinned || app.tip.side !== tip.side;
+    const changed = !app.tip || app.tip.key !== tip.key || app.tip.pinned !== tip.pinned;
     app.tip = tip;
-    if (tip.side !== null && tip.side !== undefined) { showSideTip(g, tip, changed); return; }
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
+    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化')
+      + (c.def > 0 ? `・防御 ${c.def}` : c.def < 0 ? '・防御あり（数はわからない）' : '');
     let acts = '';
     if (tip.pinned) {
       const r = cellActions(g, tip.key);
@@ -1159,7 +1195,7 @@
         // 理由は同じことが多いので、まとめて最後に1回だけ出す
         const whys = [...new Set(r.list.map(a => a.why).filter(Boolean))];
         acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
-          <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${a.rtPower ? `${TOKEN_SVG.power}${a.rtPower}` : `${TOKEN_SVG.resource}${a.cost}`}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
+          <b>${a.name || (a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type])}</b>${a.type === 'unfortify' ? '' : `<span class="tt-cost">${a.rtPower ? `${TOKEN_SVG.power}${a.rtPower}` : `${TOKEN_SVG.resource}${a.cost}`}</span>`}${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
           ${whys.map(w => `<p class="tt-why">${esc(w)}</p>`).join('')}</div>`;
       } else if (r && r.note) {
         acts = `<div class="tt-acts"><p class="tt-why">${esc(r.note)}</p></div>`;
@@ -1172,8 +1208,7 @@
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
     // 中身が同じなら作り直さない。スライダーを操作しているあいだも作り直さない
     // （リアルタイムモードでは数秒ごとに画面が描き直されるので、操作が途切れないように）
-    const sliding = !changed && el.contains(document.activeElement) && document.activeElement.matches('input[type="range"]');
-    if (!sliding && el._html !== html) { el.innerHTML = html; el._html = html; }
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
     el.classList.toggle('pinned', !!tip.pinned);
     el.hidden = false;
     positionTip();
@@ -1203,69 +1238,6 @@
     el.style.top = top + 'px';
   }
 
-  // ---------- 防御（リアルタイムモード） ----------
-
-  const SIDE_NAMES = ['右', '右上', '左上', '左', '左下', '右下'];   // E.DIRS の順
-
-  // そのマスのその辺（side）に、いま何かできるか：自分のマスなら防御を置ける。相手のマスなら、自分のセルに面した防御があれば壊せる
-  function wallSideOk(g, key, side) {
-    const me = g.players.find(p => p.id === app.me);
-    if (!me || !me.alive) return false;
-    const c = g.board[key];
-    const [dq, dr] = E.DIRS[side];
-    const nk = E.key(c.q + dq, c.r + dr), n = g.board[nk];
-    if (!n) return false;
-    if (c.owner === app.me) return true;
-    return !!(g.walls[E.wallKey(key, nk)] && n.owner === app.me);
-  }
-
-  // 盤面で強調する、選んでいる辺
-  function wallSelKey(g) {
-    if (!isRT(g) || !app.tip || !app.tip.pinned || app.tip.side === null || app.tip.side === undefined) return null;
-    const c = g.board[app.tip.key];
-    if (!c) return null;
-    const [dq, dr] = E.DIRS[app.tip.side];
-    return E.wallKey(app.tip.key, E.key(c.q + dq, c.r + dr));
-  }
-
-  // 辺を選んだときのツールチップ：防御を置く・足す・外す（自分のマス）、壊す（相手のマス）
-  function showSideTip(g, tip, changed) {
-    const me = g.players.find(p => p.id === app.me);
-    const c = g.board[tip.key];
-    const [dq, dr] = E.DIRS[tip.side];
-    const nk = E.key(c.q + dq, c.r + dr), n = g.board[nk];
-    const w = g.walls[E.wallKey(tip.key, nk)];
-    const power = me.power || 0, lackAp = (me.ap || 0) < 1;
-    const mine = c.owner === app.me;
-    // 選んでいた辺が、防御が壊れたり、マスを失ったりして、もう何もできなくなっていたら閉じる
-    if (!mine && !w || (!mine && n.owner !== app.me)) { hideTip(); return; }
-    const wallOwner = w && g.players.find(p => p.id === w.owner);
-    const max = mine ? power : Math.min(power, w ? w.hp : 0);
-    app.wallN = Math.max(1, Math.min(app.wallN || 1, max || 1));
-    const slider = `<div class="wall-row"><input type="range" data-wall-n min="1" max="${Math.max(1, max)}" value="${app.wallN}" ${max <= 1 ? 'disabled' : ''} aria-label="使う戦力トークンの数"><b data-wall-n-label>${app.wallN}</b></div>`;
-    const cost = `<span class="tt-cost">${TOKEN_SVG.power}<span data-wall-n-label>${app.wallN}</span></span>`;
-    let body;
-    if (mine) {
-      body = `<div>${w ? `防御：体力 <b>${w.hp}</b>` : '防御：なし'}</div>${slider}
-        <button class="tt-act" data-wall-act="wall" ${power < 1 || lackAp ? 'disabled' : ''}><b>${w ? '足す' : '置く'}</b>${cost}<small>使った数が体力になる</small></button>
-        ${w ? '<button class="tt-act" data-wall-act="unwall"><b>外す</b><small>戻ってこない</small></button>' : ''}`;
-    } else {
-      body = `<div>${esc(wallOwner ? wallOwner.name : '')} の防御：体力 <b>${w.hp}</b></div>${slider}
-        <button class="tt-act danger" data-wall-act="breakWall" ${max < 1 || lackAp ? 'disabled' : ''}><b>壊す</b>${cost}<small>戦力トークン1個で体力1</small></button>`;
-    }
-    const why = lackAp ? '行動力が足りません（5秒に1回復）' : mine && power < 1 ? '戦力トークンがありません（強化・鉱山・生産で増やせる）' : '';
-    const el = $('#tooltip');
-    const html = `<div class="tt-head">${mine ? '自分' : '相手'}のセルの${SIDE_NAMES[tip.side]}の辺<span class="muted">(${c.q},${c.r})</span></div>
-      <div class="muted small">${n.owner === app.me ? '自分のセル' : n.owner ? `${esc((g.players.find(p => p.id === n.owner) || {}).name || '')} のセル` : n.terrain === 'river' ? '河川' : '空きマス'}に面している</div>
-      <div class="tt-acts wall-panel">${body}${why ? `<p class="tt-why">${esc(why)}</p>` : ''}</div>`;
-    const sliding = !changed && el.contains(document.activeElement) && document.activeElement.matches('input[type="range"]');
-    if (!sliding && el._html !== html) { el.innerHTML = html; el._html = html; }
-    el.classList.add('pinned');
-    el.hidden = false;
-    positionTip();
-    if (changed && view) view.setSelected(tip.key);
-  }
-
   // 選んだマスのツールチップをクリックしたら（行動のボタンは除く）、マスの反対側に移す。
   // ツールチップの下のマスを選びやすくするため
   function flipTip() {
@@ -1279,6 +1251,30 @@
     app.tip = null;
     $('#tooltip').hidden = true;
     if (had && view) view.setSelected(null);
+  }
+
+  // ---------- ルール（ページに分けて） ----------
+
+  function initRulesPages() {
+    const pages = [...document.querySelectorAll('#rules .r-page')];
+    $('#r-tabs').innerHTML = pages.map((pg, i) => `<button type="button" data-rules-page="${i}">${esc(pg.dataset.title)}</button>`).join('');
+    $('#r-tabs').onclick = e => { const b = e.target.closest('[data-rules-page]'); if (b) showRulesPage(Number(b.dataset.rulesPage)); };
+    $('#r-prev').onclick = () => showRulesPage((app.rulesPage || 0) - 1);
+    $('#r-next').onclick = () => showRulesPage((app.rulesPage || 0) + 1);
+  }
+
+  function showRulesPage(n) {
+    const pages = [...document.querySelectorAll('#rules .r-page')];
+    n = Math.max(0, Math.min(pages.length - 1, n));
+    app.rulesPage = n;
+    pages.forEach((pg, i) => {
+      pg.hidden = i !== n;
+    });
+    document.querySelectorAll('#r-tabs button').forEach((b, i) => { b.classList.toggle('on', i === n); b.setAttribute('aria-current', i === n ? 'page' : 'false'); });
+    $('#r-prev').disabled = n === 0;
+    $('#r-next').disabled = n === pages.length - 1;
+    $('#r-pos').textContent = `${n + 1} / ${pages.length}`;
+    $('#rules').scrollTop = 0;
   }
 
   // ---------- 設定 ----------
@@ -1369,24 +1365,15 @@
       $('#board').dispatchEvent(new WheelEvent('wheel', { clientX: e.clientX, clientY: e.clientY, deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, bubbles: true, cancelable: true }));
     }, { passive: false });
     $('#tooltip').onclick = e => {
-      // 防御のパネル（リアルタイムモード）
-      const wb = e.target.closest('[data-wall-act]');
-      if (wb && app.tip && app.tip.side !== null && app.tip.side !== undefined) {
-        if (wb.disabled) return;
-        const c = app.room.game.board[app.tip.key];
-        const [dq, dr] = E.DIRS[app.tip.side];
-        send({ type: 'act', action: { type: wb.dataset.wallAct, from: app.tip.key, to: E.key(c.q + dq, c.r + dr), count: app.wallN || 1 } });
-        return;
-      }
-      if (e.target.closest('.wall-panel')) return;
       const b = e.target.closest('[data-cell-act]');
       if (!b) { flipTip(); return; }
       if (b.disabled || !app.tip) return;
       const type = b.dataset.cellAct;
       const [q, r] = E.parseKey(app.tip.key);
       send({ type: 'act', action: { type, q, r } });
-      // 拡張・強化のあとは同じマスを選んだまま（続けて強化できるように）。破壊は攻防の画面へ
-      if (type === 'destroy') hideTip();
+      // 拡張・強化のあとは同じマスを選んだまま（続けて強化できるように）。破壊は攻防の画面へ。
+      // リアルタイムの攻撃は、続けて攻撃できるように選んだまま
+      if (type === 'destroy' && !isRT(app.room.game)) hideTip();
     };
     $('#clash').onclick = e => {
       if (e.target.closest('[data-cancel-destroy]')) { send({ type: 'act', action: { type: 'cancelDestroy' } }); return; }
@@ -1395,12 +1382,6 @@
       window.HexSound.play('bid');
       send({ type: 'act', action: { type: 'bid', count: app.bid.n } });
     };
-    // 防御に使う数のスライダー
-    $('#tooltip').addEventListener('input', e => {
-      if (!e.target.matches('[data-wall-n]')) return;
-      app.wallN = Number(e.target.value);
-      document.querySelectorAll('#tooltip [data-wall-n-label]').forEach(el => { el.textContent = app.wallN; });
-    });
     // スライダーで出す数を選ぶ（画面は数字だけ書き換える）
     $('#clash').addEventListener('input', e => {
       if (!e.target.matches('[data-bid-range]') || !app.bid) return;
@@ -1462,10 +1443,12 @@
       }
     });
 
+    initRulesPages();
     document.querySelectorAll('[data-open]').forEach(b => {
       b.addEventListener('click', () => {
         const d = $('#' + b.dataset.open);
         if (d.id === 'settings') renderSettings();
+        if (d.id === 'rules') showRulesPage(app.rulesPage || 0);
         d.showModal();
         d.scrollTop = 0;   // 「閉じる」ボタンに自動で移るフォーカスで、いちばん下から始まらないように
       });
