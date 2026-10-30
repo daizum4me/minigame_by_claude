@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=40">
+<link rel="stylesheet" href="style.css?v=42">
 </head>
 <body>
 
@@ -183,7 +183,8 @@
       <ul class="r-list">
         <li>自分の手番では行動を<b>決まった回数</b>まで（2〜4人は3回・12ラウンド。人数が多いほどラウンドが少なく、行動回数が多い。ロビーで変えられる）。使い切ったら<i class="ic" data-icon="resource"></i><span class="k-res">資源</span>を払って<b>行動 +1</b>できる（6 → 10 → 14…。手番が変わると6に戻る）</li>
         <li>持ち時間は<b>120秒</b>（7人以上は<b>60秒</b>）。切れると自動で手番終了（破壊の攻防のあいだも止まらない。攻防中に切れたら、攻防が終わってから手番終了）</li>
-        <li>もうできる行動がなくなったときも、自動で手番終了</li>
+        <li>もうできる行動がなくなったときも、自動で手番終了（取り消せる行動があるあいだは終えない）</li>
+        <li>自分の手番のあいだなら、拡張・強化・開墾・生産・行動 +1 を<b>取り消せる</b>（下のバーの「取り消す」）。破壊は取り消せない</li>
         <li>手番の順はゲームのあいだ変わらない（ラウンドが変わってもずらさない）</li>
         <li>7人以上で内側にコアがある人は、ラウンド1の前に<b>1手番ずつ先に</b>動ける</li>
       </ul>
@@ -218,7 +219,7 @@
           <ul class="r-list">
             <li>作る：<i class="ic" data-icon="core"></i>コア <span class="k-food">+6</span>、<i class="ic" data-icon="cell-strong"></i>強化済のセル（コアも） <span class="k-food">+1</span>、<i class="ic" data-icon="hex-farm"></i>農地のセル <span class="k-food">+1</span></li>
             <li>食べる：<b>セル1つにつき1</b>。余りは持ち越す</li>
-            <li class="k-bad">足りないときは、足りない数だけセルを捨てる（コアは不可・30秒で自動）</li>
+            <li class="k-bad">足りないときは、足りない数だけセルを捨てる（コアは不可・60秒で自動）</li>
           </ul>
         </div>
       </div>
@@ -303,11 +304,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=40"></script>
-<script src="shared/cpu.js?v=40"></script>
-<script src="shared/room.js?v=40"></script>
-<script src="sound.js?v=40"></script>
-<script src="board.js?v=40"></script>
-<script src="client.js?v=40"></script>
+<script src="shared/engine.js?v=42"></script>
+<script src="shared/cpu.js?v=42"></script>
+<script src="shared/room.js?v=42"></script>
+<script src="sound.js?v=42"></script>
+<script src="board.js?v=42"></script>
+<script src="client.js?v=42"></script>
 </body>
 </html>
