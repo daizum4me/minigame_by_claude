@@ -24,6 +24,8 @@
     // 平原：鉱山：農地：森林：山岳（河川は別に流す）。効果のあるマスは合わせて約27%（6/22）で、4種類に均等に分ける
     terrainRatio: { plain: 16, mine: 1.5, farm: 1.5, forest: 1.5, mountain: 1.5 },
     // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに4種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
+    centerShare: 0.15,                  // コアの近くの4種類とは別に、少なくとも空きマスの 15% は効果のあるマスとして散らす
+    centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     mountainDefense: 1,                 // 山岳マス：拡張（破壊で取ったときも）と強化のときに防御トークン +1
@@ -285,13 +287,18 @@
         }
       }
     }
-    // 残りは、効果のあるマスの合計（約27%）に届くまで、種類ごとの数がそろうように散らす
-    const sum = Math.max(placed, Math.round(free.length * effect / (ratio.plain + effect)));
+    // 残りは、効果のあるマスの合計（約27%）に届くまで、種類ごとの数がそろうように散らす。
+    // コアの近くの分で合計に届いていても、少なくとも空きマスの centerShare の分は散らす。
+    // 盤面の中心に近いほど出やすい（真ん中ほど豊かな土地）
+    const sum = Math.max(placed + Math.round(free.length * RULES.centerShare), Math.round(free.length * effect / (ratio.plain + effect)));
     const have = t => free.filter(k => board[k].terrain === t).length;
-    const rest = shuffle(free.filter(k => !used.has(k)), rng);
+    const rest = free.filter(k => !used.has(k)).map(k => ({ k, w: Math.pow(1 + radius - dist(parseKey(k), [0, 0]), RULES.centerBias) }));
     for (let left = sum - placed; left > 0 && rest.length; left--) {
+      let x = rng() * rest.reduce((n, c) => n + c.w, 0), i = 0;
+      while (i < rest.length - 1 && (x -= rest[i].w) > 0) i++;
+      const [{ k }] = rest.splice(i, 1);
       const t = shuffle(kinds.slice(), rng).sort((a, b) => have(a) / (ratio[a] || 1) - have(b) / (ratio[b] || 1))[0];
-      board[rest.shift()].terrain = t;
+      board[k].terrain = t;
     }
     return { radius, board, cores };
   }
