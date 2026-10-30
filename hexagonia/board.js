@@ -4,7 +4,7 @@
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
  * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, scale, byLongPress), onView() })
- * view.setData({ game, colors, patterns, targets, selected, marked, me })
+ * view.setData({ game, colors, patterns, targets, selected, me })
  */
 (function () {
   'use strict';
@@ -14,7 +14,6 @@
   const DRAG_PX = 6;          // これ以上動いたらドラッグ扱い
   const LONG_PRESS_MS = 450;
   const FLASH_MS = 900;       // 変化したマスを光らせる時間
-  const FOCUS_MS = 450;       // 行動があったマスへ視点を動かす時間
   const MIN_HEX_PX = 9;       // 拡大率の下限・上限（マスの半径のピクセル数）
   const MAX_HEX_PX = 140;
   const FIT_MAX_HEX_PX = 90;  // 全体表示のときの上限（小さい画面以外で大きくなりすぎないように）
@@ -123,39 +122,10 @@
     reset() { this.moved = false; this.fit(); this.draw(); }
 
     // 変化したマスを一瞬光らせる
-    flash(keys, color) {
+    flash(keys, color, ms) {
       const t = performance.now();
-      for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255' });
+      for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255', ms: ms || FLASH_MS });
       if (keys.length) this.animate();
-    }
-
-    // 行動があったマスへ、なめらかに視点を動かす（全体表示のときは少し拡大する）
-    focusOn(keys) {
-      if (!keys.length || this.pointers.size || !this.dpr) return;
-      let sx = 0, sy = 0;
-      for (const k of keys) { const [q, r] = E.parseKey(k); const [x, y] = toWorld(q, r); sx += x; sy += y; }
-      const wx = sx / keys.length, wy = sy / keys.length;
-      const [, hi] = this.limits();
-      const scale = this.moved ? this.scale : Math.min(hi, this.fitScale() * 1.8);
-      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
-      this.focusAnim = {
-        t0: performance.now(),
-        from: { ox: this.ox, oy: this.oy, scale: this.scale },
-        to: { ox: w / 2 - wx * scale, oy: (h - (this.insetBottom || 0)) / 2 - wy * scale, scale },
-      };
-      this.moved = true;
-      this.animate();
-    }
-
-    stepFocus(t) {
-      const f = this.focusAnim;
-      if (!f) return;
-      const k = Math.min(1, (t - f.t0) / FOCUS_MS);
-      const e = 1 - Math.pow(1 - k, 3);
-      this.ox = f.from.ox + (f.to.ox - f.from.ox) * e;
-      this.oy = f.from.oy + (f.to.oy - f.from.oy) * e;
-      this.scale = f.from.scale + (f.to.scale - f.from.scale) * e;
-      if (k >= 1) { this.focusAnim = null; this.clamp(); }
     }
 
     setSelected(key) {
@@ -307,12 +277,12 @@
       }
     }
 
-    // 攻防中・対象マスがあるときだけゆっくり点滅させる
+    // 対象マスがあるとき・光らせているマスがあるときだけ動かす
     animate() {
       if (this.anim) return;
       const loop = () => {
         const d = this.data;
-        const need = d && (d.targets.length || (d.game.pending && !d.game.over) || this.flashes.size || this.focusAnim);
+        const need = d && (d.targets.length || this.flashes.size);
         if (!need) { this.anim = 0; this.draw(); return; }
         this.draw();
         this.anim = requestAnimationFrame(loop);
@@ -330,7 +300,6 @@
       ctx.fillStyle = COL.page;
       ctx.fillRect(0, 0, w, h);
       if (!d) return;
-      this.stepFocus(performance.now());
       const s = this.scale, g = d.game;
       const t = performance.now();
       const pulse = 0.55 + 0.45 * Math.sin(t / 260);
@@ -422,7 +391,7 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
-        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印と同じ大きさ）のあいだを、1つにつき辺1本ぶんずつ埋める。6で一周
+        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印）のあいだ（印とは接しないように）を、1つにつき辺1本ぶんずつ埋める。6で一周
         if (c.def > 0) this.defRing(ctx, x, y, s, this.defSides(g, c).slice(0, Math.min(6, c.def)), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
@@ -445,22 +414,6 @@
           ctx.stroke();
         }
       }
-      // 捨てるセルとして選んだマス：赤い枠と×
-      for (const k of d.marked || []) {
-        if (!g.board[k]) continue;
-        const [x, y] = this.screenOf(k);
-        hexPath(ctx, x, y, s * 0.86);
-        ctx.fillStyle = 'rgba(255,90,90,0.25)';
-        ctx.fill();
-        ctx.lineWidth = Math.max(2, s * 0.08);
-        ctx.strokeStyle = 'rgba(255,120,120,0.95)';
-        ctx.setLineDash([]);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.3, y - s * 0.3); ctx.lineTo(x + s * 0.3, y + s * 0.3);
-        ctx.moveTo(x + s * 0.3, y - s * 0.3); ctx.lineTo(x - s * 0.3, y + s * 0.3);
-        ctx.stroke();
-      }
       // 行動できるマス（薄く光らせる）
       for (const k of targets) {
         const [x, y] = this.screenOf(k);
@@ -474,7 +427,7 @@
       }
       // 変化したマス：明るく光って消えていく
       for (const [k, f] of this.flashes) {
-        const age = (t - f.t) / FLASH_MS;
+        const age = (t - f.t) / f.ms;
         if (age >= 1 || !g.board[k]) { this.flashes.delete(k); continue; }
         const a = (1 - age) * (1 - age);
         const [x, y] = this.screenOf(k);
@@ -497,15 +450,6 @@
         ctx.lineWidth = Math.max(2, s * 0.09);
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.setLineDash([]);
-        ctx.stroke();
-      }
-      // 攻防中のマス
-      if (g.pending && !g.over) {
-        const [x, y] = this.screenOf(g.pending.target);
-        ctx.beginPath();
-        ctx.arc(x, y, s * (0.95 + 0.1 * pulse), 0, Math.PI * 2);
-        ctx.lineWidth = Math.max(2, s * 0.09);
-        ctx.strokeStyle = `rgba(255,120,120,${0.5 + 0.5 * pulse})`;
         ctx.stroke();
       }
       if (this.hoverKey && g.board[this.hoverKey]) {
@@ -534,9 +478,9 @@
       return [0, 1, 2, 3, 4, 5].sort((a, b) => near(a) - near(b) || a - b);
     }
 
-    // 防御の帯：sides の辺ごとに、縁と内側の六角形のあいだの台形を塗る（セルの明るい色）
+    // 防御の帯：sides の辺ごとに、縁と内側の六角形（強化の印より少し外）のあいだの台形を塗る（セルの明るい色）
     defRing(ctx, x, y, s, sides, col) {
-      const ro = s * 0.86, ri = s * 0.62;
+      const ro = s * 0.86, ri = s * 0.71;   // 内側は強化の印（0.62）とすき間をあける
       const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
       ctx.fillStyle = col.light;
       for (const i of sides) {

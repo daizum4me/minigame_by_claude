@@ -1,9 +1,9 @@
 /*
  * ヘキサゴニア — CPU の考え方
- * 人間と同じ公開情報（盤面・全員のトークン数）だけで、次の1手を決める。
- * 手番では「できる行動に点数を付けて一番高いもの」を選び、よい行動がなければ手番終了。
+ * 人間と同じ公開情報（盤面・全員のトークン数。相手の防御の数は見ない）で、次の1手を決める。
+ * 部屋が2.5秒ごとに呼ぶ。「できる行動に点数を付けて一番高いもの」を選び、よい行動がなければ何もしない（待つ）。
  *
- * decide(state, id, rng, level) → action（engine.apply に渡せる形）
+ * decideRealtime(state, id, rng, level) → action（engine.apply に渡せる形）か null
  * level：'weak'（よわい）・'normal'（ふつう）・'strong'（つよい）
  */
 (function (root, factory) {
@@ -14,17 +14,14 @@
 
   const R = E.RULES;
 
-  // 強さ。noise：点数のゆらぎ（大きいほど気まぐれ）、endBelow：これより点数が低い行動しかなければ手番終了、
-  // buyAt：行動 +1 を買うのに必要な点数、bidRandom：攻防で出す数をでたらめに決める、
-  // bias：行動の種類ごとの点数の上乗せ（CPU どうしの対戦で、強化を多め・拡張を控えめにするのが一番勝てた）
+  // 強さ。noise：点数のゆらぎ（大きいほど気まぐれ）、endBelow：これより点数が低い行動しかなければ待つ、
+  // bias：行動の種類ごとの点数の上乗せ
   const LEVELS = {
-    weak: { noise: 4, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {} },
-    normal: { noise: 0.6, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: {} },
-    strong: { noise: 0.15, endBelow: 0.5, buyAt: 3, bidRandom: false, bias: { strengthen: 1.5, expand: -0.5 } },
-    // チュートリアルの相手：破壊をせず、相手から離れる向きにゆっくり広げる（passive）
-    tutorial: { noise: 2, endBelow: 1.5, buyAt: Infinity, bidRandom: true, bias: {}, passive: true },
+    weak: { noise: 4, endBelow: 1.5, bias: {} },
+    normal: { noise: 0.6, endBelow: 0.5, bias: {} },
+    strong: { noise: 0.15, endBelow: 0.5, bias: { strengthen: 1.5, expand: -0.5 } },
   };
-  const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };   // ロビーで選べる強さ（tutorial はチュートリアル専用）
+  const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };   // ロビーで選べる強さ
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
   const playerById = (g, id) => g.players.find(p => p.id === id);
 
@@ -42,21 +39,17 @@
   // そのマスの隣にある相手のセルの数
   const foeNeighbors = (g, id, c) => E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id; }).length;
 
-  // 相手の戦力トークンの数の見積もり（実際の数は見ない）。
-  // 見えている増え方（最初の2個・強化・鉱山）から攻防で少なくとも出したはずの数を引き、見えない生産の分を1個ぶん足しておく
-  const estPower = foe => Math.max(0, foe.powerSeen == null ? foe.power : foe.powerSeen) + 1;
-
   function scoreActions(g, id, rng, lv) {
     const me = playerById(g, id);
     const foes = g.players.filter(p => p.alive && p.id !== id);
     const foeCores = foes.map(p => E.parseKey(p.core));
     const late = g.round >= g.rounds - 2;               // 終盤は一番大きなかたまりを重視
     const myGroup = new Set(E.largestGroup(g, id));
-    // 一番大きなかたまりが最大の相手（12ラウンド終了の勝敗に効く）
+    // 一番大きなかたまりが最大の相手（最後のターンが終わったときの勝敗に効く）
     const leaderGroups = new Set(foes.map(p => E.largestGroup(g, p.id)).sort((a, b) => b.length - a.length)[0] || []);
     const touchesMine = c => E.neighbors(c.q, c.r).some(([q, r]) => myGroup.has(E.key(q, r)));
     const danger = threat(g, me);
-    // 食料：手番終了時に「貯え + 作る量 − 食べる量」が足りないとセルを捨てることになる
+    // 食料：ターンの終わりに「貯え + 作る量 − 食べる量」が足りないとセルを捨てることになる
     const foodLeft = (me.food || 0) + E.foodMade(g, id) - E.foodEaten(g, id);
     const out = [];
     const noise = () => (rng() - 0.5) * lv.noise;
@@ -66,11 +59,10 @@
         const c = g.board[k];
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
-        // 相手のコアに近づくほど高い（コアを破壊すれば、相手のセルとトークンをまるごと奪える）
-        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * (lv.passive ? -0.4 : 0.35);   // passive は相手から離れる向きに
+        // 相手のコアに近づくほど高い（コアを奪えば、相手のセルとトークンをまるごと奪える）
+        let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.35;
         if (c.terrain === 'mine') s += me.power <= 1 ? 2.5 : 1.2;    // 鉱山は取ると戦力トークン +1
-        if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
-        if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
+                if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林はターンごとの資源 +1（終盤は元が取れない）
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
           const beyond = E.neighbors(c.q, c.r).filter(([q, r]) => {
@@ -91,23 +83,12 @@
     if (!E.actionBlocked(g, id, 'strengthen')) {
       for (const k of E.targets(g, id, 'strengthen')) {
         const c = g.board[k];
-        // 強化すると毎手番の資源 +1 と戦力トークン +1。終盤は元が取れない
+        // 強化するとターンごとの資源 +1 と戦力トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
         if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (me.power === 0 && frontier(g, id) > 0) s += 1.5;
-        // 強化済のセルは破壊の拠点。前線に置くほど役に立つ
-        const foesNext = foeNeighbors(g, id, c);
-        if (foesNext > 0) {
-          const newTargets = E.neighbors(c.q, c.r).filter(([q, r]) => {
-            const n = cellAt(g, q, r);
-            return n && n.owner && n.owner !== id && !E.adjacentToStrong(g, id, q, r);
-          }).length;
-          s += Math.min(3, newTargets) * 0.9;            // 新しく破壊できるようになる相手のセル
-          // 相手のコアを狙える拠点になるなら大きい
-          if (E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.core && n.owner && n.owner !== id; })) s += 4;
-        }
         out.push({ s: s + noise() + (lv.bias.strengthen || 0), a: { type: 'strengthen', q: c.q, r: c.r } });
       }
     }
@@ -122,22 +103,14 @@
         out.push({ s: s + noise(), a: { type: 'cultivate', q, r } });
       }
     }
-    if (!lv.passive && !E.actionBlocked(g, id, 'destroy')) {
+    if (!E.actionBlocked(g, id, 'destroy')) {
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
-        const foe = playerById(g, c.owner);
-        // 相手が戦力トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
-        const est = estPower(foe);
-        // リアルタイムモードは攻防がなく、狙えればかならず壊せる
-        // リアルタイム：攻防はなく、防御の分だけ攻撃を重ねれば奪える。相手の防御の数は見えないので、セルの種類から見積もる
-        const rtNeed = g.mode === 'realtime' ? (c.def || 0) + 1 : 0;   // 防御の数は見える
-        const canBreak = g.mode === 'realtime' ? me.power >= rtNeed : me.power >= est;   // 同じ数なら攻撃側の勝ち
-        let s;
-        if (g.mode === 'realtime') s = c.core ? (canBreak ? 30 : 3) : canBreak ? (c.def ? 3.5 : 5) : -1.5;   // 防御を削りきれないなら控える
-        else if (c.core) s = canBreak ? 30 : 6;             // コアは最優先（破りきれなくても、読み合いで狙う）
-        else if (est <= 1) s = 5;
-        else s = canBreak ? 3.2 : -1.5;   // 守る側はためた数を全部使えるので、破りきれないなら控える
-        s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
+        // 攻防はなく、防御の分だけ攻撃を重ねれば奪える。相手の防御の数は見えないので、セルの種類から見積もる（c.def は見ない）
+        const need = (c.core ? 3 : c.strong ? 2 : 1) + 1;
+        const canBreak = me.power >= need;
+        let s = c.core ? (canBreak ? 30 : 3) : canBreak ? 4 : -1.5;   // 防御を削りきれないなら控える
+        s += 0.8;   // 奪うと、そのマスが自分のセルになる
         if (c.strong) s += 1 + (E.dist([c.q, c.r], E.parseKey(me.core)) <= 3 ? 1.5 : 0);   // 近くの相手の拠点は崩したい
         if (late) s += 1.5;
         if (late && leaderGroups.has(k)) s += 2;          // 首位のかたまりを削る
@@ -154,65 +127,15 @@
       // 自分のコアの近くに相手がいれば、守るためにためる
       if (danger > 0) s = Math.max(s, 5.5 - me.power * 1.3 + danger * 0.5);
       else if (me.power <= 1 && g.round >= 3) s = Math.max(s, 1.8);
-      // 相手のコアの隣に拠点があるなら、コアを破りきれる数までためる
-      const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.adjacentToStrong(g, id, q, r); });
-      if (coreFoe && me.power < estPower(coreFoe)) s = Math.max(s, 4);
+      // 相手のコアの隣まで来ているなら、コアを削りきれそうな数までためる
+      const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.neighbors(q, r).some(([a, b]) => { const n = cellAt(g, a, b); return n && n.owner === id; }); });
+      if (coreFoe && me.power < 4) s = Math.max(s, 4);
       out.push({ s: s + noise(), a: { type: 'produce' } });
     }
     return out;
   }
 
-  function decide(g, id, rng, level) {
-    rng = rng || Math.random;
-    const lv = LEVELS[level] || LEVELS.normal;
-    const me = playerById(g, id);
-    if (g.abandon) return g.abandon.player === id ? { type: 'abandon', cells: E.suggestAbandon(g, id) } : null;
-    const pd = g.pending;
-    if (pd) {
-      // 出す数を伏せて決める。相手が出せる最大数は見えている
-      const target = g.board[pd.target];
-      if (pd.atk === null && pd.attacker === id) {
-        if (lv.bidRandom) return { type: 'bid', count: 1 + Math.floor(rng() * me.power) };
-        const foe = playerById(g, pd.defender);
-        let n;
-        const need = Math.max(1, estPower(foe));                    // 同じ数なら攻撃側の勝ち
-        if (me.power >= need) n = need;                              // 相手が全部出しても破れそうな最小の数
-        else if (target.core) n = me.power;                          // コアを狙うなら全部
-        else n = rng() < 0.6 ? me.power : 1 + Math.floor(rng() * me.power);
-        return { type: 'bid', count: n };
-      }
-      if (pd.def === null && pd.defender === id) {
-        if (lv.bidRandom) return { type: 'bid', count: Math.floor(rng() * (me.power + 1)) };
-        const foe = playerById(g, pd.attacker);
-        // 相手が全部出しても守れそうな数（相手の数は見えないので見積もり。同じ数では負けるので1個多く）
-        const sure = estPower(foe) + 1;
-        const keep = target.core ? 0 : threat(g, me) > 0 ? 1 : 0;    // コアのために残しておく数
-        let n;
-        if (me.power - keep >= sure) n = sure;
-        else if (target.core) n = me.power;
-        else if (me.power - keep <= 0) n = 0;
-        else n = rng() < 0.5 ? 0 : 1 + Math.floor(rng() * (me.power - keep));
-        return { type: 'bid', count: Math.min(n, me.power) };
-      }
-      return null;
-    }
-    if (E.current(g).id !== id || g.over) return null;
-    // 行動回数を使い切ったら、資源を払ってでもやりたい行動があれば行動 +1 を買う
-    if (g.actionsLeft <= 0) {
-      // 生産は行動回数を使わないので、狙われていれば先に生産
-      if (!E.actionBlocked(g, id, 'produce') && threat(g, me) > 0 && me.power < 3) return { type: 'produce' };
-      const cost = E.extraActionCost(g);
-      if (me.resource < cost + 1) return { type: 'endTurn' };
-      g.actionsLeft = 1; me.resource -= cost;           // 買ったつもりで考えてみる
-      const top = scoreActions(g, id, rng, lv).sort((a, b) => b.s - a.s)[0];
-      g.actionsLeft = 0; me.resource += cost;
-      return top && top.s >= lv.buyAt ? { type: 'buyAction' } : { type: 'endTurn' };
-    }
-    const best = scoreActions(g, id, rng, lv).sort((a, b) => b.s - a.s)[0];
-    return best && best.s > lv.endBelow ? best.a : { type: 'endTurn' };
-  }
-
-  // リアルタイムモード：行動力があれば、一番よい行動を1つ選ぶ（よい行動がなければ何もしない＝待つ）
+  // 一番よい行動を1つ選ぶ（よい行動がなければ何もしない＝待つ）
   function decideRealtime(g, id, rng, level) {
     rng = rng || Math.random;
     const lv = LEVELS[level] || LEVELS.normal;
@@ -225,7 +148,7 @@
     const foeDist = (q, r) => foeCells.reduce((m, f) => Math.min(m, E.dist([q, r], [f.q, f.r])), 99);
     // 防御：相手のセルと接している（または相手が2マス以内に来ている）自分のセルに、戦力トークンをつぎ込む。
     // 欲しい防御はコア3・強化済のセル2・ほかは1。コア以外は、攻める分の戦力を1個残す
-    if (!lv.passive) {
+    {
       for (const c of E.cellsOf(g, id)) {
         const want = c.core ? 3 : c.strong ? 2 : 1;
         if ((c.def || 0) >= want || me.power < (c.core ? 1 : 2)) continue;
@@ -239,5 +162,5 @@
     return best && best.s > lv.endBelow ? best.a : null;
   }
 
-  return { decide, decideRealtime, LEVELS, LEVEL_NAMES };
+  return { decideRealtime, LEVELS, LEVEL_NAMES };
 });
