@@ -1088,12 +1088,29 @@
     const wrap = $('.board-wrap');
     const W = wrap.clientWidth, H = wrap.clientHeight;
     const w = el.offsetWidth, h = el.offsetHeight;
-    let left = x - s * 1.05 - w;
-    if (left < 8) left = x + s * 1.05;
+    // マスの左に出す（入りきらなければ右）。カーソルが重なって反対側に移したあとは、そちらを先に
+    const toLeft = x - s * 1.05 - w, toRight = x + s * 1.05;
+    let left = app.tip.flip ? toRight : toLeft;
+    if (left < 8 || left + w > W - 8) left = app.tip.flip ? toLeft : toRight;
     left = Math.max(8, Math.min(left, W - w - 8));
-    const top = Math.max(8, Math.min(y - h / 2, H - h - 8));
+    // 選んだマスなら、行動のボタンがマスと同じ高さに来るように（マスから横に動かすと、そのままボタンに届く）
+    const acts = app.tip.pinned && el.querySelector('.tt-acts');
+    const anchor = acts ? acts.offsetTop + acts.offsetHeight / 2 : h / 2;
+    const top = Math.max(8, Math.min(y - anchor, H - h - 8));
     el.style.left = left + 'px';
     el.style.top = top + 'px';
+  }
+
+  // 選んだマスのツールチップにカーソルが重なったら（行動のボタンの上は除く）、マスの反対側に移す。
+  // ツールチップの下のマスを選びやすくするため
+  function dodgeTip(e) {
+    if (!app.tip || !app.tip.pinned || e.pointerType !== 'mouse') return;
+    if (e.target.closest('.tt-acts')) return;
+    const now = Date.now();
+    if (app.tip.flippedAt && now - app.tip.flippedAt < 500) return;   // 移した直後にまた重なっても、行ったり来たりしない
+    app.tip.flip = !app.tip.flip;
+    app.tip.flippedAt = now;
+    positionTip();
   }
 
   function hideTip() {
@@ -1185,6 +1202,12 @@
       if (b.dataset.act === 'reinforce' || b.dataset.act === 'produceAttack') window.HexSound.play('reinforce');
       send({ type: 'act', action: { type: b.dataset.act } });
     };
+    $('#tooltip').addEventListener('pointerover', dodgeTip);
+    // ツールチップの上でホイールを回しても、盤面を拡大・縮小する
+    $('#tooltip').addEventListener('wheel', e => {
+      e.preventDefault();
+      $('#board').dispatchEvent(new WheelEvent('wheel', { clientX: e.clientX, clientY: e.clientY, deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, bubbles: true, cancelable: true }));
+    }, { passive: false });
     $('#tooltip').onclick = e => {
       const b = e.target.closest('[data-cell-act]');
       if (!b || b.disabled || !app.tip) return;
