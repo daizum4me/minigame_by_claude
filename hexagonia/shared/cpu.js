@@ -59,7 +59,7 @@
         const c = g.board[k];
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
-        // 相手のコアに近づくほど高い（コアを奪えば、相手のセルとトークンをまるごと奪える）
+        // 相手のコアに近づくほど高い（コアを壊せば、相手のセルとトークンをまるごと受け継げる）
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.35;
         if (c.terrain === 'mine') s += me.power <= 1 ? 2.5 : 1.2;    // 鉱山は取ると戦力トークン +1
                 if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林はターンごとの資源 +1（終盤は元が取れない）
@@ -89,11 +89,17 @@
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (me.power === 0 && frontier(g, id) > 0) s += 1.5;
+        // 強化済のセルは攻撃の拠点。新しく攻撃できるようになる相手のセルが多いほど、相手のコアを狙えるならさらに
+        if (foeNeighbors(g, id, c) > 0) {
+          const newTargets = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id && !E.adjacentToStrong(g, id, q, r); }).length;
+          s += Math.min(3, newTargets) * 0.6;
+          if (E.neighbors(c.q, c.r).some(([q, r]) => { const n = cellAt(g, q, r); return n && n.core && n.owner && n.owner !== id; })) s += 4;
+        }
         out.push({ s: s + noise() + (lv.bias.strengthen || 0), a: { type: 'strengthen', q: c.q, r: c.r } });
       }
     }
     if (!E.actionBlocked(g, id, 'cultivate')) {
-      // 開墾：食料が足りなくなりそうなら、前線から遠い（奪われにくい）平原のセルを農地にする
+      // 開墾：食料が足りなくなりそうなら、前線から遠い（壊されにくい）平原のセルを農地にする
       const ks = E.targets(g, id, 'cultivate');
       if (ks.length) {
         const k = ks.map(k => ({ k, f: foeNeighbors(g, id, g.board[k]) })).sort((a, b) => a.f - b.f)[0].k;
@@ -106,15 +112,13 @@
     if (!E.actionBlocked(g, id, 'destroy')) {
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
-        // 攻防はなく、防御の分だけ攻撃を重ねれば奪える。相手の防御の数は見えないので、セルの種類から見積もる（c.def は見ない）
+        // 攻防はなく、防御の分だけ攻撃を重ねれば壊せる。相手の防御の数は見えないので、セルの種類から見積もる（c.def は見ない）
         const need = (c.core ? 3 : c.strong ? 2 : 1) + 1;
         const canBreak = me.power >= need;
         let s = c.core ? (canBreak ? 30 : 3) : canBreak ? 4 : -1.5;   // 防御を削りきれないなら控える
-        s += 0.8;   // 奪うと、そのマスが自分のセルになる
         if (c.strong) s += 1 + (E.dist([c.q, c.r], E.parseKey(me.core)) <= 3 ? 1.5 : 0);   // 近くの相手の拠点は崩したい
         if (late) s += 1.5;
         if (late && leaderGroups.has(k)) s += 2;          // 首位のかたまりを削る
-        if (touchesMine(c)) s += 0.5;                       // 取ったマスが自分のかたまりにつながる
         // 自分のコアの隣にいる相手セルは優先して壊す
         if (E.dist([c.q, c.r], E.parseKey(me.core)) <= 1) s += 3;
         out.push({ s: s + noise() + (lv.bias.destroy || 0), a: { type: 'destroy', q: c.q, r: c.r } });
@@ -127,8 +131,8 @@
       // 自分のコアの近くに相手がいれば、守るためにためる
       if (danger > 0) s = Math.max(s, 5.5 - me.power * 1.3 + danger * 0.5);
       else if (me.power <= 1 && g.round >= 3) s = Math.max(s, 1.8);
-      // 相手のコアの隣まで来ているなら、コアを削りきれそうな数までためる
-      const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.neighbors(q, r).some(([a, b]) => { const n = cellAt(g, a, b); return n && n.owner === id; }); });
+      // 相手のコアの隣に拠点があるなら、コアを削りきれそうな数までためる
+      const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.adjacentToStrong(g, id, q, r); });
       if (coreFoe && me.power < 4) s = Math.max(s, 4);
       out.push({ s: s + noise(), a: { type: 'produce' } });
     }

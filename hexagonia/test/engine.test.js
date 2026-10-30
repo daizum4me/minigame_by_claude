@@ -274,7 +274,7 @@ test('開墾：資源2・行動力1で、自分の平原のセル（コア以外
   assert.strictEqual(E.foodMade(g, a), 7);
 });
 
-test('鉱山マス：拡張したとき・強化したとき・攻撃で取ったときに戦力トークン +1', () => {
+test('鉱山マス：拡張したとき・強化したときに戦力トークン +1', () => {
   const { g, a, b } = rtGame();
   const [q, r] = freeNext(g, a);
   setCell(g, q, r, { terrain: 'mine' });
@@ -283,9 +283,6 @@ test('鉱山マス：拡張したとき・強化したとき・攻撃で取っ�
   assert.strictEqual(P(g, a).power, 3);
   assert.ok(E.apply(g, a, { type: 'strengthen', q, r }).ok);
   assert.strictEqual(P(g, a).power, 5);
-  setCell(g, q, r, { owner: b, terrain: 'mine' });
-  assert.ok(E.apply(g, a, { type: 'destroy', q, r }).ok);
-  assert.deepStrictEqual([g.board[E.key(q, r)].owner, P(g, a).power], [a, 5]);
 });
 
 test('生産：資源2で戦力トークン +1。行動力を使わず、ログに出ない', () => {
@@ -297,21 +294,25 @@ test('生産：資源2で戦力トークン +1。行動力を使わず、ログ�
   assert.strictEqual(E.apply(g, a, { type: 'produce' }).ok, false);
 });
 
-test('リアルタイム：攻撃は行動力1と戦力トークン1個ですぐ決まる。防御があれば防御が1減るだけで、0のときに奪える', () => {
+test('攻撃は行動力1と戦力トークン1個ですぐ決まる。強化済のセル（拠点）の隣だけ。防御があれば防御が1減るだけで、0のときに壊して空きマスに戻す', () => {
   const { g, a, b } = rtGame();
   const core = P(g, a).core;
   const [cq, cr] = E.parseKey(core);
   const [tq, tr] = nb(g, cq, cr)[0];
   const t = E.key(tq, tr);
   setCell(g, tq, tr, { owner: b });
-  assert.ok(E.targets(g, a, 'destroy').includes(t));            // 強化していなくても、隣なら狙える
+  assert.ok(!E.targets(g, a, 'destroy').includes(t));           // 未強化のセルの隣からは攻撃できない
+  P(g, a).ap = 1;
+  assert.strictEqual(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok, false);
+  g.board[core].strong = true;                                   // コアを強化すると拠点になる
+  assert.ok(E.targets(g, a, 'destroy').includes(t));
   // b がセル t に防御を2つぎ込む（1回で1。行動力は使わない）
   P(g, b).power = 3; P(g, b).ap = 0;
   assert.ok(E.apply(g, b, { type: 'fortify', q: tq, r: tr }).ok);
   assert.ok(E.apply(g, b, { type: 'fortify', q: tq, r: tr }).ok);
   assert.deepStrictEqual([g.board[t].def, P(g, b).power, P(g, b).ap], [2, 1, 0]);
   assert.strictEqual(E.apply(g, b, { type: 'fortify', q: cq, r: cr }).ok, false);   // 相手のセルには置けない
-  // 行動力が 0 だと攻撃できない。1回目・2回目は防御が減るだけ、3回目で奪う
+  // 行動力が 0 だと攻撃できない。1回目・2回目は防御が減るだけ、3回目で壊す
   P(g, a).power = 3; P(g, a).ap = 0;
   assert.strictEqual(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok, false);
   P(g, a).ap = 3;
@@ -320,7 +321,8 @@ test('リアルタイム：攻撃は行動力1と戦力トークン1個ですぐ
   assert.match(g.log.at(-1).text, /攻撃（防御を削った）/);
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
-  assert.deepStrictEqual([g.board[t].owner, g.board[t].def || 0, P(g, a).power, P(g, a).ap], [a, 0, 0, 0]);
+  assert.deepStrictEqual([g.board[t].owner, g.board[t].def || 0, P(g, a).power, P(g, a).ap], [null, 0, 0, 0]);   // 攻撃側のセルにはならない
+  assert.match(g.log.at(-1).text, /^攻撃成功：.*を壊した（空きマスに戻る）/);
   // 攻撃の記録（攻撃されたことを画面で知らせる）
   assert.deepStrictEqual(g.attacks.map(x => [x.by, x.victim, x.key, x.took]), [[a, b, t, false], [a, b, t, false], [a, b, t, true]]);
   assert.strictEqual(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok, false);   // 戦力がない
@@ -358,7 +360,7 @@ test('リアルタイム：セルの防御は6まで', () => {
   assert.deepStrictEqual([g.board[P(g, a).core].def, P(g, a).power], [6, 4]);
 });
 
-test('橋：河川マスへの拡張は資源3。強化できる。攻撃で奪われると河川に戻る', () => {
+test('橋：河川マスへの拡張は資源3。強化できる。攻撃で壊されると河川に戻る', () => {
   const { g, a, b } = rtGame();
   const [rq, rr] = freeNext(g, a);
   const rk = E.key(rq, rr);
@@ -370,23 +372,23 @@ test('橋：河川マスへの拡張は資源3。強化できる。攻撃で奪�
   assert.strictEqual(P(g, a).resource, 7);
   assert.ok(E.apply(g, a, { type: 'strengthen', q: rq, r: rr }).ok);
   const [bq, br] = nb(g, rq, rr).find(([q, r]) => !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river');
-  setCell(g, bq, br, { owner: b });
+  setCell(g, bq, br, { owner: b, strong: true });
   assert.ok(E.apply(g, b, { type: 'destroy', q: rq, r: rr }).ok);
   assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain, g.board[rk].strong], [null, 'river', false]);
 });
 
-test('コアを奪うと脱落し、奪った人がセル・トークンをまるごと受け継ぐ。最後の1人が勝つ', () => {
+test('コアを壊すと脱落し、壊した人が残りのセル・トークンをまるごと受け継ぐ（コアのマスは空きマスに）。最後の1人が勝つ', () => {
   const g = newGame(3);
   const [a, b, c] = g.players.map(p => p.id);
   const [bq, br] = E.parseKey(P(g, b).core);
   const [nq, nr] = nb(g, bq, br).find(([q, r]) => !g.board[E.key(q, r)].owner);
-  setCell(g, nq, nr, { owner: a });
+  setCell(g, nq, nr, { owner: a, strong: true });
   const [xq, xr] = freeNext(g, b);
   setCell(g, xq, xr, { owner: b, strong: true });
   P(g, b).resource = 7; P(g, b).food = 4;
   assert.ok(E.apply(g, a, { type: 'destroy', q: bq, r: br }).ok);
   assert.strictEqual(P(g, b).alive, false);
-  assert.deepStrictEqual([g.board[E.key(bq, br)].owner, g.board[E.key(bq, br)].core, g.board[E.key(xq, xr)].owner, g.board[E.key(xq, xr)].strong], [a, false, a, true]);
+  assert.deepStrictEqual([g.board[E.key(bq, br)].owner, g.board[E.key(bq, br)].core, g.board[E.key(xq, xr)].owner, g.board[E.key(xq, xr)].strong], [null, false, a, true]);
   assert.deepStrictEqual([P(g, a).resource, P(g, a).power, P(g, a).food], [3 + 7, 1 + 2, 4]);
   assert.ok(!g.over);
   E.forfeit(g, c);

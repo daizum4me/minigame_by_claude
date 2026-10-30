@@ -149,7 +149,7 @@ test('行動はホストが検証して全員に配信。だれでもいつで�
   assert.ok(!('turnLeftMs' in last(h).room));
 });
 
-test('15秒ごとにターンが進み、5秒ごとに行動力が回復。ターン数はホストが設定できる', () => {
+test('20秒ごとにターンが進み、5秒ごとに行動力が回復。ターン数はホストが設定できる', () => {
   const { room, inbox, last, fire, timers } = makeRoom();
   const h = room.join('t1', 'A').id;
   const g = room.join('t2', 'B').id;
@@ -162,14 +162,14 @@ test('15秒ごとにターンが進み、5秒ごとに行動力が回復。タ�
   room.handle(h, { type: 'start' });
   const gm = room.game;
   assert.deepStrictEqual([gm.mode, gm.rounds], ['realtime', 12]);
-  assert.strictEqual(last(h).room.tickLeftMs, 15000);
+  assert.strictEqual(last(h).room.tickLeftMs, 20000);
   const me = gm.players.find(p => p.id === h);
   me.ap = 0;
   fire(5000);
   assert.strictEqual(me.ap, 1);
-  fire(15000);
+  fire(20000);
   assert.strictEqual(gm.round, 1);
-  assert.ok(timers.some(t => t.ms === 15000) && timers.some(t => t.ms === 5000));   // 次のターン・回復も予約される
+  assert.ok(timers.some(t => t.ms === 20000) && timers.some(t => t.ms === 5000));   // 次のターン・回復も予約される
 });
 
 test('CPU は2.5秒ごとに考えて動く', () => {
