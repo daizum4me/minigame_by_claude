@@ -217,34 +217,44 @@
     if (!me || !me.alive || g.over) return null;
     const out = scoreActions(g, id, rng, lv);
     const noise = () => (rng() - 0.5) * lv.noise;
-    const core = E.parseKey(me.core);
-    // 防御：コアとその周りのセルの、相手のセルと接する辺を固める（相手がすぐ壊せる辺から）
-    if (!lv.passive && me.power >= 1 && (me.ap || 0) >= 1) {
+    const foeCells = [];
+    for (const f of g.players) if (f.alive && f.id !== id) foeCells.push(...E.cellsOf(g, f.id));
+    const foeDist = (q, r) => foeCells.reduce((m, f) => Math.min(m, E.dist([q, r], [f.q, f.r])), 99);
+    // 防御：相手のセルに面した辺を固める。コアは特に厚く。相手が近づいてきた（2マス以内）辺には、攻められる前に先に置く
+    if (!lv.passive && (me.ap || 0) >= 1) {
       for (const c of E.cellsOf(g, id)) {
-        const d = E.dist([c.q, c.r], core);
-        if (d > 1) continue;
         const ck = E.key(c.q, c.r);
+        const want = c.core ? 3 : c.strong ? 2 : 1;                 // 欲しい体力
+        if (me.power < (c.core ? 1 : 2)) continue;                  // コア以外は、攻める分を1個残す
         for (const [q, r] of E.neighbors(c.q, c.r)) {
           const n = cellAt(g, q, r);
-          if (!n || !n.owner || n.owner === id) continue;
-          const w = g.walls[E.wallKey(ck, E.key(q, r))];   // 自分のマスの、相手に面した辺
-          if (w && w.hp >= 3) continue;
-          const count = Math.min(me.power, c.core ? 2 : 1);
-          out.push({ s: (c.core ? 7 : 3.5) - (w ? w.hp : 0) + noise(), a: { type: 'wall', from: ck, to: E.key(q, r), count } });
+          if (!n || n.terrain === 'river' && !n.owner) continue;
+          const hostile = !!n.owner && n.owner !== id;
+          const near = !n.owner && foeDist(q, r) <= 2;              // 空きマスだが、相手がすぐ隣に広げてくる
+          if (!hostile && !near) continue;
+          const w = g.walls[E.wallKey(ck, E.key(q, r))];
+          const hp = w ? w.hp : 0;
+          if (hp >= want) continue;
+          const base = c.core ? 8 : c.strong ? 4.5 : 2.8;
+          const count = Math.max(1, Math.min(want - hp, me.power - (c.core ? 0 : 1)));
+          out.push({ s: base * (hostile ? 1 : 0.8) - hp * 1.5 + noise(), a: { type: 'wall', from: ck, to: E.key(q, r), count } });
         }
       }
     }
-    // 防御を壊す：相手のコアの隣にいるのに、防御で攻められないとき
-    if (!lv.passive && me.power >= 1 && (me.ap || 0) >= 1) {
+    // 防御を壊す：防御で攻められない相手のセルのうち、壊す価値のあるもの（コア＞強化済のセル＞ふつうのセル）
+    if (!lv.passive && (me.ap || 0) >= 2) {
       for (const f of g.players) {
         if (!f.alive || f.id === id) continue;
-        const [fq, fr] = E.parseKey(f.core);
-        for (const [q, r] of E.neighbors(fq, fr)) {
-          const n = cellAt(g, q, r);
-          if (!n || n.owner !== id) continue;
-          const w = g.walls[E.wallKey(f.core, E.key(q, r))];   // 相手のコアの、こちらに面した辺
-          if (!w || w.owner === id || me.power < w.hp + 1) continue;   // 壊したあと破壊する1個も残す
-          out.push({ s: 9 + noise(), a: { type: 'breakWall', from: f.core, to: E.key(q, r), count: w.hp } });
+        for (const x of E.cellsOf(g, f.id)) {
+          const xk = E.key(x.q, x.r);
+          for (const [q, r] of E.neighbors(x.q, x.r)) {
+            const y = cellAt(g, q, r);
+            if (!y || y.owner !== id) continue;
+            const w = g.walls[E.wallKey(xk, E.key(q, r))];          // 相手のセルの、こちらに面した辺
+            if (!w || w.owner === id || me.power < w.hp + 1) continue;   // 壊したあと破壊する1個も残す
+            const value = x.core ? 9 : x.strong ? 4.5 : 2.5;
+            out.push({ s: value - w.hp * 0.6 + noise(), a: { type: 'breakWall', from: xk, to: E.key(q, r), count: w.hp } });
+          }
         }
       }
     }

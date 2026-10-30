@@ -131,3 +131,48 @@ test('CPU の強さ：つよいはふつうに勝ち越し、よわいはふつ�
   assert.ok(strong > 0.5, `つよい ${strong}`);
   assert.ok(weak < 0.4, `よわい ${weak}`);
 });
+
+// リアルタイムモードの CPU：防御を置く・壊す
+function rtSetup() {
+  const rng = seeded(5);
+  const g = E.createGame(PLAYERS.slice(0, 2), rng, { mode: 'realtime', events: false });
+  const [a, b] = g.players;
+  Object.values(g.board).forEach(c => { if (!c.core && c.owner) c.owner = null; });
+  return { g, a, b, rng };
+}
+
+test('リアルタイムの CPU：相手のセルが近づいてきたら、コアの辺に先に防御を置く', () => {
+  const { g, a, b, rng } = rtSetup();
+  // 相手のセルを、a のコアから2マスの位置に置く（a のコアの隣のマスに広げてくる）
+  const [cq, cr] = E.parseKey(a.core);
+  const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => g.board[E.key(q, r)] && g.board[E.key(q, r)].terrain !== 'river');
+  const far = E.neighbors(nq, nr).find(([q, r]) => g.board[E.key(q, r)] && E.dist([q, r], [cq, cr]) === 2 && !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river');
+  Object.assign(g.board[E.key(...far)], { owner: b.id });
+  a.resource = 0; a.power = 3; a.ap = 3;      // 資源がないので、拡張・強化などはできず、防御だけ選べる
+  const act = CPU.decideRealtime(g, a.id, rng, 'strong');
+  assert.strictEqual(act.type, 'wall');
+  assert.strictEqual(act.from, a.core);
+  assert.ok(E.apply(g, a.id, act).ok);
+  assert.ok(Object.keys(g.walls).some(k => k.startsWith(a.core + '>')));
+});
+
+test('リアルタイムの CPU：防御で攻められない相手のコアは、戦力に余裕があれば防御を壊してから攻める。練習相手は防御を置かない', () => {
+  const { g, a, b, rng } = rtSetup();
+  const [fq, fr] = E.parseKey(b.core);
+  const [nq, nr] = E.neighbors(fq, fr).find(([q, r]) => g.board[E.key(q, r)] && g.board[E.key(q, r)].terrain !== 'river');
+  const mine = E.key(nq, nr);
+  Object.assign(g.board[mine], { owner: a.id });
+  g.walls[E.wallKey(b.core, mine)] = { owner: b.id, hp: 2 };
+  a.resource = 0; a.power = 4; a.ap = 3;
+  const act = CPU.decideRealtime(g, a.id, rng, 'strong');
+  assert.deepStrictEqual([act.type, act.from, act.to, act.count], ['breakWall', b.core, mine, 2]);
+  assert.ok(E.apply(g, a.id, act).ok);
+  assert.ok(E.targets(g, a.id, 'destroy').includes(b.core));
+  // 練習相手（passive）は、相手が近くにいても防御を置かない
+  const t = rtSetup();
+  const [cq, cr] = E.parseKey(t.a.core);
+  const [q2, r2] = E.neighbors(cq, cr).find(([q, r]) => t.g.board[E.key(q, r)] && t.g.board[E.key(q, r)].terrain !== 'river');
+  Object.assign(t.g.board[E.key(q2, r2)], { owner: t.b.id });
+  t.a.resource = 0; t.a.power = 3; t.a.ap = 3;
+  assert.strictEqual(CPU.decideRealtime(t.g, t.a.id, t.rng, 'tutorial'), null);
+});
