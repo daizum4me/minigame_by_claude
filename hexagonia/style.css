@@ -599,3 +599,18 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 /* 開いたツールチップ（行動のボタン）は、チュートリアルのカードより手前に */
 .tooltip.pinned { z-index: 9; }
 .wall-note { margin: 4px 0; font-size: 13px; color: #A8D6FF; font-weight: 600; }
+
+/* チャット */
+.chat h3 { margin-bottom: 6px; }
+.chat-list { list-style: none; margin: 0 0 6px; padding: 0; max-height: 132px; overflow-y: auto; font-size: 12.5px; line-height: 1.5; }
+.chat-list li { display: flex; align-items: baseline; gap: 5px; padding: 2px 0; overflow-wrap: anywhere; }
+.chat-list li .swatch { flex: none; align-self: center; width: 14px; height: 14px; }
+.chat-list li b { flex: none; font-weight: 600; color: var(--text); }
+.chat-list li span { color: #CFCDC5; min-width: 0; }
+.chat-list li.mine b { color: var(--accent); }
+.chat-list .empty { font-size: 12px; }
+.chat-form { display: flex; gap: 6px; }
+.chat-form input { flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-line); border-radius: 10px; padding: 7px 10px; color: var(--text); font: inherit; font-size: 13px; }
+.chat-form button { padding: 6px 12px; font-size: 13px; }
+#lobby-chat { margin-top: 4px; }
+#lobby-chat .chat-list { max-height: 120px; }

@@ -20,10 +20,17 @@
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
   const CPU_REPLY_MS = 700;     // CPU が攻防で応答するまでの間
+  const CHAT_KEEP = 30;         // 残して配信するチャットの件数
+  const CHAT_LEN = 80;          // チャット1件の文字数の上限
+  const CHAT_GAP_MS = 800;      // 続けて送れる間隔（連投よけ）
 
   function cleanName(s) {
     const t = Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, 12).join('').trim();
     return t || 'ゲスト';
+  }
+
+  function cleanChat(s) {
+    return Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, CHAT_LEN).join('').trim();
   }
 
   class Room {
@@ -40,6 +47,8 @@
       // 盤面の直径（マス）・1手番の行動回数・ラウンド数。0 は人数に合わせる
       this.settings = { diameter: 0, actions: 0, rounds: 0 };
       this.events = true;       // イベントを起こすか（チュートリアルでは起こさない）
+      this.chat = [];           // { seq, from, name, color, text }（ロビーとゲームで続けて使う）
+      this.chatSeq = 0;
       this.game = null;
       this.seq = 0;
       this.timers = {};         // turn / bid / grace / cpu
@@ -109,6 +118,17 @@
           if (this.players.some(x => x !== p && x.color === msg.color)) return err('その色はほかの人が使っています');
           p.color = msg.color;
           this.changed();
+          return;
+        }
+        case 'chat': {
+          const text = cleanChat(msg.text);
+          if (!text) return;
+          const now = this.now();
+          if (p.lastChat && now - p.lastChat < CHAT_GAP_MS) return err('少し待ってから送ってください');
+          p.lastChat = now;
+          this.chat.push({ seq: ++this.chatSeq, from: p.id, name: p.name, color: p.color, text });
+          if (this.chat.length > CHAT_KEEP) this.chat.splice(0, this.chat.length - CHAT_KEEP);
+          this.broadcast();
           return;
         }
         case 'addCpu': {
@@ -377,6 +397,7 @@
         bidLeftMs: live && g.pending ? Math.max(0, this.bidDeadline - now) : 0,
         graceFor: live && this.graceFor ? E.current(g).id : null,
         graceLeftMs: live && this.graceFor ? Math.max(0, this.graceDeadline - now) : 0,
+        chat: this.chat,
         game,
       };
     }
@@ -392,5 +413,5 @@
     }
   }
 
-  return { Room, COLORS, TURN_MS, BID_MS, GRACE_MS, ABANDON_MS };
+  return { Room, COLORS, TURN_MS, BID_MS, GRACE_MS, ABANDON_MS, CHAT_KEEP, CHAT_LEN };
 });
