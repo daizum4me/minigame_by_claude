@@ -636,7 +636,7 @@
     $('#hud-event').hidden = !evNow;
     $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '');
     $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
-      : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}</span>`;
+      : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}・残り行動 ${g.actionsLeft}</span>`;
 
     // 自分
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
@@ -665,7 +665,7 @@
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
     $('#players').classList.toggle('compact', g.players.length > 6);
-    // このラウンドの手番の順に並べる（ラウンドごとに最初の人が1人ずつずれる）
+    // 手番の順に並べる
     const n = g.players.length;
     const roundOrder = g.players.map((_, k) => g.players[((g.roundStart || 0) + k) % n]);
     $('#players').innerHTML = roundOrder.map(p => {
@@ -750,6 +750,8 @@
       const lo = E.minBid(side);
       const wall = pd.wall || 0;
       if (!app.bid || app.bid.key !== key) app.bid = { key, n: side === 'atk' ? Math.min(have, 1 + wall) : Math.min(have, Math.max(0, foeAtk + 1 - wall)) };
+      // 同じ手番に同じマスへもう一度宣言したときなど、前の数が持っている数を超えていたら直す
+      app.bid.n = Math.max(lo, Math.min(have, app.bid.n));
       app.bid.lo = lo;
       const n = app.bid.n;
       const kind = side === 'atk' ? 'attack' : 'defense';
@@ -815,6 +817,7 @@
     const el = $('#abandon');
     $('#dock').classList.toggle('abandoning', abandoning(g));
     if (!abandoning(g)) { el.hidden = true; app.abandonSel = new Set(); return; }
+    if (app.tip) hideTip();   // 選んでいたマスのツールチップは閉じる（マスを選ぶと捨てる候補になるので）
     const n = g.abandon.count;
     for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
     const k = app.abandonSel.size;
@@ -839,7 +842,7 @@
     { title: 'ヘキサゴニアへようこそ', next: true,
       text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
     { title: '盤面の見方', next: true,
-      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　▲ <b>山岳</b>：取ると防御トークン +1<br>● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源4で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると攻撃トークン +1　▲ <b>山岳</b>：取ると防御トークン +1<br>● <b>農地</b>：毎手番 食料 +1　▽ <b>森林</b>：毎手番 資源 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
     { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
       text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。',
       done: (g, base) => myCells(g).length > base.cells },
@@ -969,6 +972,8 @@
   function onCellSelect(key) {
     const g = app.room && app.room.game;
     if (abandoning(g)) {
+      // 捨てるセルを選ぶあいだは、ツールチップは出さない（出ていたら閉じる）。盤面の外や自分以外のマスを選んでも閉じるだけ
+      hideTip();
       const c = key && g.board[key];
       if (!c || c.owner !== app.me) return;
       if (c.core) { toast('コアは捨てられません'); return; }
@@ -983,7 +988,7 @@
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
-    if (byLongPress) { if (key) showTip({ key, pinned: true }); return; }
+    if (byLongPress) { if (key && !abandoning(app.room && app.room.game)) showTip({ key, pinned: true }); return; }
     if (app.tip && app.tip.pinned) return;   // 選んでいるマスがあるあいだは、そちらを出したまま
     if (!key) hideTip(); else showTip({ key, pinned: false });
   }

@@ -23,6 +23,8 @@
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
     // 平原：鉱山：農地：森林：山岳（河川は別に流す）。効果のあるマスは合わせて約27%（6/22）で、4種類に均等に分ける
     terrainRatio: { plain: 16, mine: 1.5, farm: 1.5, forest: 1.5, mountain: 1.5 },
+    // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに4種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
+    islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
     mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
     mountainDefense: 1,                 // 山岳マス：拡張（破壊で取ったときも）と強化のときに防御トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
@@ -44,12 +46,12 @@
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
     // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。
     // 生産：資源でトークンを作る（行動回数を使わない・ログに出ない）。reinforce は防御トークン、produceAttack は攻撃トークン
-    cost: { expand: 1, bridge: 4, strengthen: 2, destroy: 2, reinforce: 2, produceAttack: 3 },
+    cost: { expand: 1, bridge: 3, strengthen: 2, destroy: 2, reinforce: 2, produceAttack: 3 },
     // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
-    // 食料：手番終了時に、コア +5・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
+    // 食料：手番終了時に、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
-    food: { start: 0, core: 5, strong: 1, perCell: 1 },
+    food: { start: 0, core: 6, strong: 1, perCell: 1 },
     strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
     // 強化済のセルの役目（コアも強化すれば同じ）
     //  拠点：破壊できるのは、自分の強化済のセルに隣接する相手のセルだけ
@@ -170,7 +172,7 @@
     const inBoard = (q, r) => dist([q, r], [0, 0]) <= radius;
     const total = 3 * radius * (radius + 1) + 1;
     const edge = ring(radius).filter(c => !fixed.has(key(...c)));
-    const tributaries = radius >= 8 ? 2 : radius >= 5 ? 1 : 0;
+    const tributaries = radius >= 8 ? 1 : 0;   // 支流は大きな盤面だけ（河川で行動範囲が狭まりすぎないように）
     const DIR_KEY = (a, b) => `${b[0] - a[0]},${b[1] - a[1]}`;
 
     // start から goal（マスの集合のどれか）へ、向きを保ちつつ少し揺らぎながら進む
@@ -223,9 +225,9 @@
       return river;
     }
 
-    // どのコアも、河川を渡らずに十分な広さの土地を持てること
+    // どのコアも、河川を渡らずに十分な広さの土地（島）を持てること：盤面を人数で割った広さの 3/5 以上
     function fair(river) {
-      const need = Math.floor(total / (cores.length * 3));
+      const need = Math.floor(total * RULES.islandShare / cores.length);
       return cores.every(c => {
         const seen = new Set([key(...c)]), stack = [c];
         while (stack.length && seen.size < need) {
@@ -239,12 +241,11 @@
       });
     }
 
-    let river = new Set();
-    for (let i = 0; i < 40; i++) {
-      river = attempt();
+    for (let i = 0; i < 80; i++) {
+      const river = attempt();
       if (river.size >= radius && fair(river)) return river;
     }
-    return river;
+    return new Set();   // どうしても広さを満たせなければ河川なし
   }
 
   function generateBoard(count, rng, radius) {
@@ -266,14 +267,32 @@
     const ratio = RULES.terrainRatio;
     const kinds = TERRAIN_KINDS;
     const effect = kinds.reduce((n, t) => n + (ratio[t] || 0), 0);
-    // 効果のあるマスの合計を先に決めてから、種類ごとに分ける（割り切れない分はランダムな種類に1つずつ）
-    const sum = Math.round(free.length * effect / (ratio.plain + effect));
-    const counts = kinds.map(t => [t, Math.floor(sum * (ratio[t] || 0) / effect)]);
-    const extra = shuffle(counts.slice(), rng);
-    for (let left = sum - counts.reduce((n, c) => n + c[1], 0), j = 0; left > 0; left--, j++) extra[j % extra.length][1]++;
-    shuffle(free, rng);
-    let i = 0;
-    for (const [t, n] of counts) for (let j = 0; j < n && i < free.length; j++) board[free[i++]].terrain = t;
+    // 公平さのため、どのコアにも、距離2（足りなければ3）のマスに4種類を1つずつ置く
+    const used = new Set(), owners = new Map();   // 置いたマスと、どのコアのために置いたか
+    let placed = 0;
+    for (const c of cores) {
+      for (let d = 2; d <= 3; d++) {
+        const ks = shuffle(ring(d).map(([q, r]) => key(c[0] + q, c[1] + r)).filter(k => board[k] && !fixed.has(k) && !river.has(k) && !used.has(k)), rng);
+        const mine = [...used].filter(k => owners.get(k) === c);
+        const want = kinds.filter(t => !mine.some(k => board[k].terrain === t));
+        for (const t of want) {
+          const k = ks.shift();
+          if (!k) break;
+          board[k].terrain = t;
+          used.add(k);
+          owners.set(k, c);
+          placed++;
+        }
+      }
+    }
+    // 残りは、効果のあるマスの合計（約27%）に届くまで、種類ごとの数がそろうように散らす
+    const sum = Math.max(placed, Math.round(free.length * effect / (ratio.plain + effect)));
+    const have = t => free.filter(k => board[k].terrain === t).length;
+    const rest = shuffle(free.filter(k => !used.has(k)), rng);
+    for (let left = sum - placed; left > 0 && rest.length; left--) {
+      const t = shuffle(kinds.slice(), rng).sort((a, b) => have(a) / (ratio[a] || 1) - have(b) / (ratio[b] || 1))[0];
+      board[rest.shift()].terrain = t;
+    }
     return { radius, board, cores };
   }
 
@@ -313,7 +332,7 @@
       preQueue: [],          // 先行で、このあと手番が来る人（players の何番目か）
       eventPlan: [],         // ラウンドごとのイベント（ホストだけが持つ。ほかの人には今と次のラウンドの分だけ送る）
       event: null,           // このラウンドのイベント
-      roundStart: 0,         // このラウンドの最初の人（players の何番目か）。ラウンドごとに1人ずつずれる
+      roundStart: 0,         // 最初の人（players の何番目か）。ラウンドが変わってもずらさない
       roundPos: 0,           // このラウンドで何人目の手番か
       actionsLeft: actions,
       extraBought: 0,        // この手番で行動 +1 を買った回数
@@ -550,7 +569,6 @@
       // 攻撃側（攻撃トークン1個以上）・防御側が、出すトークンの数を伏せて決める。
       // 防御トークンの数は相手に見えないので、防御側が0個でも攻撃側は数を選ぶ
       state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null, wall: wallOf(state, cell) };
-      if (def.defense <= 0) state.pending.def = 0;
       if (p.attack === 1) state.pending.atk = 1;                     // 1個しかなければ1個に決まる
       if (state.pending.atk !== null && state.pending.def !== null) resolveDestroy(state, state.pending.atk, state.pending.def);
     }
@@ -606,7 +624,7 @@
     // 守られたなら、防御側は「攻撃 − 城壁」より多く出したはず（攻撃トークンの数は見えるので、そこまではわかる）
     if (!success) d.defenseSeen = Math.max(0, d.defenseSeen - Math.max(0, atk - wall + 1));
     const what = cell.core ? 'コア' : 'セル';
-    if (d.defense + def > 0 || wall > 0) addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
+    addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
     const wasCore = cell.core;
     Object.assign(cell, { owner: null, strong: false, core: false });
@@ -673,7 +691,7 @@
     advance(state);
   }
 
-  // 手番終了時に作る食料：コア +5、強化済のセル（コアも）1つにつき +1、農地マスのセル1つにつき +1
+  // 手番終了時に作る食料：コア +6、強化済のセル（コアも）1つにつき +1、農地マスのセル1つにつき +1
   function foodMade(state, id) {
     const f = RULES.food;
     const ev = eventOf(state);
@@ -746,9 +764,8 @@
       if (state.roundPos >= n) {
         state.round++;
         if (state.round > state.rounds) { finishByGroup(state); return; }
-        if (n > 2) do { state.roundStart = (state.roundStart + 1) % n; } while (!state.players[state.roundStart].alive);
         state.roundPos = 0;
-        addLog(state, `ラウンド ${state.round} / ${state.rounds}${n > 2 ? `（最初は ${state.players[state.roundStart].name}）` : ''}`, 'round');
+        addLog(state, `ラウンド ${state.round} / ${state.rounds}`, 'round');
         startRoundEvent(state);
       }
       i = (state.roundStart + state.roundPos) % n;

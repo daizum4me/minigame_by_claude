@@ -63,18 +63,26 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
   }
 });
 
-test('地形は平原・鉱山・農地・森林・山岳（効果のあるマスは合わせて約27%、4種類に均等）と河川', () => {
+test('地形：どのコアにも距離2〜3のマスに4種類が1つずつあり、効果のあるマスは合わせて約27%（4種類に均等）', () => {
   for (const n of [2, 4, 8, 12]) {
-    const g = newGame(n, 3);
-    const cnt = {};
-    Object.values(g.board).forEach(c => { cnt[c.terrain] = (cnt[c.terrain] || 0) + 1; });
-    assert.deepStrictEqual(Object.keys(cnt).sort(), ['farm', 'forest', 'mine', 'mountain', 'plain', 'river'], JSON.stringify(cnt));
-    // コアとその周りは平原、河川は河川。残りのマスの 6/22 が効果のあるマス
-    const fixed = g.players.reduce((k, p) => k + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
-    const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
-    const kinds = [cnt.mine, cnt.farm, cnt.forest, cnt.mountain];
-    assert.strictEqual(kinds.reduce((a, b) => a + b, 0), Math.round(free * 6 / 22), JSON.stringify(cnt));
-    assert.ok(Math.max(...kinds) - Math.min(...kinds) <= 1, JSON.stringify(cnt));
+    for (const seed of [1, 2, 3]) {
+      const g = newGame(n, seed);
+      const cnt = {};
+      Object.values(g.board).forEach(c => { cnt[c.terrain] = (cnt[c.terrain] || 0) + 1; });
+      // コアとその周りは平原
+      for (const p of g.players) {
+        const core = E.parseKey(p.core);
+        assert.strictEqual(g.board[p.core].terrain, 'plain');
+        nb(g, ...core).forEach(([q, r]) => assert.strictEqual(g.board[E.key(q, r)].terrain, 'plain'));
+        for (const t of E.TERRAIN_KINDS) assert.ok(Object.values(g.board).some(c => c.terrain === t && [2, 3].includes(E.dist([c.q, c.r], core))), `${n}人 seed${seed}: ${t}`);
+      }
+      const fixed = g.players.reduce((k, p) => k + 1 + nb(g, ...E.parseKey(p.core)).length, 0);
+      const free = Object.keys(g.board).length - fixed - (cnt.river || 0);
+      const kinds = E.TERRAIN_KINDS.map(t => cnt[t] || 0);
+      const sum = kinds.reduce((a, b) => a + b, 0);
+      assert.strictEqual(sum, Math.max(4 * n, Math.round(free * 6 / 22)), JSON.stringify(cnt));
+      assert.ok(Math.max(...kinds) - Math.min(...kinds) <= 1, JSON.stringify(cnt));
+    }
   }
 });
 
@@ -179,7 +187,7 @@ function clashSetup() {
   return { g, a, b, t: E.key(tq, tr), tq, tr };
 }
 
-test('破壊：資源2・攻撃トークン1個以上が必要。防御トークンがなければ成功し、そのマスが攻撃側のセルになる', () => {
+test('破壊：資源2・攻撃トークン1個以上が必要。防御トークンがなくても攻防になり、0個なら成功してそのマスが攻撃側のセルになる', () => {
   const { g, a, b, t, tq, tr } = clashSetup();
   P(g, b).defense = 0;
   P(g, a).attack = 0;
@@ -189,6 +197,8 @@ test('破壊：資源2・攻撃トークン1個以上が必要。防御トーク
   assert.deepStrictEqual(E.targets(g, a, 'destroy'), []);
   P(g, a).attack = 1;                         // 1個しかなければ1個に決まる
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
+  assert.deepStrictEqual(E.waiting(g), [b]);  // 防御トークンがなくても、防御側は（0個を）選ぶ
+  assert.ok(E.apply(g, b, { type: 'bid', count: 0 }).ok);
   assert.strictEqual(g.pending, null);
   assert.deepStrictEqual([g.board[t].owner, g.board[t].strong], [a, false]);
   assert.strictEqual(P(g, a).resource, 8);
@@ -228,7 +238,9 @@ test('破壊：防御トークンがなくても、攻撃側は出す数を選�
   P(g, b).defense = 0;
   P(g, a).attack = 3;
   E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-  assert.deepStrictEqual(E.waiting(g), [a]);   // 防御側は0個に決まっている
+  assert.deepStrictEqual(E.waiting(g).sort(), [a, b].sort());   // 防御トークンがなくても、防御側は選ぶ（0個しか出せない）
+  assert.strictEqual(E.apply(g, b, { type: 'bid', count: 1 }).ok, false);
+  E.apply(g, b, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 2 });
   assert.strictEqual(g.board[t].owner, a);
   assert.strictEqual(P(g, a).attack, 1);
@@ -291,6 +303,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   P(g, b).resource = 5; P(g, b).attack = 2; P(g, b).defense = 0;
   P(g, a).attack = 5;
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
+  E.apply(g, b, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 1 });   // 相手の防御トークンは見えないので、攻撃側は数を選ぶ
   assert.strictEqual(P(g, b).alive, false);
   assert.strictEqual(E.cellsOf(g, b).length, 0);
@@ -300,10 +313,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   E.apply(g, a, { type: 'endTurn' });
   assert.strictEqual(cur(g), c);                       // 脱落した b は飛ばされる
   E.apply(g, c, { type: 'endTurn' });
-  // ラウンド2は最初の人が1人ずれる（b は脱落しているので c から）
   assert.strictEqual(g.round, 2);
-  assert.strictEqual(cur(g), c);
-  E.apply(g, c, { type: 'endTurn' });
   assert.strictEqual(cur(g), a);
   // c のコアも破壊
   const cc = E.parseKey(P(g, c).core);
@@ -312,6 +322,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   P(g, c).defense = 0;
   P(g, a).resource = 10;
   E.apply(g, a, { type: 'destroy', q: cc[0], r: cc[1] });
+  E.apply(g, c, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 1 });
   assert.ok(g.over);
   assert.deepStrictEqual(g.winners, [a]);
@@ -440,8 +451,8 @@ test('セルを捨てる：数が違う・コア・ほかの人のセルは不�
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g), other = g.players.find(p => p.id !== me).id;
   const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 12);
-  mine.forEach(c => { c.owner = me; });                 // 12＋コア = 13 マス：食べる13・作る5
-  P(g, me).food = 6;                                    // 貯え6 → 2 足りない
+  mine.forEach(c => { c.owner = me; });                 // 12＋コア = 13 マス：食べる13・作る6
+  P(g, me).food = 5;                                    // 貯え5 → 2 足りない
   E.apply(g, me, { type: 'endTurn' });
   assert.deepStrictEqual(g.abandon, { player: me, count: 2 });
   assert.strictEqual(cur(g), me);                       // 捨てるまで次の人に回らない
@@ -495,17 +506,17 @@ test('河川：端から端へ流れる本流（大きい盤面は支流も）�
   }
 });
 
-test('橋：河川マスへの拡張は資源4。強化できる。破壊されると河川に戻る', () => {
+test('橋：河川マスへの拡張は資源3。強化できる。破壊されると河川に戻る', () => {
   const { g, a, b } = clashSetup();
   const ac = E.parseKey(P(g, a).core);
   const [rq, rr] = nb(g, ...ac).find(([q, r]) => !g.board[E.key(q, r)].owner);
   const rk = E.key(rq, rr);
   g.board[rk].terrain = 'river';
-  P(g, a).resource = 3;
-  assert.ok(!E.targets(g, a, 'expand').includes(rk));     // 資源3では足りない
+  P(g, a).resource = 2;
+  assert.ok(!E.targets(g, a, 'expand').includes(rk));     // 資源2では足りない
   P(g, a).resource = 10;
   assert.ok(E.apply(g, a, { type: 'expand', q: rq, r: rr }).ok);
-  assert.strictEqual(P(g, a).resource, 6);
+  assert.strictEqual(P(g, a).resource, 7);
   assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain], [a, 'river']);
   assert.ok(E.apply(g, a, { type: 'strengthen', q: rq, r: rr }).ok);
   assert.strictEqual(g.board[rk].strong, true);
@@ -516,6 +527,7 @@ test('橋：河川マスへの拡張は資源4。強化できる。破壊され�
   P(g, b).attack = 1;
   P(g, a).defense = 0;
   assert.ok(E.apply(g, b, { type: 'destroy', q: rq, r: rr }).ok);
+  assert.ok(E.apply(g, a, { type: 'bid', count: 0 }).ok);
   assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain, g.board[rk].strong], [null, 'river', false]);
 });
 
@@ -541,19 +553,18 @@ test('12人まで遊べる：6人までは全員が外周、7人以上は約3分
   assert.throws(() => E.createGame(PLAYERS.slice(0, 12), seeded(1), { radius: 3 }));   // 盤面が小さすぎる
 });
 
-test('ラウンドごとに最初の人が1人ずつずれる（脱落した人は飛ばす）', () => {
+test('手番の順はラウンドが変わってもずらさない（脱落した人は飛ばす）', () => {
   const g = newGame(3);
   const ids = g.players.map(p => p.id);
   const seen = [];
   for (let i = 0; i < 9; i++) { seen.push(cur(g)); E.apply(g, cur(g), { type: 'endTurn' }); }
-  assert.deepStrictEqual(seen, [ids[0], ids[1], ids[2], ids[1], ids[2], ids[0], ids[2], ids[0], ids[1]]);
+  assert.deepStrictEqual(seen, [...ids, ...ids, ...ids]);
   assert.strictEqual(g.round, 4);
-  assert.ok(g.log.some(l => l.text === `ラウンド 2 / ${g.rounds}（最初は ${g.players[1].name}）`));
-  // 次のラウンドの最初の人が脱落していたら、その次の人から
+  assert.ok(g.log.some(l => l.text === `ラウンド 2 / ${g.rounds}`));
   E.forfeit(g, ids[1]);
   const order = [];
   while (g.round === 4) { order.push(cur(g)); E.apply(g, cur(g), { type: 'endTurn' }); }
-  assert.strictEqual(cur(g), ids[2]);   // ラウンド5：本来は ids[1] からだが脱落しているので ids[2]
+  assert.deepStrictEqual(order, [ids[0], ids[2]]);
 });
 
 test('2人戦は最初の人をずらさない（同じ人が2手番続けて動かない）', () => {
@@ -587,27 +598,27 @@ test('内側にコアがある人は、ラウンド1の前に1手番ずつ先に
   assert.strictEqual(newGame(6).round, 1);
 });
 
-test('食料：手番終了時にコア +5・強化済のセル（コアも）+1 を作り、セル1つにつき1を食べる。余りは持ち越す', () => {
+test('食料：手番終了時にコア +6・強化済のセル（コアも）+1 を作り、セル1つにつき1を食べる。余りは持ち越す', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g);
   assert.strictEqual(P(g, me).food, 0);
   const free = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain');
   free.slice(0, 3).forEach(c => { c.owner = me; });           // セル4つ（コアを含む）
   free[0].strong = true;                                        // 強化済1つ
-  assert.deepStrictEqual([E.foodMade(g, me), E.foodEaten(g, me)], [5 + 1, 4]);
+  assert.deepStrictEqual([E.foodMade(g, me), E.foodEaten(g, me)], [6 + 1, 4]);
   E.apply(g, me, { type: 'endTurn' });
-  assert.strictEqual(P(g, me).food, 2);                         // 0 + 6 − 4
-  assert.ok(g.log.some(l => l.text.includes('食料 +6 −4')));
+  assert.strictEqual(P(g, me).food, 3);                         // 0 + 7 − 4
+  assert.ok(g.log.some(l => l.text.includes('食料 +7 −4')));
   // 強化済のコアも +1
   g.board[P(g, me).core].strong = true;
-  assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
+  assert.strictEqual(E.foodMade(g, me), 6 + 1 + 1);
 });
 
 test('食料が足りなければ、足りない数だけセルを選んで捨てる（コアは捨てられない）', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(1), { radius: 6, events: false });
   const me = cur(g), other = g.players.find(p => p.id !== me).id;
-  const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 7);
-  mine.forEach(c => { c.owner = me; });                          // セル8つ：作る5・食べる8 → 3 足りない
+  const mine = Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 8);
+  mine.forEach(c => { c.owner = me; });                          // セル9つ：作る6・食べる9 → 3 足りない
   P(g, me).food = 1;                                            // 貯えが1あるので、足りないのは2
   E.apply(g, me, { type: 'endTurn' });
   assert.deepStrictEqual(g.abandon, { player: me, count: 2 });
@@ -632,6 +643,7 @@ test('鉱山マス：拡張したとき・強化したとき・破壊で取っ�
   g.board[t].terrain = 'mine';
   P(g, b).defense = 0;
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
+  E.apply(g, b, { type: 'bid', count: 0 });
   E.apply(g, a, { type: 'bid', count: 1 });
   assert.strictEqual(g.board[t].owner, a);
   assert.strictEqual(P(g, a).attack, 3 - 1 + 1);
@@ -642,11 +654,11 @@ test('農地マス：このセルがあると手番終了時に食料 +1（強�
   const me = cur(g);
   const [cq, cr] = E.parseKey(P(g, me).core);
   const [fq, fr] = nb(g, cq, cr)[0];
-  assert.strictEqual(E.foodMade(g, me), 5);
+  assert.strictEqual(E.foodMade(g, me), 6);
   setCell(g, fq, fr, { owner: me, terrain: 'farm' });
-  assert.strictEqual(E.foodMade(g, me), 5 + 1);
+  assert.strictEqual(E.foodMade(g, me), 6 + 1);
   g.board[E.key(fq, fr)].strong = true;
-  assert.strictEqual(E.foodMade(g, me), 5 + 1 + 1);
+  assert.strictEqual(E.foodMade(g, me), 6 + 1 + 1);
 });
 
 test('山岳マス：拡張・強化・破壊で取ったときに防御トークン +1（ほかの人にも見える）', () => {
@@ -709,14 +721,14 @@ test('イベントの効果：不作・豊作・枯渇・発見・豊漁・洪�
   const side = E.riversideCells(g, me);
   assert.ok(side >= 1);
   const base = { food: E.foodMade(g, me), eat: E.foodEaten(g, me), res: E.income(g, me), act: E.actionsThisTurn(g) };
-  assert.deepStrictEqual(base, { food: 5 + 1 + 1, eat: 3, res: 2 + 1, act: 3 });
+  assert.deepStrictEqual(base, { food: 6 + 1 + 1, eat: 3, res: 2 + 1, act: 3 });
   const as = ev => { g.event = ev; return { food: E.foodMade(g, me), eat: E.foodEaten(g, me), res: E.income(g, me), act: E.actionsThisTurn(g) }; };
-  assert.strictEqual(as('famine').food, Math.floor(7 * 0.5));
-  assert.strictEqual(as('harvest').food, Math.floor(7 * 1.5));
+  assert.strictEqual(as('famine').food, Math.floor(8 * 0.5));
+  assert.strictEqual(as('harvest').food, Math.floor(8 * 1.5));
   assert.strictEqual(as('depletion').res, Math.floor(3 * 0.5));
   assert.strictEqual(as('discovery').res, Math.floor(3 * 1.5));
-  assert.strictEqual(as('fishing').food, 7 + side);
-  assert.deepStrictEqual([as('flood').food, as('flood').eat], [7, 3 + side]);
+  assert.strictEqual(as('fishing').food, 8 + side);
+  assert.deepStrictEqual([as('flood').food, as('flood').eat], [8, 3 + side]);
   assert.strictEqual(as('festival').act, 4);
   assert.strictEqual(as('plague').act, 2);
   // 行動回数は1回より少なくならない
@@ -751,4 +763,24 @@ test('攻防の結果は成功か失敗かだけがログに出る（出した�
   assert.ok(g.log.some(l => l.text.includes('出した数は非公開')));
   // 攻撃1で守られた → 防御側は2個以上出したはず
   assert.strictEqual(P(g, b).defenseSeen, 0);
+});
+
+test('河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の島を持つ', () => {
+  for (const n of [2, 3, 4, 6, 8, 12]) {
+    for (let seed = 1; seed <= 10; seed++) {
+      const g = newGame(n, seed);
+      const total = Object.keys(g.board).length;
+      for (const p of g.players) {
+        const seen = new Set([p.core]), stack = [E.parseKey(p.core)];
+        while (stack.length) {
+          const [q, r] = stack.pop();
+          for (const [nq, nr] of E.neighbors(q, r)) {
+            const k = E.key(nq, nr);
+            if (g.board[k] && g.board[k].terrain !== 'river' && !seen.has(k)) { seen.add(k); stack.push([nq, nr]); }
+          }
+        }
+        assert.ok(seen.size >= Math.floor(total * E.RULES.islandShare / n), `${n}人 seed${seed}: ${seen.size}`);
+      }
+    }
+  }
 });
