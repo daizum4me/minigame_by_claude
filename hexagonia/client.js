@@ -349,7 +349,26 @@
   function send(msg) { if (app.conn) app.conn.send(msg); }
 
   function show(id) {
-    for (const s of ['top', 'lobby', 'game']) $('#' + s).hidden = s !== id;
+    for (const s of ['gate', 'top', 'lobby', 'game']) $('#' + s).hidden = s !== id;
+  }
+
+  // ---------- メンテナンス中の入口（一時的なもの） ----------
+  // パスワードを入れるとトップに進める。ページの中で確かめるだけなので、本当の鍵ではない（中身を見れば外せる）。
+  // ソースに平文で残さないよう、SHA-256 の値だけを持つ。一度通れば、そのタブを閉じるまでは聞かない
+  const GATE_HASH = '00c467cf500b5e228062213f6836a176f9106558b4754ff7ae236e0e2ddaec36';
+  const gateOpen = () => { try { return sessionStorage.getItem('hexagonia.gate') === GATE_HASH; } catch (e) { return false; } };
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  function initGate() {
+    $('#gate-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const h = await sha256($('#gate-pass').value.trim().toUpperCase()).catch(() => '');
+      if (h !== GATE_HASH) { $('#gate-msg').hidden = false; $('#gate-pass').select(); return; }
+      try { sessionStorage.setItem('hexagonia.gate', h); } catch (err) { /* 保存できなくても進める */ }
+      show('top');
+    });
   }
 
   let toastTimer = 0;
@@ -654,19 +673,29 @@
   function renderMyTokens(me) {
     const v = app.tokenView;
     $('#me-tokens').innerHTML = me
-      ? tokenChip('resource', v ? v.resource : me.resource, true) + tokenChip('power', me.power, true) + tokenChip('food', v ? v.food : me.food, true)
+      ? tokenChip('resource', v ? v.resource : me.resource, true) + tokenChip('power', v && v.power != null ? v.power : me.power, true) + tokenChip('food', v ? v.food : me.food, true)
       : '';
-    // 食料の収支：ターンの終わりに作る − 食べる。チップの横に出し、内訳はホバーで
+    // ターンごとの収支（資源・戦力・食料）。チップの横に出し、内訳はホバーで
     const g = app.room && app.room.game;
-    const chip = $('#me-tokens .tk-food');
-    if (me && me.alive && g && !g.over && chip) {
-      const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me), net = made - eaten;
-      const per = 'ターン';
-      const short = Math.max(0, eaten - made - (me.food || 0));
-      chip.insertAdjacentHTML('beforeend', `<em class="tnet ${net > 0 ? 'up' : net < 0 ? 'down' : ''}">${net > 0 ? '+' : net < 0 ? '−' : '±'}${Math.abs(net)}/${per}</em>`);
-      chip.title = `食料の収支（${per}ごと）：作る +${made}・食べる −${eaten} ＝ ${net >= 0 ? '+' : '−'}${Math.abs(net)}` + (short ? `。${short} 足りないので、セルを捨てることになる` : '');
-      chip.classList.toggle('short', !!short);
-    }
+    if (!me || !me.alive || !g || g.over) return applyFlash(v);
+    const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n);
+    const net = (kind, n, title) => {
+      const chip = $(`#me-tokens .tk-${kind}`);
+      chip.insertAdjacentHTML('beforeend', `<em class="tnet ${n > 0 ? 'up' : n < 0 ? 'down' : ''}">${signed(n)}/ターン</em>`);
+      chip.title = title;
+      return chip;
+    };
+    const inc = E.income(g, app.me), pw = E.powerMade(g, app.me);
+    net('resource', inc, `資源の収支（ターンごと）：${signed(inc)}（強化済のセル・コア・森林）`);
+    net('power', pw, `戦力の収支（ターンごと）：${signed(pw)}（工場）。強化・鉱山・生産でも増える`);
+    const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me);
+    const short = Math.max(0, eaten - made - (me.food || 0));
+    const chip = net('food', made - eaten, `食料の収支（ターンごと）：作る +${made}・食べる −${eaten} ＝ ${signed(made - eaten)}` + (short ? `。${short} 足りないので、セルを捨てることになる` : ''));
+    chip.classList.toggle('short', !!short);
+    applyFlash(v);
+  }
+
+  function applyFlash(v) {
     if (v && v.flash) for (const [kind, cls] of Object.entries(v.flash)) {
       const chip = $(`#me-tokens .tk-${kind}`);
       if (chip) chip.classList.add(cls);
@@ -681,8 +710,9 @@
     for (const c of E.cellsOf(g, app.me)) {
       const res = (c.core ? inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0) : c.strong ? inc.strong : 0) + (c.terrain === 'forest' ? R.forestResource : 0);
       const food = (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
+      const pow = c.terrain === 'factory' ? R.factoryPower : 0;
       baseRes += res; baseFood += food;
-      if (res || food) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : ''), 'gain', 0);
+      if (res || food || pow) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : '') + (pow ? `<span class="fl-pow">${TOKEN_SVG.power}+${pow}</span>` : ''), 'gain', 0);
     }
     // イベント（豊作・不作など）で変わった分は、コアの上にまとめて出す
     const dRes = le.resource - baseRes, dFood = le.made - baseFood;
@@ -691,11 +721,12 @@
     // 少し遅れて、食べた分をコアの上に（セル1つずつ出すとうるさいので合計で）
     floater(me.core, `<span class="fl-food">${TOKEN_SVG.food}−${le.eaten}</span>${le.hungry ? `<span class="fl-short">${le.hungry} 足りない</span>` : ''}`, 'loss', 900);
     // 下のバー：増える前 → 増えた → 減った
-    const set = (resource, food, flash) => { app.tokenView = { resource, food, flash }; renderMyTokens(app.room && app.room.game.players.find(p => p.id === app.me)); };
+    const pw = le.power || 0, pNow = me.power;
+    const set = (resource, food, flash, power) => { app.tokenView = { resource, food, flash, power }; renderMyTokens(app.room && app.room.game.players.find(p => p.id === app.me)); };
     clearTimeout(app.tokenTimer1); clearTimeout(app.tokenTimer2); clearTimeout(app.tokenTimer3);
-    set(le.resBefore, le.foodBefore, null);
-    app.tokenTimer1 = setTimeout(() => set(le.resBefore + le.resource, le.foodBefore + le.made, { resource: 'up', food: 'up' }), 200);
-    app.tokenTimer2 = setTimeout(() => set(le.resBefore + le.resource, Math.max(0, le.foodBefore + le.made - le.eaten), { food: le.hungry ? 'short' : 'down' }), 1100);
+    set(le.resBefore, le.foodBefore, null, pNow - pw);
+    app.tokenTimer1 = setTimeout(() => set(le.resBefore + le.resource, le.foodBefore + le.made, Object.assign({ resource: 'up', food: 'up' }, pw ? { power: 'up' } : {}), pNow), 200);
+    app.tokenTimer2 = setTimeout(() => set(le.resBefore + le.resource, Math.max(0, le.foodBefore + le.made - le.eaten), { food: le.hungry ? 'short' : 'down' }, pNow), 1100);
     app.tokenTimer3 = setTimeout(() => { app.tokenView = null; renderMyTokens(app.room && app.room.game && app.room.game.players.find(p => p.id === app.me)); }, 2000);
   }
 
@@ -776,16 +807,17 @@
   }
 
   const TERRAIN_EFFECTS = {
-    plain: `効果なし。自分のセルなら、資源 ${R.cost.cultivate} で開墾して農地にできる`,
+    plain: `効果なし。自分のセルなら、資源 ${R.cost.develop} で発展させて農地か工場にできる`,
     mine: `拡張したときと強化したときに、戦力トークン +${R.minePower}`,
-    farm: `開墾した土地。このセルがあると、ターンごとに食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
+    farm: `発展させた土地。このセルがあると、ターンごとに食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
+    factory: `発展させた土地。このセルがあると、ターンごとに戦力トークン +${R.factoryPower}`,
     forest: `このセルがあると、ターンごとに資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。壊されると橋が落ちて河川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
 
-  // そのマスでできる行動と、できないときの理由（自分のセルなら強化と開墾の2つになることがある）
+  // そのマスでできる行動と、できないときの理由（自分のセルなら強化・発展・防御などが並ぶ）
   function cellActions(g, key) {
     const c = g.board[key];
     const me = g.players.find(p => p.id === app.me);
@@ -793,28 +825,30 @@
     const list = [];
     if (!c.owner) {
       list.push({ type: 'expand', cost: E.expandCost(c),
-        gain: c.terrain === 'mine' ? `戦力トークン +${R.minePower}` : c.terrain === 'forest' ? `ターンごとの資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '' });
+        gain: c.terrain === 'mine' ? `戦力 +${R.minePower}` : c.terrain === 'forest' ? `毎ターン資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかける' : '' });
     } else if (c.owner === app.me) {
       if (!c.strong) {
         const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
         list.push({ type: 'strengthen', cost: R.cost.strengthen,
-          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・ターンごとの資源 +${inc}・食料 +${R.food.strong}。隣の相手のセルを攻撃できる拠点になる` });
+          gain: `戦力 +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・毎ターン資源 +${inc}・食料 +${R.food.strong}・攻撃の拠点に` });
       }
-      if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。ターンごとの食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
-      list.push({ type: 'fortify', name: '防御 +1', cost: 0, power: 1, gain: `戦力トークンを1個つぎ込む（行動力は使わない）。攻撃1回ぶんを防ぐ。最大 ${R.rt.defMax}。数はほかの人には見えない（解除すると戻ってくる）` });
-      if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `つぎ込んだ戦力トークン ${c.def} 個が戻る` });
+      if (!c.core && c.terrain === 'plain') {
+        list.push({ type: 'develop', to: 'farm', name: '発展：農地', cost: R.cost.develop, gain: `毎ターン食料 +${R.farmFood}` });
+        list.push({ type: 'develop', to: 'factory', name: '発展：工場', cost: R.cost.develop, gain: `毎ターン戦力 +${R.factoryPower}` });
+      }
+      list.push({ type: 'fortify', name: '防御 +1', cost: 0, power: 1, gain: `攻撃を1回防ぐ（最大 ${R.rt.defMax}・行動力なし）` });
+      if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `戦力 ${c.def} 個が戻る` });
     } else {
       const foe = g.players.find(p => p.id === c.owner);
       list.push({ type: 'destroy', name: '攻撃', cost: 0, power: 1,
-        gain: '行動力1と戦力トークン1個ですぐ決まる。防御があれば、まず防御が1減る（相手の防御は見えない）。防御がなければ'
-          + (c.core ? `コアを壊し、${foe.name} は脱落（残りのセルとトークンをまるごと受け継ぐ）` : c.terrain === 'river' ? '橋が落ちて河川に戻る' : 'セルを壊して空きマスに戻す（自分のセルにはならない）') });
+        gain: '防御を1削る。防御0なら' + (c.core ? `コアを壊して ${foe.name} を脱落させる` : c.terrain === 'river' ? '橋を落とす' : '壊して空きマスに') });
     }
     for (const a of list) {
       a.why = '';
       if (E.targets(g, app.me, a.type).includes(key)) continue;
       a.why = E.actionBlocked(g, app.me, a.type)
         || (a.type === 'fortify' ? `防御は ${R.rt.defMax} までです` : a.type === 'expand' && me.resource < a.cost ? `資源トークンが足りません（あと ${a.cost - me.resource}）`
-          : a.type === 'destroy' ? '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると攻撃できます' : '自分のセルに隣接していません');
+          : a.type === 'destroy' ? '隣に自分の強化済のセル（拠点）がありません' : '自分のセルに隣接していません');
     }
     return { list };
   }
@@ -834,7 +868,7 @@
       if (r && r.list) {
         // 理由は同じことが多いので、まとめて最後に1回だけ出す
         const whys = [...new Set(r.list.map(a => a.why).filter(Boolean))];
-        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
+        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}"${a.to ? ` data-to="${a.to}"` : ''} ${a.why ? 'disabled' : ''}>
           <b>${a.name || (a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type])}</b>${a.type === 'unfortify' ? '' : `<span class="tt-cost">${a.power ? `${TOKEN_SVG.power}${a.power}` : `${TOKEN_SVG.resource}${a.cost}`}</span>`}${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
           ${whys.map(w => `<p class="tt-why">${esc(w)}</p>`).join('')}</div>`;
       } else if (r && r.note) {
@@ -842,7 +876,7 @@
       }
     }
     const el = $('#tooltip');
-    const html = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▽ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    const html = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', factory: '□ ', forest: '▽ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
@@ -956,7 +990,7 @@
       if (b.disabled || !app.tip) return;
       const type = b.dataset.cellAct;
       const [q, r] = E.parseKey(app.tip.key);
-      send({ type: 'act', action: { type, q, r } });
+      send({ type: 'act', action: b.dataset.to ? { type, q, r, to: b.dataset.to } : { type, q, r } });
       // 行動のあとも同じマスを選んだまま（続けて強化・攻撃できるように）
     };
     setInterval(tickTimers, 250);
@@ -1013,7 +1047,8 @@
     });
 
     // 前回の部屋に入っていた参加者は、招待URLを開き直せば同じプレイヤーとして戻れる
-    show('top');
+    initGate();
+    if (gateOpen()) show('top'); else { show('gate'); $('#gate-pass').focus(); }
   }
 
   // 結果を閉じたあと、もう一度開くためのボタン

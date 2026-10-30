@@ -94,6 +94,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 .lead { color: var(--muted); margin: 10px 0 20px; }
 .field { display: block; margin-bottom: 14px; }
 .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.gate-card input { width: 100%; }
 .msg { margin: 12px 0 0; font-size: 14px; }
 .msg.bad { color: var(--bad); }
 .msg.info { color: var(--accent); }
@@ -489,6 +490,7 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .floater .tk { width: 13px; height: 13px; }
 .floater .fl-res { color: #FFC888; }
 .floater .fl-food { color: #FFE27A; }
+.floater .fl-pow { color: #FFA8B8; }
 .floater .fl-ev { color: var(--accent); font-size: 12px; }
 .floater .fl-short { color: var(--bad); font-size: 12px; }
 .floater .fl-hit { color: #fff; background: rgba(200, 40, 40, .85); font-weight: 700; font-size: 13px; }

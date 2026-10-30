@@ -191,7 +191,7 @@ test('初期状態：資源3・戦力2・行動力3・コア未強化。手番�
   assert.strictEqual(E.apply(g, 'a', { type: 'bid', count: 1 }).ok, false);
 });
 
-test('だれでもいつでも行動できる。行動力は5秒に1回復（上限5）、拡張・強化・開墾・攻撃で1使う', () => {
+test('だれでもいつでも行動できる。行動力は5秒に1回復（上限5）、拡張・強化・発展・攻撃で1使う', () => {
   const { g, a, b } = rtGame();
   for (const id of [a, b]) {
     const [q, r] = freeNext(g, id);
@@ -264,14 +264,26 @@ test('食料が足りなければ、ターンの終わりに自動でセルを�
   assert.deepStrictEqual(E.suggestAbandon(h.g, h.a, 1), ['0,0']);
 });
 
-test('開墾：資源2・行動力1で、自分の平原のセル（コア以外）を農地にする。ターンごとに食料 +1', () => {
+test('発展：資源2・行動力1で、自分の平原のセル（コア以外）を農地か工場にする。農地はターンごとに食料 +1、工場は戦力 +1', () => {
   const { g, a } = rtGame();
   const [q, r] = freeNext(g, a);
   setCell(g, q, r, { owner: a });
-  assert.ok(!E.targets(g, a, 'cultivate').includes(P(g, a).core));
-  assert.ok(E.apply(g, a, { type: 'cultivate', q, r }).ok);
+  assert.ok(!E.targets(g, a, 'develop').includes(P(g, a).core));
+  assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'mine' }).ok, false);   // 農地か工場だけ
+  assert.ok(E.apply(g, a, { type: 'develop', q, r, to: 'farm' }).ok);
   assert.deepStrictEqual([g.board[E.key(q, r)].terrain, P(g, a).resource, P(g, a).ap], ['farm', 1, 2]);
   assert.strictEqual(E.foodMade(g, a), 7);
+  assert.ok(!E.targets(g, a, 'develop').includes(E.key(q, r)));            // 発展ずみの土地はもう発展できない
+  // 工場：ターンの終わりに戦力 +1
+  const [q2, r2] = nb(g, ...E.parseKey(P(g, a).core)).find(([x, y]) => !g.board[E.key(x, y)].owner && g.board[E.key(x, y)].terrain !== 'river');
+  setCell(g, q2, r2, { owner: a });
+  P(g, a).resource = 2;
+  assert.ok(E.apply(g, a, { type: 'develop', q: q2, r: r2, to: 'factory' }).ok);
+  assert.match(g.log.at(-1).text, /工場/);
+  assert.strictEqual(E.powerMade(g, a), 1);
+  const before = P(g, a).power;
+  E.rtTick(g);
+  assert.deepStrictEqual([P(g, a).power, g.tickInfo[a].power], [before + 1, 1]);
 });
 
 test('鉱山マス：拡張したとき・強化したときに戦力トークン +1', () => {
