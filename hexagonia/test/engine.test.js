@@ -926,11 +926,11 @@ test('リアルタイム：攻撃は戦力トークン1個ですぐ決まり、�
   const t = E.key(tq, tr);
   setCell(g, tq, tr, { owner: b });
   assert.ok(E.targets(g, a, 'destroy').includes(t));            // 強化していなくても、隣なら狙える
-  // b がセル t に防御を2つぎ込む（1回で1。行動力を1ずつ使う）
-  P(g, b).power = 3; P(g, b).ap = 3;
+  // b がセル t に防御を2つぎ込む（1回で1。行動力は使わない）
+  P(g, b).power = 3; P(g, b).ap = 0;
   assert.ok(E.apply(g, b, { type: 'fortify', q: tq, r: tr }).ok);
   assert.ok(E.apply(g, b, { type: 'fortify', q: tq, r: tr }).ok);
-  assert.deepStrictEqual([g.board[t].def, P(g, b).power, P(g, b).ap], [2, 1, 1]);
+  assert.deepStrictEqual([g.board[t].def, P(g, b).power, P(g, b).ap], [2, 1, 0]);
   assert.strictEqual(E.apply(g, b, { type: 'fortify', q: cq, r: cr }).ok, false);   // 相手のセルには置けない
   // a は行動力 0 でも攻撃できる。1回目・2回目は防御が減るだけ、3回目で奪う
   P(g, a).power = 3; P(g, a).ap = 0;
@@ -963,4 +963,14 @@ test('リアルタイム：防御を解除すると、つぎ込んだ戦力ト�
   E.rtTick(g);
   const lost = Object.values(g.board).filter(c => c.owner === null && c.def);
   assert.deepStrictEqual(lost, []);
+});
+
+test('リアルタイム：セルの防御は6まで', () => {
+  const { g, a } = rtGame();
+  const [cq, cr] = E.parseKey(P(g, a).core);
+  P(g, a).power = 10;
+  for (let i = 0; i < 6; i++) assert.ok(E.apply(g, a, { type: 'fortify', q: cq, r: cr }).ok);
+  const r = E.apply(g, a, { type: 'fortify', q: cq, r: cr });
+  assert.strictEqual(r.ok, false);
+  assert.deepStrictEqual([g.board[P(g, a).core].def, P(g, a).power], [6, 4]);
 });

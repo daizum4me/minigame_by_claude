@@ -130,7 +130,7 @@
         const est = estPower(foe);
         // リアルタイムモードは攻防がなく、狙えればかならず壊せる
         // リアルタイム：攻防はなく、防御の分だけ攻撃を重ねれば奪える。相手の防御の数は見えないので、セルの種類から見積もる
-        const rtNeed = g.mode === 'realtime' ? (c.def ? (c.core ? 3 : c.strong ? 2 : 1) : 0) + 1 : 0;
+        const rtNeed = g.mode === 'realtime' ? (c.def || 0) + 1 : 0;   // 防御の数は見える
         const canBreak = g.mode === 'realtime' ? me.power >= rtNeed : me.power >= est;   // 同じ数なら攻撃側の勝ち
         let s;
         if (g.mode === 'realtime') s = c.core ? (canBreak ? 30 : 3) : canBreak ? (c.def ? 3.5 : 5) : -1.5;   // 防御を削りきれないなら控える
@@ -225,7 +225,7 @@
     const foeDist = (q, r) => foeCells.reduce((m, f) => Math.min(m, E.dist([q, r], [f.q, f.r])), 99);
     // 防御：相手のセルと接している（または相手が2マス以内に来ている）自分のセルに、戦力トークンをつぎ込む。
     // 欲しい防御はコア3・強化済のセル2・ほかは1。コア以外は、攻める分の戦力を1個残す
-    if (!lv.passive && (me.ap || 0) >= 1) {
+    if (!lv.passive) {
       for (const c of E.cellsOf(g, id)) {
         const want = c.core ? 3 : c.strong ? 2 : 1;
         if ((c.def || 0) >= want || me.power < (c.core ? 1 : 2)) continue;

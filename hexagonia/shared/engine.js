@@ -20,7 +20,8 @@
     // リアルタイムモード（実験）：手番がなく、いつでも行動できる。15秒ごとの「ターン」で全員いっせいに資源・食料の処理をする
     rt: {
       tickSeconds: 15,                  // 1ターンの長さ（ターン制のラウンドの代わり）
-      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾・防御で1使う（攻撃・生産・防御の解除は使わない）
+      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾で1使う（攻撃・防御・生産は使わない）
+      defMax: 6,                            // セルの防御の上限（六角形の辺の数）
       ticks: [[4, 40], [8, 36], [12, 32]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
       ticksRange: [10, 80],
       eventEvery: [4, 8],               // イベントはターン4〜8回ごとに起き、4ターンのあいだ続く
@@ -471,17 +472,17 @@
     const RT_TYPES = ['expand', 'strengthen', 'cultivate', 'destroy', 'produce', 'fortify', 'unfortify'];
     if (!RT_TYPES.includes(type)) return 'リアルタイムモードではできない行動です';
     if (type === 'unfortify') return '';
+    if (type === 'fortify') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
     // 攻撃（destroy）は行動力を使わない。生産も使わない
     if (type === 'destroy') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
     if (type !== 'produce' && (p.ap || 0) < 1) return '行動力が足りません（5秒に1回復）';
-    if (type === 'fortify') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
     if (p.resource < min) return '資源トークンが足りません';
     return '';
   }
 
-  // 防御（リアルタイムモード）：自分のセルに戦力トークンを1個つぎ込むと、そのセルの防御が1増える（行動力を1使う）。
-  // 解除すると、つぎ込んだ戦力トークンが全部戻る（行動力は使わない）。action：{ type: 'fortify' | 'unfortify', q, r }
+  // 防御（リアルタイムモード）：自分のセルに戦力トークンを1個つぎ込むと、そのセルの防御が1増える（上限6）。
+  // 解除すると、つぎ込んだ戦力トークンが全部戻る。どちらも行動力は使わない。action：{ type: 'fortify' | 'unfortify', q, r }
   function rtFortify(state, id, action) {
     const p = playerById(state, id);
     const k = key(Number(action.q), Number(action.r));
@@ -494,10 +495,10 @@
       cell.def = 0;
       return { ok: true };
     }
+    if ((cell.def || 0) >= RULES.rt.defMax) return fail(`防御は ${RULES.rt.defMax} までです`);
     cell.def = (cell.def || 0) + 1;
     p.power -= 1;
     p.powerSeen = Math.max(0, p.powerSeen - 1);
-    p.ap--;
     addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}の防御を固めた`, 'strengthen');
     return { ok: true };
   }

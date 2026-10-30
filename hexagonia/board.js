@@ -422,6 +422,8 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
+        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印と同じ大きさ）のあいだを、1つにつき辺1本ぶんずつ埋める。6で一周
+        if (c.def > 0) this.defRing(ctx, x, y, s, Math.min(6, c.def), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
         this.edge(ctx, x, y, s * 0.88, c.core ? Math.max(2.5, s * 0.11) : Math.max(1.5, s * 0.06), col.light, pat);
@@ -442,8 +444,6 @@
           ctx.strokeStyle = col.light;
           ctx.stroke();
         }
-        // 防御（リアルタイムモード）：マスの下の方に盾の形。数は持ち主にだけ（ほかの人には -1 で届き、盾だけ）
-        if (c.def && s >= 12) this.shield(ctx, x, y + s * 0.5, s * 0.24, col, c.def > 0 ? c.def : null);
       }
       // 捨てるセルとして選んだマス：赤い枠と×
       for (const k of d.marked || []) {
@@ -520,31 +520,18 @@
       if (this.h.onView) this.h.onView();
     }
 
-    // 盾の形（防御）。n があれば中に数字
-    shield(ctx, x, y, r, col, n) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(x, y - r);
-      ctx.lineTo(x + r * 0.85, y - r * 0.65);
-      ctx.lineTo(x + r * 0.75, y + r * 0.2);
-      ctx.quadraticCurveTo(x + r * 0.45, y + r * 0.8, x, y + r);
-      ctx.quadraticCurveTo(x - r * 0.45, y + r * 0.8, x - r * 0.75, y + r * 0.2);
-      ctx.lineTo(x - r * 0.85, y - r * 0.65);
-      ctx.closePath();
-      ctx.fillStyle = col.base;
-      ctx.fill();
-      ctx.lineWidth = Math.max(1, r * 0.16);
-      ctx.strokeStyle = col.light;
-      ctx.setLineDash([]);
-      ctx.stroke();
-      if (n !== null) {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.round(r * 1.15)}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(n), x, y + r * 0.05);
+    // 防御の帯：上の頂点から時計回りに、辺 n 本ぶんの台形を塗る
+    defRing(ctx, x, y, s, n, col) {
+      const ro = s * 0.86, ri = s * 0.62;
+      const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
+      ctx.fillStyle = rgba(col.light, 0.65);
+      for (let i = 0; i < n; i++) {
+        ctx.beginPath();
+        ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));
+        ctx.lineTo(...pt(ri, i + 1)); ctx.lineTo(...pt(ri, i));
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.restore();
     }
 
     // セルの縁（陣営ごとの模様：実線・点線・二重線・破線）

@@ -421,8 +421,6 @@
           log: g.log.slice(-LOG_SEND),
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
           eventPlan: undefined,
-          // セルの防御の数は、そのセルの持ち主にしか見せない（ほかの人には、防御があることだけ：def = -1）
-          board: g.mode === 'realtime' ? Object.fromEntries(Object.entries(g.board).map(([k, c]) => [k, c.def > 0 && c.owner !== forId ? Object.assign({}, c, { def: -1 }) : c])) : g.board,
           // 取り消しの記録は、手番の人にだけ、何を取り消せるかだけ届ける（生産したことや戦力トークンの数がわからないように）
           undo: g.over || g.mode === 'realtime' || E.current(g).id !== forId ? [] : (g.undo || []).map(u => ({ label: u.label })),   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
           // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）

@@ -688,7 +688,7 @@
     else if (!me || !me.alive) hint = '脱落しました。観戦できます';
     else if (g.abandon) hint = g.abandon.player === app.me ? '食料が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
     else if (g.pending) hint = '破壊の攻防中です';
-    else if (isRT(g)) hint = `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと防御を固められ、隣の相手のセルは戦力1個で攻撃できます`;
+    else if (isRT(g)) hint = `いつでも行動できます。${R.rt.tickSeconds}秒ごとのターンで、資源と食料の処理をします。自分のセルを選ぶと戦力で防御を固められ、隣の相手のセルは戦力1個で攻撃できます（どちらも行動力は使わない）`;
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
     else if (['produce', 'buyAction'].every(t => E.actionBlocked(g, app.me, t)) && ['expand', 'strengthen', 'cultivate', 'destroy'].every(t => !E.targets(g, app.me, t).length)) hint = 'もう行動できません。「手番終了」を押してください（「取り消す」で戻すこともできます）';
     else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
@@ -1146,14 +1146,14 @@
       }
       if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。手番終了時の食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
       if (isRT(g)) {
-        list.push({ type: 'fortify', name: '防御 +1', cost: 0, rtPower: 1, gain: '戦力トークンを1個つぎ込む。攻撃1回ぶんを防ぐ（解除すると戻ってくる）' });
-        if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `つぎ込んだ戦力トークン ${c.def} 個が戻る（行動力は使わない）` });
+        list.push({ type: 'fortify', name: '防御 +1', cost: 0, rtPower: 1, gain: `戦力トークンを1個つぎ込む（行動力は使わない）。攻撃1回ぶんを防ぐ。最大 ${R.rt.defMax}（解除すると戻ってくる）` });
+        if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `つぎ込んだ戦力トークン ${c.def} 個が戻る` });
       }
       if (!list.length) return { note: c.strong ? '強化済のセルです' : 'このセルでできる行動はありません' };
     } else {
       const foe = g.players.find(p => p.id === c.owner);
       list.push(isRT(g) ? { type: 'destroy', name: '攻撃', cost: 0, rtPower: 1,
-        gain: '戦力トークン1個ですぐ決まる（行動力は使わない）。' + (c.def ? '防御があるので、まず防御が1減る（残りの数はわからない）' : (c.core ? `コアなら ${foe.name} は脱落し、セルとトークンをまるごと奪える` : '防御がなければ、このマスが自分のセルになる')) }
+        gain: '戦力トークン1個ですぐ決まる（行動力は使わない）。' + (c.def ? `防御が ${c.def} あるので、まず防御が1減る（あと ${c.def + 1} 回で奪える）` : (c.core ? `コアなら ${foe.name} は脱落し、セルとトークンをまるごと奪える` : '防御がなければ、このマスが自分のセルになる')) }
       : { type: 'destroy', cost: R.cost.destroy,
         gain: '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
           ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`
@@ -1163,7 +1163,7 @@
     }
     for (const a of list) {
       a.why = '';
-      if (isRT(g) && ['fortify', 'unfortify'].includes(a.type)) { a.why = E.actionBlocked(g, app.me, a.type); continue; }
+      if (isRT(g) && ['fortify', 'unfortify'].includes(a.type)) { a.why = E.actionBlocked(g, app.me, a.type) || (a.type === 'fortify' && c.def >= R.rt.defMax ? `防御は ${R.rt.defMax} までです` : ''); continue; }
       if (E.targets(g, app.me, a.type).includes(key)) continue;
       if (isRT(g)) { a.why = E.actionBlocked(g, app.me, a.type) || '自分のセルに隣接していません'; continue; }
       const cur = E.current(g);
@@ -1187,7 +1187,7 @@
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
     const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化')
-      + (c.def > 0 ? `・防御 ${c.def}` : c.def < 0 ? '・防御あり（数はわからない）' : '');
+      + (c.def > 0 ? `・防御 ${c.def} / ${R.rt.defMax}` : '');
     let acts = '';
     if (tip.pinned) {
       const r = cellActions(g, tip.key);

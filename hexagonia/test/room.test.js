@@ -329,7 +329,7 @@ test('リアルタイムモード：ホストが選べる。15秒ごとにター
   assert.ok(g.log.length > before);
 });
 
-test('セルの防御の数は、そのセルの持ち主にしか届かない（ほかの人には防御があることだけ）', () => {
+test('セルの防御の数は、ほかの人にも見える', () => {
   const { room, last } = makeRoom();
   const h = room.join('t1', 'A').id;
   const g = room.join('t2', 'B').id;
@@ -342,6 +342,5 @@ test('セルの防御の数は、そのセルの持ち主にしか届かない�
   room.handle(h, { type: 'act', action: { type: 'fortify', q: cq, r: cr } });
   assert.strictEqual(gm.board[me.core].def, 2);
   assert.strictEqual(last(h).room.game.board[me.core].def, 2);
-  assert.strictEqual(last(g).room.game.board[me.core].def, -1);
-  assert.ok(!gm.log.some(l => /[0-9]+ ?(個|つ)/.test(l.text) && /防御/.test(l.text)));
+  assert.strictEqual(last(g).room.game.board[me.core].def, 2);
 });
