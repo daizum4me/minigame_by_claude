@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const E = require('../shared/engine');
-const { Room, TURN_MS, BID_MS, GRACE_MS, CHAT_KEEP, CHAT_LEN } = require('../shared/room');
+const { Room, TURN_MS, BID_MS, GRACE_MS, ABANDON_MS, CHAT_KEEP, CHAT_LEN } = require('../shared/room');
 
 // タイマーと時計は手で進める
 function makeRoom() {
@@ -269,4 +269,34 @@ test('CPU の強さはホストだけがロビーで変えられ、配信され�
   room.handle(h, { type: 'cpuLevel', target: cpu.id, level: 'strong' });
   assert.strictEqual(last(g).room.players.find(p => p.cpu).level, 'strong');
   assert.strictEqual(last(g).room.players.find(p => p.id === h).level, undefined);
+});
+
+test('食料が足りないとき、捨てるセルを選ぶ時間は60秒。決めなければ自動で選ぶ', () => {
+  const r = startTwo();
+  const { room, h, last, fire } = r;
+  assert.strictEqual(ABANDON_MS, 60000);
+  const g = room.game, me = g.players.find(p => p.id === h);
+  Object.values(g.board).filter(c => !c.owner && c.terrain === 'plain').slice(0, 9).forEach(c => { c.owner = h; });
+  me.food = 0;
+  room.handle(h, { type: 'act', action: { type: 'endTurn' } });
+  assert.ok(g.abandon && g.abandon.player === h);
+  assert.strictEqual(last(h).room.abandonLeftMs, ABANDON_MS);
+  const before = E.cellsOf(g, h).length, count = g.abandon.count;
+  fire(ABANDON_MS);
+  assert.strictEqual(g.abandon, null);
+  assert.strictEqual(E.cellsOf(g, h).length, before - count);
+  assert.ok(g.log.some(l => l.text.includes('時間切れのため、捨てるセルを自動で選びます')));
+});
+
+test('取り消しの記録は手番の人にだけ、何を取り消せるかだけ届く。生産の取り消しはログに出ない', () => {
+  const r = startTwo();
+  const { room, h, g, last } = r;
+  room.game.players.find(p => p.id === h).resource = 10;
+  room.handle(h, { type: 'act', action: { type: 'produce' } });
+  assert.deepStrictEqual(last(h).room.game.undo, [{ label: '生産' }]);
+  assert.deepStrictEqual(last(g).room.game.undo, []);          // ほかの人には届かない
+  const logLen = room.game.log.length;
+  room.handle(h, { type: 'act', action: { type: 'undo' } });
+  assert.deepStrictEqual(last(h).room.game.undo, []);
+  assert.strictEqual(room.game.log.length, logLen);            // 生産の取り消しはログに出ない
 });

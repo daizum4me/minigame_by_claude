@@ -642,10 +642,13 @@
     // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない生産と手番終了はここ
     const canAct = me && me.alive && myTurn(g);
     // 生産：資源でトークンを作る（行動回数を使わない）
-    const prod = (type, kind, label) => `<button class="act prod" data-act="${type}" data-confirm="act:${type}" ${canAct && !E.actionBlocked(g, app.me, type) ? '' : 'disabled'} title="生産：資源 ${R.cost[type]} で${label}トークン +1（行動回数を使わない・ログに出ない）">${TOKEN_SVG[kind]}<b>生産</b><small>資源 ${R.cost[type]} → ${label} +1</small></button>`;
-    $('#actions').innerHTML = prod('produce', 'power', '戦力')
-      + `<button class="act end" data-act="endTurn" data-confirm="act:endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
-      + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" data-confirm="act:buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
+    const prod = (type, kind, label) => `<button class="act prod" data-act="${type}" ${canAct && !E.actionBlocked(g, app.me, type) ? '' : 'disabled'} title="生産：資源 ${R.cost[type]} で${label}トークン +1（行動回数を使わない・ログに出ない）">${TOKEN_SVG[kind]}<b>生産</b><small>資源 ${R.cost[type]} → ${label} +1</small></button>`;
+    // 取り消し：この手番の行動を、新しいものから1つずつ戻す
+    const undoLast = g.undo && g.undo.length ? g.undo[g.undo.length - 1].label : '';
+    $('#actions').innerHTML = `<button class="act undo" data-act="undo" ${canAct && undoLast ? '' : 'disabled'} title="この手番の行動を、新しいものから1つずつ取り消す（Ctrl+Z）"><b>↶ 取り消す</b><small>${undoLast ? esc(undoLast) : '取り消せる行動なし'}</small></button>`
+      + prod('produce', 'power', '戦力')
+      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
+      + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
     let hint = '';
     if (g.over) hint = '';
@@ -653,6 +656,7 @@
     else if (g.abandon) hint = g.abandon.player === app.me ? '食料が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
     else if (g.pending) hint = '破壊の攻防中です';
     else if (!myTurn(g)) hint = `${cur.name} の手番です`;
+    else if (['produce', 'buyAction'].every(t => E.actionBlocked(g, app.me, t)) && ['expand', 'strengthen', 'cultivate', 'destroy'].every(t => !E.targets(g, app.me, t).length)) hint = 'もう行動できません。「手番終了」を押してください（「取り消す」で戻すこともできます）';
     else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
     else hint = 'あなたの手番です。光っているマスを選ぶと、拡張・強化・破壊のボタンが出ます';
     $('#hint').textContent = hint;
@@ -715,31 +719,6 @@
     tickTimers();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
-    markArmed();
-  }
-
-  // 誤タップよけ：決定するボタン（data-confirm）は、1回目で「もう一度押して決定」の状態になり、3秒以内にもう一度押すと決定
-  const ARM_MS = 3000;
-  function confirmTap(b) {
-    const key = b.dataset.confirm;
-    if (!key) return true;
-    if (app.armed && app.armed.key === key && Date.now() < app.armed.until) { disarm(); return true; }
-    app.armed = { key, until: Date.now() + ARM_MS };
-    clearTimeout(app.armTimer);
-    app.armTimer = setTimeout(disarm, ARM_MS);
-    markArmed();
-    return false;
-  }
-  function disarm() {
-    app.armed = null;
-    clearTimeout(app.armTimer);
-    markArmed();
-  }
-  // 画面を描き直してボタンが作り直されても、「もう一度押して決定」の見た目を保つ
-  function markArmed() {
-    document.querySelectorAll('.armed').forEach(b => b.classList.remove('armed'));
-    if (!app.armed) return;
-    document.querySelectorAll('[data-confirm]').forEach(b => { if (b.dataset.confirm === app.armed.key) b.classList.add('armed'); });
   }
 
   // 下のバーの自分のトークン。手番終了の演出中は、演出の途中の数を見せる
@@ -837,19 +816,18 @@
           <span class="bid-n tk-${kind}">${TOKEN_SVG[kind]}<b data-bid-n>${n}</b><small>/ ${have}</small></span>
           <input type="range" class="bid-range" data-bid-range min="${lo}" max="${have}" step="1" value="${n}" ${have <= lo ? 'disabled' : ''} aria-label="出す戦力トークンの数">
         </div>
-        <button class="primary bid-ok${side === 'atk' ? ' danger' : ''}" data-bid-ok data-confirm="bid"><span data-bid-label>${n}</span> 個で決定</button>`;
+        <button class="primary bid-ok${side === 'atk' ? ' danger' : ''}" data-bid-ok><span data-bid-label>${n}</span> 個で決定</button>`;
     } else if (side) {
       body = `<p class="muted">あなたは ${pd[side]} 個に決めました。相手を待っています…</p>`;
     } else {
       body = '<p class="muted">出す数を伏せて選んでいます…</p>';
     }
     // 攻撃側は、決着する前なら破壊を取りやめられる
-    if (pd.attacker === app.me) body += '<button class="link cancel-destroy" data-cancel-destroy data-confirm="cancel">破壊をやめる（資源と行動回数が戻る）</button>';
+    if (pd.attacker === app.me) body += '<button class="link cancel-destroy" data-cancel-destroy>破壊をやめる（資源と行動回数が戻る）</button>';
     el.innerHTML = `${head}${body}
       <div class="clash-status">${status(a.name, pd.atkReady)}${status(d.name, pd.defReady)}<span class="muted" data-left="bid"></span></div>`;
     el.hidden = false;
     tickTimers();
-    markArmed();
   }
 
   // 行動回数を使い切ったら、画面中央で「手番終了」か「資源を払って行動 +1」かを選ぶ
@@ -863,8 +841,8 @@
     el.innerHTML = `<div class="extra-card">
       <h3>行動回数を使い切りました</h3>
       <div class="extra-btns">
-        <button data-extra="endTurn" data-confirm="act:endTurn"><b>手番終了</b><small>${netText(g)}</small></button>
-        <button class="primary" data-extra="buyAction" data-confirm="act:buyAction" ${lack > 0 ? 'disabled' : ''}><b>行動 +1</b><small>${TOKEN_SVG.resource}${cost} を払う${lack > 0 ? `（あと ${lack} 足りない）` : ''}</small></button>
+        <button data-extra="endTurn"><b>手番終了</b><small>${netText(g)}</small></button>
+        <button class="primary" data-extra="buyAction" ${lack > 0 ? 'disabled' : ''}><b>行動 +1</b><small>${TOKEN_SVG.resource}${cost} を払う${lack > 0 ? `（あと ${lack} 足りない）` : ''}</small></button>
       </div>
       <p class="muted small">行動 +1 に必要な資源は、同じ手番で買うたびに +${R.extraAction.step}（手番が変わると ${R.extraAction.base} に戻る）</p>
       <button class="link" data-extra="hide">盤面を見る</button>
@@ -900,7 +878,7 @@
       <p class="abandon-count ${k === n ? 'ok' : ''}">選んだ数 <b>${k}</b> / ${n}</p>
       <div class="extra-btns">
         <button data-abandon="auto">おまかせで選ぶ</button>
-        <button class="primary danger" data-abandon="ok" data-confirm="abandon" ${k === n ? '' : 'disabled'}>このセルを捨てる</button>
+        <button class="primary danger" data-abandon="ok" ${k === n ? '' : 'disabled'}>このセルを捨てる</button>
       </div>
       <p class="muted small" data-left="abandon"></p>
     </div>`;
@@ -917,7 +895,7 @@
     { title: '盤面の見方', next: true,
       text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると戦力トークン +1　▽ <b>森林</b>：毎手番 資源 +1<br>● <b>農地</b>：自分の平原のセルを<b>開墾</b>（資源2）すると農地になり、毎手番 食料 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
     { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
-      text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。<br>誤タップよけのため、決定するボタンは<b>2回押す</b>と決まります（1回目で「もう一度押して決定」と出ます）。',
+      text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。<br>押しまちがえたら、手番のあいだなら下のバーの<b>「取り消す」</b>で戻せます。',
       done: (g, base) => myCells(g).length > base.cells },
     { title: 'やってみよう：強化', myTurn: true, target: '#tooltip [data-cell-act="strengthen"]',
       text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、戦力トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。<br>強化済のセルは、あとで説明する<b>拠点</b>にもなります。',
@@ -1132,7 +1110,7 @@
       if (r && r.list) {
         // 理由は同じことが多いので、まとめて最後に1回だけ出す
         const whys = [...new Set(r.list.map(a => a.why).filter(Boolean))];
-        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" data-confirm="cell:${a.type}:${tip.key}" ${a.why ? 'disabled' : ''}>
+        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
           <b>${a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type]}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
           ${whys.map(w => `<p class="tt-why">${esc(w)}</p>`).join('')}</div>`;
       } else if (r && r.note) {
@@ -1148,7 +1126,6 @@
     el.hidden = false;
     positionTip();
     if (app.tutorial) renderCoach();   // ツールチップのボタンを光らせる
-    markArmed();
     if (changed && view) view.setSelected(tip.pinned ? tip.key : null);
   }
 
@@ -1254,7 +1231,6 @@
       const b = e.target.closest('[data-extra]');
       if (!b || b.disabled) return;
       if (b.dataset.extra === 'hide') { app.extraHidden = $('#extra').dataset.key; $('#extra').hidden = true; return; }
-      if (!confirmTap(b)) return;
       send({ type: 'act', action: { type: b.dataset.extra } });
     };
     $('#abandon').onclick = e => {
@@ -1262,13 +1238,12 @@
       const g = app.room && app.room.game;
       if (!b || b.disabled || !abandoning(g)) return;
       if (b.dataset.abandon === 'auto') { app.abandonSel = new Set(E.suggestAbandon(g, app.me)); render(); return; }
-      if (!confirmTap(b)) return;
       send({ type: 'act', action: { type: 'abandon', cells: [...app.abandonSel] } });
     };
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
     $('#actions').onclick = e => {
       const b = e.target.closest('[data-act]');
-      if (!b || b.disabled || !confirmTap(b)) return;
+      if (!b || b.disabled) return;
       // 生産はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
       if (b.dataset.act === 'produce') window.HexSound.play('produce');
       send({ type: 'act', action: { type: b.dataset.act } });
@@ -1281,7 +1256,7 @@
     $('#tooltip').onclick = e => {
       const b = e.target.closest('[data-cell-act]');
       if (!b) { flipTip(); return; }
-      if (b.disabled || !app.tip || !confirmTap(b)) return;
+      if (b.disabled || !app.tip) return;
       const type = b.dataset.cellAct;
       const [q, r] = E.parseKey(app.tip.key);
       send({ type: 'act', action: { type, q, r } });
@@ -1289,20 +1264,18 @@
       if (type === 'destroy') hideTip();
     };
     $('#clash').onclick = e => {
-      const c = e.target.closest('[data-cancel-destroy]');
-      if (c) { if (confirmTap(c)) send({ type: 'act', action: { type: 'cancelDestroy' } }); return; }
+      if (e.target.closest('[data-cancel-destroy]')) { send({ type: 'act', action: { type: 'cancelDestroy' } }); return; }
       const b = e.target.closest('[data-bid-ok]');
-      if (!b || b.disabled || !app.bid || !confirmTap(b)) return;
+      if (!b || b.disabled || !app.bid) return;
       window.HexSound.play('bid');
       send({ type: 'act', action: { type: 'bid', count: app.bid.n } });
     };
-    // スライダーで出す数を選ぶ（画面は数字だけ書き換える。選び直したら、決定の「もう一度押す」はやり直し）
+    // スライダーで出す数を選ぶ（画面は数字だけ書き換える）
     $('#clash').addEventListener('input', e => {
       if (!e.target.matches('[data-bid-range]') || !app.bid) return;
       app.bid.n = Number(e.target.value);
       $('#clash [data-bid-n]').textContent = app.bid.n;
       $('#clash [data-bid-label]').textContent = app.bid.n;
-      if (app.armed && app.armed.key === 'bid') disarm();
     });
     setInterval(tickTimers, 250);
     $('#players').onclick = e => {
@@ -1349,6 +1322,11 @@
     window.addEventListener('resize', placeChat);
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && app.tip) hideTip();
+      // Ctrl+Z（Mac は ⌘+Z）で取り消し。チャットなどの入力中は除く
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.closest('input, textarea')) {
+        const g = app.room && app.room.game;
+        if (g && !E.actionBlocked(g, app.me, 'undo')) { e.preventDefault(); send({ type: 'act', action: { type: 'undo' } }); }
+      }
     });
 
     document.querySelectorAll('[data-open]').forEach(b => {

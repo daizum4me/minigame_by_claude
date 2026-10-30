@@ -424,29 +424,74 @@ test('行動回数を使い切ったら、資源を払って行動 +1（6, 10, 1
 
 
 
-test('もう何もできなくなったら自動で手番終了', () => {
+test('もう何もできなくなっても、取り消せる行動があるあいだは手番を終えない。取り消せなくなったら自動で手番終了', () => {
   const g = newGame(2);
   const me = cur(g);
-  // 資源3：拡張3回で資源0 → 行動 +1 も買えず、何もできないので自動で手番終了
+  // 資源3：拡張3回で資源0。何もできないが、取り消せるので手番は続く
   for (let i = 0; i < 3; i++) {
-    assert.strictEqual(cur(g), me);
     const t = E.targets(g, me, 'expand').find(k => g.board[k].terrain === 'plain');
     const [q, r] = E.parseKey(t);
     assert.ok(E.apply(g, me, { type: 'expand', q, r }).ok);
   }
+  assert.strictEqual(cur(g), me);
+  assert.strictEqual(g.undo.length, 3);
+  assert.ok(E.apply(g, me, { type: 'endTurn' }).ok);
   assert.notStrictEqual(cur(g), me);
-  assert.ok(g.log.some(l => l.text.includes('もう行動できないため、自動で手番終了')));
-  // 資源が残っていて、行動回数が残っていれば終わらない
-  const h = newGame(2, 2);
-  const hm = cur(h);
-  P(h, hm).resource = 2;
-  E.apply(h, hm, { type: 'produce' });
-  assert.notStrictEqual(cur(h), hm);   // 資源0で何もできない（行動回数は残っているが、拡張も資源1が要る）
-  const k = newGame(2, 3);
-  const km = cur(k);
-  P(k, km).resource = 10;
-  E.apply(k, km, { type: 'produce' });
-  assert.strictEqual(cur(k), km);      // まだできる
+  // 破壊のあとは取り消せないので、もう何もできなければ自動で手番終了
+  const { g: h, a, b, tq, tr } = clashSetup();
+  P(h, a).resource = 2;
+  P(h, a).power = 1;
+  P(h, b).power = 0;
+  E.apply(h, a, { type: 'destroy', q: tq, r: tr });
+  E.apply(h, b, { type: 'bid', count: 0 });
+  assert.notStrictEqual(cur(h), a);
+  assert.ok(h.log.some(l => l.text.includes('もう行動できないため、自動で手番終了')));
+});
+
+test('行動の取り消し：拡張・強化・開墾・生産・行動 +1 は、手番のあいだなら新しいものから取り消せる', () => {
+  const g = newGame(2);
+  const me = cur(g);
+  const [cq, cr] = E.parseKey(P(g, me).core);
+  const [mq, mr] = nb(g, cq, cr)[0];
+  setCell(g, mq, mr, { terrain: 'mine' });
+  P(g, me).resource = 20;
+  const start = { res: P(g, me).resource, power: P(g, me).power, seen: P(g, me).powerSeen, left: g.actionsLeft };
+  assert.strictEqual(E.apply(g, me, { type: 'undo' }).ok, false);   // まだ何もしていない
+  E.apply(g, me, { type: 'expand', q: mq, r: mr });          // 鉱山：戦力 +1
+  E.apply(g, me, { type: 'strengthen', q: mq, r: mr });      // 戦力 +1・鉱山 +1
+  E.apply(g, me, { type: 'produce' });
+  const [fq, fr] = nb(g, cq, cr)[1];
+  setCell(g, fq, fr, { owner: me });
+  E.apply(g, me, { type: 'cultivate', q: fq, r: fr });
+  assert.strictEqual(g.board[E.key(fq, fr)].terrain, 'farm');
+  assert.strictEqual(g.undo.length, 4);
+  // 開墾 → 生産 → 強化 → 拡張の順に戻る
+  E.apply(g, me, { type: 'undo' });
+  assert.strictEqual(g.board[E.key(fq, fr)].terrain, 'plain');
+  E.apply(g, me, { type: 'undo' });
+  E.apply(g, me, { type: 'undo' });
+  assert.strictEqual(g.board[E.key(mq, mr)].strong, false);
+  E.apply(g, me, { type: 'undo' });
+  assert.deepStrictEqual([g.board[E.key(mq, mr)].owner, P(g, me).resource, P(g, me).power, P(g, me).powerSeen, g.actionsLeft], [null, start.res, start.power, start.seen, start.left]);
+  assert.match(g.log.at(-1).text, /拡張を取り消した/);
+  // ほかの人は取り消せない・手番が変わると取り消せない
+  E.apply(g, me, { type: 'produce' });
+  const other = g.players.find(p => p.id !== me).id;
+  assert.strictEqual(E.apply(g, other, { type: 'undo' }).ok, false);
+  E.apply(g, me, { type: 'endTurn' });
+  assert.deepStrictEqual(g.undo, []);
+});
+
+test('行動の取り消し：破壊を宣言すると、それより前の行動も取り消せなくなる', () => {
+  const { g, a, b, tq, tr } = clashSetup();
+  P(g, a).power = 3;
+  E.apply(g, a, { type: 'produce' });
+  assert.strictEqual(g.undo.length, 1);
+  E.apply(g, a, { type: 'destroy', q: tq, r: tr });
+  assert.deepStrictEqual(g.undo, []);
+  E.apply(g, b, { type: 'bid', count: 0 });
+  E.apply(g, a, { type: 'bid', count: 1 });
+  assert.strictEqual(E.apply(g, a, { type: 'undo' }).ok, false);
 });
 
 test('セルを捨てる：数が違う・コア・ほかの人のセルは不可。おすすめは一番大きなかたまりから外れたものから', () => {

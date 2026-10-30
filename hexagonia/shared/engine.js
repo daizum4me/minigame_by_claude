@@ -342,6 +342,7 @@
       extraBought: 0,        // この手番で行動 +1 を買った回数
       pending: null,         // 破壊の攻防中： { attacker, defender, target, atk, def }（出す数。null はまだ決めていない）
       lastEndTurn: null,     // 最後の手番終了で増えた・減った資源と食料（画面の演出用）
+      undo: [],              // この手番の、取り消せる行動の記録（新しいものが後ろ。手番が変わるか破壊を宣言すると空になる）
       abandon: null,         // 食料が足りず、セルを捨てる途中： { player, count }
       over: false,
       winners: [],
@@ -450,6 +451,7 @@
     if (state.pending) return '破壊の攻防が終わるまで待ってください';
     if (state.abandon) return '捨てるセルを選んでいるところです';
     if (type === 'endTurn') return '';
+    if (type === 'undo') return state.undo && state.undo.length ? '' : '取り消せる行動がありません';
     if (type === 'buyAction') {
       if (state.actionsLeft > 0) return 'まだ行動回数が残っています';
       if (p.resource < extraActionCost(state)) return '資源トークンが足りません';
@@ -498,7 +500,8 @@
 
   // 手番の人が資源を使い切るなどして、もう何もできなければ自動で手番終了
   function autoEndIfStuck(state) {
-    while (!state.over && !state.pending && !state.abandon && !canAct(state, current(state).id)) {
+    // 取り消せる行動があるあいだは自動で終えない（取り消すかもしれないので）
+    while (!state.over && !state.pending && !state.abandon && !(state.undo && state.undo.length) && !canAct(state, current(state).id)) {
       addLog(state, `${current(state).name} はもう行動できないため、自動で手番終了`, 'info');
       endTurn(state);
     }
@@ -518,7 +521,9 @@
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
     if (action.type === 'endTurn') { endTurn(state); return { ok: true }; }
+    if (action.type === 'undo') { undoLast(state, p); return { ok: true }; }
     if (action.type === 'buyAction') {
+      pushUndo(state, p, null, '行動 +1');
       const cost = extraActionCost(state);
       p.resource -= cost;
       state.actionsLeft = 1;
@@ -528,6 +533,7 @@
     }
     // 生産：資源でトークンを作る。行動回数を使わず、ログにも出さない
     if (action.type === 'produce') {
+      pushUndo(state, p, null, '生産', true);
       p.resource -= RULES.cost.produce;
       p.power += 1;
       return { ok: true };
@@ -536,6 +542,9 @@
     const cell = state.board[k];
     if (!cell) return fail('盤面の外です');
     if (!targets(state, id, action.type).includes(k)) return fail('そのマスには' + ACTION_NAMES[action.type] + 'できません');
+    // 破壊はほかの人を巻き込むので取り消せない（それより前の行動も取り消せなくなる）
+    if (action.type === 'destroy') state.undo = [];
+    else pushUndo(state, p, cell, ACTION_NAMES[action.type]);
 
     if (action.type === 'expand') {
       const cost = expandCost(cell);
@@ -785,7 +794,28 @@
     setTurn(state, i);
   }
 
+  // 行動の取り消し：行動の前の状態を覚えておき、新しいものから1つずつ戻す（手番のあいだだけ）
+  function pushUndo(state, p, cell, label, silent) {
+    state.undo = state.undo || [];
+    state.undo.push({
+      label, silent: !!silent, resource: p.resource, power: p.power, powerSeen: p.powerSeen, food: p.food,
+      actionsLeft: state.actionsLeft, extraBought: state.extraBought,
+      cell: cell ? { k: key(cell.q, cell.r), owner: cell.owner, strong: cell.strong, core: cell.core, terrain: cell.terrain } : null,
+    });
+  }
+
+  function undoLast(state, p) {
+    const u = state.undo.pop();
+    Object.assign(p, { resource: u.resource, power: u.power, powerSeen: u.powerSeen, food: u.food });
+    state.actionsLeft = u.actionsLeft;
+    state.extraBought = u.extraBought;
+    if (u.cell) Object.assign(state.board[u.cell.k], { owner: u.cell.owner, strong: u.cell.strong, core: u.cell.core, terrain: u.cell.terrain });
+    // 生産はログに出さないので、その取り消しも出さない（戦力トークンの数がわからないように）
+    if (!u.silent) addLog(state, `${p.name} が${u.label}を取り消した`, 'info');
+  }
+
   function setTurn(state, i) {
+    state.undo = [];
     state.turn = i;
     state.turnNo = (state.turnNo || 0) + 1;
     state.actionsLeft = actionsThisTurn(state);

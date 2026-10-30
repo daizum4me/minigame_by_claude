@@ -15,7 +15,7 @@
   const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
   const TURN_MS = E.RULES.turnSeconds.normal * 1000;   // 1手番の持ち時間（7人以上は E.turnMs で60秒）。攻防のあいだも止まらない
   const BID_MS = 30000;     // 攻防で出す数を決める時間。切れたら 0 個
-  const ABANDON_MS = 30000; // 食料が足りないとき、捨てるセルを選ぶ時間。切れたら自動で選ぶ
+  const ABANDON_MS = 60000; // 食料が足りないとき、捨てるセルを選ぶ時間（60秒）。切れたら自動で選ぶ
   const GRACE_MS = 30000;   // 切断した人の手番は、これだけ待ってから自動で終える
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
@@ -375,7 +375,9 @@
         game = Object.assign({}, g, {
           log: g.log.slice(-LOG_SEND),
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
-          eventPlan: undefined,   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
+          eventPlan: undefined,
+          // 取り消しの記録は、手番の人にだけ、何を取り消せるかだけ届ける（生産したことや戦力トークンの数がわからないように）
+          undo: g.over || E.current(g).id !== forId ? [] : (g.undo || []).map(u => ({ label: u.label })),   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
           // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）
           lastClash: g.lastClash && Object.assign({}, g.lastClash, {
             atk: forId === g.lastClash.attacker ? g.lastClash.atk : null,

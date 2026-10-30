@@ -658,12 +658,6 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .tchip.short b { color: var(--bad) !important; }
 @keyframes chip-short { 50% { background: rgba(255, 156, 148, 0.3); } }
 
-/* 誤タップよけ：1回目で「もう一度押して決定」の状態に（3秒以内にもう一度押すと決定） */
-[data-confirm] { position: relative; }
-.armed { outline: 2px solid var(--warn); outline-offset: 1px; box-shadow: 0 0 12px rgba(255, 211, 107, 0.45) !important; }
-.armed::after {
-  content: 'もう一度押して決定';
-  position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
-  background: var(--warn); color: #1F1F1D; font-size: 11.5px; font-weight: 700; white-space: nowrap;
-  padding: 2px 8px; border-radius: 8px; pointer-events: none; z-index: 2;
-}
+/* 取り消すボタン */
+.act.undo b { font-size: 14px; }
+.act.undo small { max-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
