@@ -207,8 +207,8 @@ test('破壊：資源2・戦力トークン1個以上が必要。相手が戦力
   assert.ok(P(g, b).alive);
 });
 
-test('破壊：出す数を伏せて決め、そろったら公開。多いほうの勝ちで、同じ数なら守られる', () => {
-  for (const [atk, def, ok] of [[2, 1, true], [1, 1, false], [1, 0, true], [1, 2, false], [2, 2, false], [3, 2, true]]) {
+test('破壊：出す数を伏せて決め、そろったら公開。攻撃 ≧ 防御なら成功（同じ数なら攻撃側の勝ち）', () => {
+  for (const [atk, def, ok] of [[2, 1, true], [1, 1, true], [1, 0, true], [1, 2, false], [2, 2, true], [3, 2, true]]) {
     const { g, a, b, t, tq, tr } = clashSetup();
     P(g, a).power = 3;
     P(g, b).power = 2;
@@ -274,22 +274,16 @@ test('拠点：破壊できるのは、自分の強化済のセルに隣接す�
   assert.strictEqual(E.apply(g, a, { type: 'destroy', q: E.parseKey(t)[0], r: E.parseKey(t)[1] }).ok, false);
 });
 
-test('城壁：強化済のセルに隣接するセルが狙われたら、防御側に +1（攻撃 ＞ 防御 + 1 で成功）', () => {
-  for (const [atk, def, ok] of [[1, 0, false], [2, 0, true], [2, 1, false], [3, 1, true], [3, 2, false]]) {
-    const { g, a, b, t, tq, tr } = clashSetup();
-    // 狙われるマスの隣（a のセルではないところ）に、b の強化済のセルを置く
-    const [wq, wr] = nb(g, tq, tr).find(([q, r]) => !g.board[E.key(q, r)].owner);
-    setCell(g, wq, wr, { owner: b, strong: true });
-    assert.strictEqual(E.wallOf(g, g.board[t]), 1);
-    P(g, a).power = 3;
-    P(g, b).power = 2;
-    E.apply(g, a, { type: 'destroy', q: tq, r: tr });
-    assert.strictEqual(g.pending.wall, 1);
-    E.apply(g, b, { type: 'bid', count: def });
-    E.apply(g, a, { type: 'bid', count: atk });
-    assert.strictEqual(g.board[t].owner, ok ? a : b, `${atk} vs ${def}+1`);
-    assert.strictEqual(g.lastClash.wall, 1);
-  }
+test('城壁はない：強化済のセルの隣のセルでも、守る側に上乗せはない', () => {
+  const { g, a, b, t, tq, tr } = clashSetup();
+  const [wq, wr] = nb(g, tq, tr).find(([q, r]) => !g.board[E.key(q, r)].owner);
+  setCell(g, wq, wr, { owner: b, strong: true });
+  P(g, a).power = 2;
+  P(g, b).power = 2;
+  E.apply(g, a, { type: 'destroy', q: tq, r: tr });
+  E.apply(g, b, { type: 'bid', count: 2 });
+  E.apply(g, a, { type: 'bid', count: 2 });
+  assert.strictEqual(g.board[t].owner, a);
 });
 
 test('コアを破壊すると脱落、セルとトークンが消えて手番が飛ばされる、最後の1人が勝利', () => {
@@ -304,7 +298,7 @@ test('コアを破壊すると脱落、セルとトークンが消えて手番�
   P(g, a).power = 5;
   E.apply(g, a, { type: 'destroy', q: bc[0], r: bc[1] });
   E.apply(g, b, { type: 'bid', count: 0 });
-  E.apply(g, a, { type: 'bid', count: 2 });   // b のコアは城壁で +1 なので、2個で上回る（相手の数は見えないので、攻撃側は数を選ぶ）
+  E.apply(g, a, { type: 'bid', count: 1 });   // 相手の戦力トークンは見えないので、攻撃側は数を選ぶ
   assert.strictEqual(P(g, b).alive, false);
   assert.strictEqual(E.cellsOf(g, b).length, 0);
   assert.strictEqual(g.board[E.key(...bc)].owner, a); // コアのマスも攻撃側のセルになる
@@ -528,7 +522,7 @@ test('橋：河川マスへの拡張は資源3。強化できる。破壊され�
   P(g, a).power = 0;
   assert.ok(E.apply(g, b, { type: 'destroy', q: rq, r: rr }).ok);
   assert.ok(E.apply(g, a, { type: 'bid', count: 0 }).ok);
-  assert.ok(E.apply(g, b, { type: 'bid', count: 2 }).ok);   // 橋は a の強化済のコアの隣なので城壁 +1。2個で上回る
+  assert.ok(E.apply(g, b, { type: 'bid', count: 1 }).ok);
   assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain, g.board[rk].strong], [null, 'river', false]);
 });
 
@@ -745,8 +739,8 @@ test('攻防の結果は成功か失敗かだけがログに出る（出した�
   assert.strictEqual(g.lastClash.success, false);
   assert.ok(!g.log.some(l => /トークン \d+ 個/.test(l.text)));
   assert.ok(g.log.some(l => l.text.includes('出した数は非公開')));
-  // 攻撃側は少なくとも1個出した。守られた（城壁なし）→ 防御側は少なくとも1個出したはず
-  assert.deepStrictEqual([P(g, a).powerSeen, P(g, b).powerSeen], [1, 1]);
+  // 攻撃側は少なくとも1個出した。守られた → 防御側は攻撃側の1個より多く、少なくとも2個出したはず
+  assert.deepStrictEqual([P(g, a).powerSeen, P(g, b).powerSeen], [1, 0]);
 });
 
 test('鉱山・強化で増えた戦力トークンは、見える数の目安にも足される', () => {

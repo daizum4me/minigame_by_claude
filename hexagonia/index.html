@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=36">
+<link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
 
@@ -168,13 +168,12 @@
       <h3><i class="ic" data-icon="cell-strong"></i>セルの段階</h3>
       <div class="r-cards">
         <div class="r-card"><i class="ic big" data-icon="cell"></i><b>未強化</b><small>拡張して置いたセル</small></div>
-        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span>。<b>拠点</b>と<b>城壁</b>になる</small></div>
+        <div class="r-card"><i class="ic big" data-icon="cell-strong"></i><b>強化済</b><small>手番終了時の資源 <span class="k-res">+1</span>・<span class="k-food">食料 +1</span>。<b>拠点</b>になる</small></div>
         <div class="r-card core"><i class="ic big" data-icon="core"></i><b class="k-core">コア</b><small>壊されると脱落。資源 <span class="k-res">+2</span>・<span class="k-food">食料 +6</span></small></div>
       </div>
       <ul class="r-list">
         <li><b>拠点</b>：破壊できるのは、<b>自分の強化済のセルに隣接する</b>相手のセルだけ。攻めたい方向に強化を置く</li>
-        <li><b>城壁</b>：<b>強化済のセルに隣接する</b>セルが狙われたら、守る側に <span class="k-pow">+1</span>（強化済のセル自身は、隣に強化済のセルがなければ守られない）</li>
-        <li>前線に強化すれば攻めと守りの要になるが狙われる。後方に強化すれば安全に稼げるが、攻めにも守りにも使えない</li>
+        <li>前線に強化すれば攻めの足がかりになる。後方に強化すれば安全に稼げるが、攻めには使えない</li>
       </ul>
     </section>
 
@@ -231,9 +230,9 @@
         <li>そろったら判定。<b>結果（成功か失敗か）だけ</b>が全員に知らされ、出した数は当人にしかわからない</li>
       </ol>
       <div class="r-judge">
-        <span class="k-pow"><i class="ic" data-icon="power"></i>攻撃側</span> ＞ 防御側（＋城壁1） → <b class="k-bad">破壊成功</b>
+        <span class="k-pow"><i class="ic" data-icon="power"></i>攻撃側</span> ≧ 防御側 → <b class="k-bad">破壊成功</b>（同じ数なら攻撃側の勝ち）
         <span class="sep">／</span>
-        <span class="k-pow">攻撃側</span> ≦ 防御側（＋城壁1） → <b class="k-good">守られた</b>（同じ数なら守られる）
+        <span class="k-pow">攻撃側</span> ＜ 防御側 → <b class="k-good">守られた</b>
       </div>
       <p class="r-hint">出したトークンはすべてなくなる（数は公開されない）。<b>戦力トークンは最初に2個</b>配られ、<b>ほかの人の戦力トークンの数は見えない</b>。攻めに使えば、そのぶん守りに使える数が減る。<br>攻撃側は、決着する前なら<b>破壊をやめられる</b>（資源と行動回数が戻る）。</p>
     </section>
@@ -302,11 +301,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=36"></script>
-<script src="shared/cpu.js?v=36"></script>
-<script src="shared/room.js?v=36"></script>
-<script src="sound.js?v=36"></script>
-<script src="board.js?v=36"></script>
-<script src="client.js?v=36"></script>
+<script src="shared/engine.js?v=37"></script>
+<script src="shared/cpu.js?v=37"></script>
+<script src="shared/room.js?v=37"></script>
+<script src="sound.js?v=37"></script>
+<script src="board.js?v=37"></script>
+<script src="client.js?v=37"></script>
 </body>
 </html>
