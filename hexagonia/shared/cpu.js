@@ -98,15 +98,17 @@
         out.push({ s: s + noise() + (lv.bias.strengthen || 0), a: { type: 'strengthen', q: c.q, r: c.r } });
       }
     }
-    if (!E.actionBlocked(g, id, 'cultivate')) {
-      // 開墾：食料が足りなくなりそうなら、前線から遠い（壊されにくい）平原のセルを農地にする
-      const ks = E.targets(g, id, 'cultivate');
+    if (!E.actionBlocked(g, id, 'develop')) {
+      // 発展：前線から遠い（壊されにくい）平原のセルを、食料が足りなくなりそうなら農地に、そうでなければ工場に
+      const ks = E.targets(g, id, 'develop');
       if (ks.length) {
         const k = ks.map(k => ({ k, f: foeNeighbors(g, id, g.board[k]) })).sort((a, b) => a.f - b.f)[0].k;
-        let s = foodLeft < 0 ? 5 : foodLeft < 2 ? 3.5 : foodLeft < 4 ? 1.8 : 0.4;
-        if (late) s -= 1.5;                                  // 終盤は元が取れない
         const [q, r] = E.parseKey(k);
-        out.push({ s: s + noise(), a: { type: 'cultivate', q, r } });
+        let farm = foodLeft < 0 ? 5 : foodLeft < 2 ? 3.5 : foodLeft < 4 ? 1.8 : 0.4;
+        let factory = foodLeft < 2 ? 0.5 : 4 - E.powerMade(g, id) * 0.4;   // 工場は毎ターン戦力 +1。多すぎると使いきれない
+        if (late) { farm -= 1.5; factory -= 2; }                              // 終盤は元が取れない
+        out.push({ s: farm + noise(), a: { type: 'develop', q, r, to: 'farm' } });
+        out.push({ s: factory + noise(), a: { type: 'develop', q, r, to: 'factory' } });
       }
     }
     if (!E.actionBlocked(g, id, 'destroy')) {

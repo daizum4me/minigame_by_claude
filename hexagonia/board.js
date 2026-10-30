@@ -371,6 +371,12 @@
           ctx.lineWidth = Math.max(1.2, s * 0.06);
           ctx.lineJoin = 'round';
           ctx.stroke();
+        } else if (c.terrain === 'factory') {
+          // 工場：□（枠だけ）
+          ctx.strokeStyle = COL.mark;
+          ctx.lineWidth = Math.max(1.2, s * 0.06);
+          ctx.lineJoin = 'miter';
+          ctx.strokeRect(x - s * 0.2, y - s * 0.2, s * 0.4, s * 0.4);
         } else if (c.terrain === 'farm') {
           // 農地：●
           ctx.beginPath();

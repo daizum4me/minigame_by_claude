@@ -7,12 +7,26 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを壊し合う2〜12人のリアルタイム陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=56">
+<link rel="stylesheet" href="style.css?v=58">
 </head>
 <body>
 
+<!-- メンテナンス中：パスワードを入れるとトップに進める（一時的なもの） -->
+<main id="gate" class="screen center">
+  <form id="gate-form" class="card top-card gate-card" autocomplete="off">
+    <h1 class="title"><span class="logo" aria-hidden="true"></span>ヘキサゴニア</h1>
+    <p class="lead">ただいまメンテナンス中です。</p>
+    <label class="field">
+      <span>パスワード</span>
+      <input id="gate-pass" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <button class="primary big" type="submit">進む</button>
+    <p id="gate-msg" class="msg bad" hidden>パスワードがちがいます</p>
+  </form>
+</main>
+
 <!-- トップ -->
-<main id="top" class="screen center">
+<main id="top" class="screen center" hidden>
   <div class="card top-card">
     <h1 class="title"><span class="logo" aria-hidden="true"></span>ヘキサゴニア</h1>
     <p class="lead">六角形のマスでセルを広げ、強化し、<br>相手のコアを壊す陣取りゲーム。手番のないリアルタイム対戦。2〜12人。</p>
@@ -159,11 +173,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=56"></script>
-<script src="shared/cpu.js?v=56"></script>
-<script src="shared/room.js?v=56"></script>
-<script src="sound.js?v=56"></script>
-<script src="board.js?v=56"></script>
-<script src="client.js?v=56"></script>
+<script src="shared/engine.js?v=58"></script>
+<script src="shared/cpu.js?v=58"></script>
+<script src="shared/room.js?v=58"></script>
+<script src="sound.js?v=58"></script>
+<script src="board.js?v=58"></script>
+<script src="client.js?v=58"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@
     maxPlayers: 12,
     rt: {
       tickSeconds: 20,                      // 1ターンの長さ（秒）
-      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・開墾・攻撃で1使う（防御・生産は使わない）
+      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・発展・攻撃で1使う（防御・生産は使わない）
       defMax: 6,                            // セルの防御の上限（六角形の辺の数）
       ticks: [[4, 28], [8, 24], [12, 20]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
       ticksRange: [10, 80],
@@ -30,19 +30,20 @@
     radius: { 2: 4, 3: 4, 4: 5, 5: 6, 6: 6, 7: 7, 8: 7, 9: 8, 10: 8, 11: 8, 12: 8 },
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
-    // 平原：鉱山：森林（河川は別に流す）。効果のあるマスは合わせて約20%（4/20）で、2種類に均等に分ける。農地は「開墾」で作る
+    // 平原：鉱山：森林（河川は別に流す）。効果のあるマスは合わせて約20%（4/20）で、2種類に均等に分ける。農地・工場は「発展」で作る
     terrainRatio: { plain: 16, mine: 2, forest: 2 },
     // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに2種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
     centerShare: 0.1,                   // コアの近くの2種類とは別に、少なくとも空きマスの 10% は効果のあるマスとして散らす
     centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
     minePower: 1,                       // 鉱山マス：拡張と強化のときに戦力トークン +1
-    farmFood: 1,                        // 農地（開墾したセル）：ターンごとに食料 +1（強化の +1 とは別）
+    farmFood: 1,                        // 農地（発展で作る）：ターンごとに食料 +1（強化の +1 とは別）
+    factoryPower: 1,                    // 工場（発展で作る）：ターンごとに戦力トークン +1
     forestResource: 1,                  // 森林マス：このセルがあるとターンごとに資源 +1（強化の +1 とは別）
     startResource: 3,
     startPower: 2,                      // 最初に戦力トークンを2個配る
-    // 生産：資源で戦力トークンを作る（行動力を使わない・ログに出ない）。開墾：自分の平原のセル（コア以外）を農地にする
-    cost: { expand: 1, bridge: 3, strengthen: 2, cultivate: 2, produce: 2 },
+    // 生産：資源で戦力トークンを作る（行動力を使わない・ログに出ない）。発展：自分の平原のセル（コア以外）を農地か工場に。農地にする
+    cost: { expand: 1, bridge: 3, strengthen: 2, develop: 2, produce: 2 },
     // ターンごとの資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
     // 食料：ターンごとに、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
@@ -58,7 +59,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', factory: '工場マス', forest: '森林マス', river: '河川マス' };
   // イベント（4ターンのあいだ続く）。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、ap：行動力の上限
   const EVENTS = {
     famine: { name: '不作', text: '食料生産が0.5倍', food: 0.5 },
@@ -71,11 +72,12 @@
     plague: { name: '疫病', text: '行動力の上限 −1', ap: -1 },
   };
 
-  const TERRAIN_KINDS = ['mine', 'forest'];   // 盤面を作るときに置く、効果のある地形（農地は開墾で作る）
+  const TERRAIN_KINDS = ['mine', 'forest'];   // 盤面を作るときに置く、効果のある地形（農地・工場は発展で作る）
+  const DEVELOP_KINDS = ['farm', 'factory'];  // 発展で作れる地形
 
-  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', cultivate: '開墾', destroy: '攻撃', produce: '生産（戦力トークン）', fortify: '防御', unfortify: '防御の解除' };
+  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', develop: '発展', destroy: '攻撃', produce: '生産（戦力トークン）', fortify: '防御', unfortify: '防御の解除' };
   // 行動力を使う行動（ほかは使わない）
-  const AP_ACTIONS = ['expand', 'strengthen', 'cultivate', 'destroy'];
+  const AP_ACTIONS = ['expand', 'strengthen', 'develop', 'destroy'];
 
   function shuffle(arr, rng) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -373,11 +375,13 @@
       const n = income(state, p.id);
       const resBefore = p.resource, foodBefore = p.food || 0;
       p.resource += n;
+      const power = powerMade(state, p.id);   // 工場
+      p.power += power;
       const made = foodMade(state, p.id), eaten = foodEaten(state, p.id);
       p.food = foodBefore + made - eaten;
       const hungry = Math.max(0, -p.food);
       p.food = Math.max(0, p.food);
-      state.tickInfo[p.id] = { seq, player: p.id, resBefore, resource: n, foodBefore, made, eaten, hungry };
+      state.tickInfo[p.id] = { seq, player: p.id, resBefore, resource: n, power, foodBefore, made, eaten, hungry };
       const keys = suggestAbandon(state, p.id, hungry);
       if (keys.length) {
         for (const k of keys) Object.assign(state.board[k], { owner: null, strong: false, core: false, def: 0 });
@@ -439,6 +443,11 @@
     return Math.floor(n * ((ev && ev.res) || 1));
   }
 
+  // ターンごとに工場が作る戦力トークン
+  function powerMade(state, id) {
+    return cellsOf(state, id).filter(c => c.terrain === 'factory').length * RULES.factoryPower;
+  }
+
   // ターンごとに作る食料：コア +6、強化済のセル（コアも）1つにつき +1、農地のセル1つにつき +1
   function foodMade(state, id) {
     const f = RULES.food;
@@ -484,7 +493,7 @@
         if (!c.owner && p.resource >= expandCost(c) && adjacentToOwn(state, id, c.q, c.r)) out.push(k);
       } else if (type === 'strengthen') {
         if (c.owner === id && !c.strong) out.push(k);
-      } else if (type === 'cultivate') {
+      } else if (type === 'develop') {
         if (c.owner === id && !c.core && c.terrain === 'plain') out.push(k);
       } else if (type === 'destroy') {
         if (c.owner && c.owner !== id && adjacentToStrong(state, id, c.q, c.r)) out.push(k);
@@ -501,7 +510,7 @@
 
   /*
    * 行動を実行する。state は書き換わる。
-   * action: { type: 'expand'|'strengthen'|'cultivate'|'destroy'|'fortify'|'unfortify', q, r } / { type: 'produce' }
+   * action: { type: 'expand'|'strengthen'|'destroy'|'fortify'|'unfortify', q, r } / { type: 'develop', q, r, to: 'farm'|'factory' } / { type: 'produce' }
    */
   function apply(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
@@ -533,6 +542,7 @@
       return { ok: true };
     }
     if (!targets(state, id, action.type).includes(k)) return fail('そのマスには' + ACTION_NAMES[action.type] + 'できません');
+    if (action.type === 'develop' && !DEVELOP_KINDS.includes(action.to)) return fail('農地か工場を選んでください');
     p.ap--;
     if (action.type === 'expand') {
       const cost = expandCost(cell);
@@ -542,10 +552,12 @@
       if (extra) extra = `（${extra}）`;
       if (cell.terrain === 'river') addLog(state, `${p.name} が河川マス${cellLabel(cell)}に橋をかけた（資源 ${cost}）`, 'expand');
       else addLog(state, `${p.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}に拡張${extra}`, 'expand');
-    } else if (action.type === 'cultivate') {
-      p.resource -= RULES.cost.cultivate;
-      cell.terrain = 'farm';
-      addLog(state, `${p.name} がセル${cellLabel(cell)}を開墾して農地に（ターンごとに食料 +${RULES.farmFood}）`, 'strengthen');
+    } else if (action.type === 'develop') {
+      p.resource -= RULES.cost.develop;
+      cell.terrain = action.to;
+      addLog(state, action.to === 'farm'
+        ? `${p.name} がセル${cellLabel(cell)}を発展させて農地に（ターンごとに食料 +${RULES.farmFood}）`
+        : `${p.name} がセル${cellLabel(cell)}を発展させて工場に（ターンごとに戦力トークン +${RULES.factoryPower}）`, 'strengthen');
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
@@ -668,9 +680,9 @@
   }
 
   return {
-    RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
+    RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, DEVELOP_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, forfeit,
-    adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, riversideCells,
+    adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, powerMade, riversideCells,
   };
 });
