@@ -7,9 +7,9 @@
   --mark: #A3A198;
   --text: #E9E7E0;
   --muted: #9A988F;
-  --glass: rgba(42, 42, 40, 0.72);   /* 半透明のパネル（ボタン・表示・ウィンドウ類）。ぼかさずに、後ろの盤面がそのまま透けて見える */
+  --glass: #2A2A28;                 /* パネル・ボタン・ウィンドウ類（不透明） */
+  --see: rgba(42, 42, 40, 0.72);    /* 盤面のツールチップとチャットだけ半透明（ぼかさずに、後ろの盤面がそのまま透けて見える） */
   --glass-line: rgba(255, 255, 255, 0.09);
-  --solid: #2A2A28;   /* 不透明のウィンドウ（ルール・設定・行動回数を使い切ったとき・食料が足りないとき） */
   --accent: #9CC6F2;
   --good: #8EDDB2;
   --bad: #FF9C94;
@@ -149,7 +149,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 .banner {
   position: absolute; left: 50%; transform: translateX(-50%);
   top: 56px;
-  background: rgba(255, 211, 107, 0.16);
+  background: linear-gradient(rgba(255, 211, 107, 0.16), rgba(255, 211, 107, 0.16)), var(--glass);
   border: 1px solid rgba(255, 211, 107, 0.45);
   color: var(--warn);
   border-radius: 12px;
@@ -185,7 +185,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
   position: absolute;
   z-index: 5;   /* 自分の情報のバー（捨てるセルの表示）や、行動回数を使い切ったときのウィンドウより下 */
   width: 240px;
-  background: var(--glass);
+  background: var(--see);
   border: 1px solid var(--glass-line);
   border-radius: 12px;
   padding: 10px 12px;
@@ -285,7 +285,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 
 /* ダイアログ */
 .dialog {
-  background: var(--solid);
+  background: var(--glass);
   color: var(--text);
   border: 1px solid var(--glass-line);
   border-radius: 16px;
@@ -402,7 +402,7 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 16px 0 8px;
 .extra-card {
   pointer-events: auto;
   width: min(380px, 100%);
-  background: var(--solid);
+  background: var(--glass);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
   padding: 16px;
@@ -444,7 +444,7 @@ h3 #diameter-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
   width: 100%;
   padding: 10px 14px;
   box-shadow: none;
-  background: linear-gradient(rgba(255, 156, 148, 0.08), rgba(255, 156, 148, 0.08)), var(--solid);
+  background: linear-gradient(rgba(255, 156, 148, 0.08), rgba(255, 156, 148, 0.08)), var(--glass);
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
@@ -600,7 +600,7 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
   bottom: var(--chat-bottom, 12px);
   width: min(300px, calc(100vw - 24px));
   z-index: 3;   /* 盤面より上、攻防・ツールチップ・案内などのパネルより下 */
-  background: var(--glass);
+  background: var(--see);
   border: 1px solid var(--glass-line);
   border-radius: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
