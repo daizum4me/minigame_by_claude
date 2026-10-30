@@ -33,8 +33,6 @@
 
   // アキシャル座標 → 世界座標（マスの半径 = 1、とがった頂点が上）
   const toWorld = (q, r) => [SQRT3 * (q + r / 2), 1.5 * r];
-  const WALL_IN = 0.62 * 0.866;   // 防御の線を引く位置：マスの中心から辺の真ん中までの距離（0.866）の6割。中心寄り
-  const SIDE_MIN = 0.55;          // マスの中心からこれより外（マスの大きさ 1 に対して）をクリックすると、辺を選んだことになる
   function toAxial(x, y) {
     const q = (SQRT3 / 3 * x - y / 3), r = (2 / 3 * y);
     // 丸め（キューブ座標）
@@ -202,22 +200,6 @@
       return this.data.game.board[k] ? k : null;
     }
 
-    // リアルタイムモード：マスのふちの近くをクリックしたとき、どの辺か（0〜5。E.DIRS の順）。中央なら null
-    sideAt(px, py, k) {
-      if (!this.data || !k || this.data.game.mode !== 'realtime') return null;
-      const c = this.data.game.board[k];
-      const [cx, cy] = toWorld(c.q, c.r);
-      const ox = (px - this.ox) / this.scale - cx, oy = (py - this.oy) / this.scale - cy;
-      if (Math.hypot(ox, oy) < SIDE_MIN) return null;
-      let best = -1, bestDot = -Infinity;
-      E.DIRS.forEach(([dq, dr], i) => {
-        const [wx, wy] = toWorld(dq, dr);
-        const dot = (ox * wx + oy * wy) / Math.hypot(wx, wy);
-        if (dot > bestDot) { bestDot = dot; best = i; }
-      });
-      return best;
-    }
-
     // ---------- 操作 ----------
 
     bind() {
@@ -299,7 +281,7 @@
         if (click) {
           const k = this.keyAt(p.x, p.y);
           if (e.pointerType !== 'mouse') this.setHover(null, true);
-          if (this.h.onSelect) this.h.onSelect(k, this.sideAt(p.x, p.y, k));  // 盤面の外なら null（選択を外す）。リアルタイムモードでは、ふちの近くなら辺の番号も
+          if (this.h.onSelect) this.h.onSelect(k);  // 盤面の外なら null（選択を外す）
         }
         this.dragging = false;
       };
@@ -440,6 +422,8 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
+        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印と同じ大きさ）のあいだを、1つにつき辺1本ぶんずつ埋める。6で一周
+        if (c.def > 0) this.defRing(ctx, x, y, s, this.defSides(g, c).slice(0, Math.min(6, c.def)), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
         this.edge(ctx, x, y, s * 0.88, c.core ? Math.max(2.5, s * 0.11) : Math.max(1.5, s * 0.06), col.light, pat);
@@ -515,51 +499,6 @@
         ctx.setLineDash([]);
         ctx.stroke();
       }
-      // 防御（リアルタイムモード）：守るマスの、隣に面した辺の内側（マスの中心寄り）に、置いた人の色の線と体力の数字。
-      // 辺の両側のマスがそれぞれ防御を持てるので、重ならない
-      const wallEnds = wk => {
-        const [ka, kb] = wk.split('>');
-        const [ax, ay] = this.screenOf(ka), [bx, by] = this.screenOf(kb);
-        const len = Math.hypot(bx - ax, by - ay) || 1;
-        const ux = (bx - ax) / len, uy = (by - ay) / len;       // 守るマスから隣のマスへの向き
-        const mx = ax + ux * s * WALL_IN, my = ay + uy * s * WALL_IN;
-        const px = -uy * s * 0.32, py = ux * s * 0.32;          // 辺と平行
-        return { mx, my, x1: mx + px, y1: my + py, x2: mx - px, y2: my - py };
-      };
-      ctx.lineCap = 'round';
-      for (const [wk, wall] of Object.entries(g.walls || {})) {
-        const e = wallEnds(wk);
-        const col = d.colors[wall.owner] || { base: '#cccccc', light: '#ffffff' };
-        ctx.lineWidth = Math.max(3, s * 0.16);
-        ctx.strokeStyle = col.light;
-        ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke();
-        if (s >= 16) {
-          ctx.font = `700 ${Math.round(s * 0.26)}px system-ui, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          // 数字は線のすぐ内側（中心寄り）に、ふちどりつきで
-          const [ax, ay] = this.screenOf(wk.split('>')[0]);
-          const nx = e.mx + (ax - e.mx) * 0.38, ny = e.my + (ay - e.my) * 0.38;
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = 'rgba(20,20,18,0.9)';
-          ctx.strokeText(String(wall.hp), nx, ny);
-          ctx.fillStyle = '#fff';
-          ctx.fillText(String(wall.hp), nx, ny);
-        }
-      }
-      // ツールチップで選んでいる辺
-      if (d.wallSel) {
-        const [ka, kb] = d.wallSel.split('>');
-        if (g.board[ka] && g.board[kb]) {
-          const e = wallEnds(d.wallSel);
-          ctx.setLineDash([s * 0.1, s * 0.1]);
-          ctx.lineWidth = Math.max(2, s * 0.1);
-          ctx.strokeStyle = `rgba(255,211,107,${0.65 + 0.35 * pulse})`;
-          ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-      ctx.lineCap = 'butt';
       // 攻防中のマス
       if (g.pending && !g.over) {
         const [x, y] = this.screenOf(g.pending.target);
@@ -569,8 +508,8 @@
         ctx.strokeStyle = `rgba(255,120,120,${0.5 + 0.5 * pulse})`;
         ctx.stroke();
       }
-      // ホバー中のマス
       if (this.hoverKey && g.board[this.hoverKey]) {
+        // ホバー中のマス
         const [x, y] = this.screenOf(this.hoverKey);
         hexPath(ctx, x, y, s * 0.97);
         ctx.lineWidth = 2;
@@ -579,6 +518,34 @@
         ctx.stroke();
       }
       if (this.h.onView) this.h.onView();
+    }
+
+    // 防御を埋める辺の順番（0〜5。辺 i は頂点 i と i+1 のあいだ、上の頂点から時計回り）：
+    // 相手のセルと接している辺から。残りは、相手と接している辺に近いものから（どこにも接していなければ上から時計回り）
+    defSides(g, c) {
+      const foe = [];
+      for (const [dq, dr] of E.DIRS) {
+        const [wx, wy] = toWorld(dq, dr);
+        const i = ((Math.round(Math.atan2(wy, wx) * 180 / Math.PI / 60) + 1) % 6 + 6) % 6;
+        const n = g.board[E.key(c.q + dq, c.r + dr)];
+        if (n && n.owner && n.owner !== c.owner) foe.push(i);
+      }
+      const near = i => foe.length ? Math.min(...foe.map(f => { const d = Math.abs(f - i) % 6; return Math.min(d, 6 - d); })) : 0;
+      return [0, 1, 2, 3, 4, 5].sort((a, b) => near(a) - near(b) || a - b);
+    }
+
+    // 防御の帯：sides の辺ごとに、縁と内側の六角形のあいだの台形を塗る（セルの明るい色）
+    defRing(ctx, x, y, s, sides, col) {
+      const ro = s * 0.86, ri = s * 0.62;
+      const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
+      ctx.fillStyle = col.light;
+      for (const i of sides) {
+        ctx.beginPath();
+        ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));
+        ctx.lineTo(...pt(ri, i + 1)); ctx.lineTo(...pt(ri, i));
+        ctx.closePath();
+        ctx.fill();
+      }
     }
 
     // セルの縁（陣営ごとの模様：実線・点線・二重線・破線）
