@@ -40,9 +40,9 @@
   // そのマスの隣にある相手のセルの数
   const foeNeighbors = (g, id, c) => E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner && n.owner !== id; }).length;
 
-  // 相手の防御トークンの数の見積もり（実際の数は見ない）。
-  // 見えている増減（最初の2個・強化、守られた攻防）に、見えない生産の分を1個ぶん足しておく
-  const estDefense = foe => Math.max(0, foe.defenseSeen == null ? foe.defense : foe.defenseSeen) + 1;
+  // 相手の戦力トークンの数の見積もり（実際の数は見ない）。
+  // 見えている増え方（最初の2個・強化・鉱山）から攻防で少なくとも出したはずの数を引き、見えない生産の分を1個ぶん足しておく
+  const estPower = foe => Math.max(0, foe.powerSeen == null ? foe.power : foe.powerSeen) + 1;
 
   function scoreActions(g, id, rng, lv) {
     const me = playerById(g, id);
@@ -65,10 +65,9 @@
         const near = Math.min(...foeCores.map(f => E.dist([c.q, c.r], f)));
         const own = E.neighbors(c.q, c.r).filter(([q, r]) => { const n = cellAt(g, q, r); return n && n.owner === id; }).length;
         let s = 2 + own * 0.25 + Math.max(0, 8 - near) * 0.12;
-        if (c.terrain === 'mine') s += me.attack <= 1 ? 2.5 : 1.2;   // 鉱山は取ると攻撃トークン +1
+        if (c.terrain === 'mine') s += me.power <= 1 ? 2.5 : 1.2;    // 鉱山は取ると戦力トークン +1
         if (c.terrain === 'farm') s += foodLeft < 3 ? 2.5 : 1.2;     // 農地は毎手番の食料 +1（食べる分を自分でまかなえる）
         if (c.terrain === 'forest') s += late ? 0.2 : 1.1;           // 森林は毎手番の資源 +1（終盤は元が取れない）
-        if (c.terrain === 'mountain') s += danger > 0 || me.defense <= 1 ? 1.8 : 0.8;   // 山岳は取ると防御トークン +1
         if (c.terrain === 'river') {
           // 橋は高い（資源4）。向こう側に新しく取れる土地があるときだけ
           const beyond = E.neighbors(c.q, c.r).filter(([q, r]) => {
@@ -89,13 +88,12 @@
     if (!E.actionBlocked(g, id, 'strengthen')) {
       for (const k of E.targets(g, id, 'strengthen')) {
         const c = g.board[k];
-        // 強化すると毎手番の資源 +1 と攻撃トークン +1。終盤は元が取れない
+        // 強化すると毎手番の資源 +1 と戦力トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
         if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
-        if (c.terrain === 'mountain') s += danger > 0 ? 1.2 : 0.6;
-        if (me.attack === 0 && frontier(g, id) > 0) s += 1.5;
+        if (me.power === 0 && frontier(g, id) > 0) s += 1.5;
         // 強化済のセルは破壊の拠点で、隣の自分のセルを守る城壁にもなる。前線に置くほど役に立つ
         const foesNext = foeNeighbors(g, id, c);
         if (foesNext > 0) {
@@ -120,14 +118,14 @@
       for (const k of E.targets(g, id, 'destroy')) {
         const c = g.board[k];
         const foe = playerById(g, c.owner);
-        // 相手が防御トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
+        // 相手が戦力トークンを全部出しても破りきれそうか（見積もり。破りきれないときは読み合いになる）
         const wall = E.wallOf(g, c);
-        const est = estDefense(foe) + wall;               // 城壁の分は相手が出さなくても足される
-        const canBreak = me.attack >= est;
+        const est = estPower(foe) + wall;                 // 城壁の分は相手が出さなくても足される
+        const canBreak = me.power > est;                  // 同じ数なら守られる
         let s;
         if (c.core) s = canBreak ? 30 : 3;                  // コアは最優先
         else if (est <= 1) s = 5;
-        else s = canBreak ? 3.2 : 0.8;
+        else s = canBreak ? 3.2 : -1.5;   // 同じ数なら守られ、守る側もためた数を使えるので、破りきれないなら控える
         s += 0.8;   // 破壊に成功すると、そのマスが自分のセルになる
         if (c.strong) s += 1 + (E.dist([c.q, c.r], E.parseKey(me.core)) <= 3 ? 1.5 : 0);   // 近くの相手の拠点は崩したい
         if (wall) s -= canBreak ? 0.5 : 1.8;              // 城壁で守られたセルは、破りきれないなら狙わない
@@ -141,19 +139,17 @@
         out.push({ s: s + noise() + (lv.bias.destroy || 0), a: { type: 'destroy', q: c.q, r: c.r } });
       }
     }
-    if (!E.actionBlocked(g, id, 'produceAttack')) {
-      // 生産（攻撃トークン）：攻撃トークンがないと破壊できない
+    if (!E.actionBlocked(g, id, 'produce')) {
+      // 生産（戦力トークン）：攻めるにも守るにも使う
       const front = frontier(g, id) > 0;
-      let s = me.attack === 0 && front ? 3.5 : me.attack < 2 && front ? 1.2 : 0.1;
-      // 相手のコアの隣に拠点があるなら、コアを破りきれる数まで攻撃トークンをためる
+      let s = me.power === 0 && front ? 3.5 : me.power < 2 && front ? 1.2 : 0.1;
+      // 自分のコアの近くに相手がいれば、守るためにためる
+      if (danger > 0) s = Math.max(s, 5.5 - me.power * 1.3 + danger * 0.5);
+      else if (me.power <= 1 && g.round >= 3) s = Math.max(s, 1.8);
+      // 相手のコアの隣に拠点があるなら、コアを破りきれる数までためる
       const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.adjacentToStrong(g, id, q, r); });
-      if (coreFoe && me.attack < estDefense(coreFoe) + E.wallOf(g, g.board[coreFoe.core])) s = Math.max(s, 4);
-      out.push({ s: s + noise(), a: { type: 'produceAttack' } });
-    }
-    if (!E.actionBlocked(g, id, 'reinforce')) {
-      // 補強は防御トークン +1 だけ（行動回数は使わない）
-      let s = danger > 0 ? 5.5 - me.defense * 1.6 + danger * 0.5 : me.defense <= 1 && g.round >= 3 ? 1.8 : 0.2;
-      out.push({ s: s + noise(), a: { type: 'reinforce' } });
+      if (coreFoe && me.power <= estPower(coreFoe) + E.wallOf(g, g.board[coreFoe.core])) s = Math.max(s, 4);
+      out.push({ s: s + noise(), a: { type: 'produce' } });
     }
     return out;
   }
@@ -168,34 +164,35 @@
       // 出す数を伏せて決める。相手が出せる最大数は見えている
       const target = g.board[pd.target];
       if (pd.atk === null && pd.attacker === id) {
-        if (lv.bidRandom) return { type: 'bid', count: 1 + Math.floor(rng() * me.attack) };
+        if (lv.bidRandom) return { type: 'bid', count: 1 + Math.floor(rng() * me.power) };
         const foe = playerById(g, pd.defender);
         let n;
-        const est = estDefense(foe) + (pd.wall || 0);
-        if (me.attack >= est) n = Math.max(1, est);                  // 相手が全部出しても破れそうな最小の数（1個以上）
-        else if (target.core) n = me.attack;                         // コアを狙うなら全部
-        else n = rng() < 0.6 ? me.attack : 1 + Math.floor(rng() * me.attack);
+        const need = estPower(foe) + (pd.wall || 0) + 1;            // 同じ数なら守られるので、1個多く
+        if (me.power >= need) n = need;                              // 相手が全部出しても破れそうな最小の数
+        else if (target.core) n = me.power;                          // コアを狙うなら全部
+        else n = rng() < 0.6 ? me.power : 1 + Math.floor(rng() * me.power);
         return { type: 'bid', count: n };
       }
       if (pd.def === null && pd.defender === id) {
-        if (lv.bidRandom) return { type: 'bid', count: Math.floor(rng() * (me.defense + 1)) };
+        if (lv.bidRandom) return { type: 'bid', count: Math.floor(rng() * (me.power + 1)) };
         const foe = playerById(g, pd.attacker);
-        const sure = Math.max(0, foe.attack + 1 - (pd.wall || 0));   // 相手が全部出しても守れる数（城壁の分を引く）
+        // 相手が全部出しても守れそうな数（相手の数は見えないので見積もり。同じ数なら守れる。城壁の分を引く）
+        const sure = Math.max(0, estPower(foe) - (pd.wall || 0));
         const keep = target.core ? 0 : threat(g, me) > 0 ? 1 : 0;    // コアのために残しておく数
         let n;
-        if (me.defense - keep >= sure) n = sure;
-        else if (target.core) n = me.defense;
-        else if (me.defense - keep <= 0) n = 0;
-        else n = rng() < 0.5 ? 0 : 1 + Math.floor(rng() * (me.defense - keep));
-        return { type: 'bid', count: Math.min(n, me.defense) };
+        if (me.power - keep >= sure) n = sure;
+        else if (target.core) n = me.power;
+        else if (me.power - keep <= 0) n = 0;
+        else n = rng() < 0.5 ? 0 : 1 + Math.floor(rng() * (me.power - keep));
+        return { type: 'bid', count: Math.min(n, me.power) };
       }
       return null;
     }
     if (E.current(g).id !== id || g.over) return null;
     // 行動回数を使い切ったら、資源を払ってでもやりたい行動があれば行動 +1 を買う
     if (g.actionsLeft <= 0) {
-      // 補強は行動回数を使わないので、狙われていれば先に補強
-      if (!E.actionBlocked(g, id, 'reinforce') && threat(g, me) > 0 && me.defense < 3) return { type: 'reinforce' };
+      // 生産は行動回数を使わないので、狙われていれば先に生産
+      if (!E.actionBlocked(g, id, 'produce') && threat(g, me) > 0 && me.power < 3) return { type: 'produce' };
       const cost = E.extraActionCost(g);
       if (me.resource < cost + 1) return { type: 'endTurn' };
       g.actionsLeft = 1; me.resource -= cost;           // 買ったつもりで考えてみる

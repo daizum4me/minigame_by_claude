@@ -21,20 +21,19 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     turnSeconds: { normal: 120, many: 60, manyFrom: 7 }, // 1手番の持ち時間。7人以上は60秒
-    // 平原：鉱山：農地：森林：山岳（河川は別に流す）。効果のあるマスは合わせて約27%（6/22）で、4種類に均等に分ける
-    terrainRatio: { plain: 16, mine: 1.5, farm: 1.5, forest: 1.5, mountain: 1.5 },
-    // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに4種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
-    centerShare: 0.1,                   // コアの近くの4種類とは別に、少なくとも空きマスの 10% は効果のあるマスとして散らす
+    // 平原：鉱山：農地：森林（河川は別に流す）。効果のあるマスは合わせて約27%（6/22）で、3種類に均等に分ける
+    terrainRatio: { plain: 16, mine: 2, farm: 2, forest: 2 },
+    // ただし公平さのため、どのコアにも距離2（足りなければ3）のマスに3種類を1つずつ必ず置く（盤面が小さいと合計は少し増える）
+    centerShare: 0.1,                   // コアの近くの3種類とは別に、少なくとも空きマスの 10% は効果のあるマスとして散らす
     centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
-    mineAttack: 1,                      // 鉱山マス：拡張（破壊で取ったときも）と強化のときに攻撃トークン +1
-    mountainDefense: 1,                 // 山岳マス：拡張（破壊で取ったときも）と強化のときに防御トークン +1
+    minePower: 1,                       // 鉱山マス：拡張（破壊で取ったときも）と強化のときに戦力トークン +1
     farmFood: 1,                        // 農地マス：このセルがあると手番終了時に食料 +1（強化の +1 とは別）
     forestResource: 1,                  // 森林マス：このセルがあると手番終了時に資源 +1（強化の +1 とは別）
     // イベント：ラウンドの始まりに 1/3 の確率で、どれか1つが起きてそのラウンドの間続く（予告はしない）
     eventChance: 1 / 3,
     startResource: 3,
-    startDefense: 2,                    // 最初に防御トークンを2個配る
+    startPower: 2,                      // 最初に戦力トークンを2個配る
     // 1手番の行動回数とラウンド数。人数が多いほどラウンドを減らし、行動回数を増やす（部屋の設定で変えられる）
     auto: [ // [この人数まで, 行動回数, ラウンド数]
       [4, 3, 12],
@@ -46,15 +45,15 @@
     roundsRange: [4, 20],
     preTurns: 1,                        // 内側にコアがある人は、ラウンド1の前に1手番ずつ先に動く
     extraAction: { base: 6, step: 4 },  // 行動回数を使い切ったあと、資源を払って行動 +1。同じ手番で買うたびに +4（6, 10, 14…）
-    // 破壊は資源2で、攻撃トークンが1個以上必要（攻防で1個以上出す）。
-    // 生産：資源でトークンを作る（行動回数を使わない・ログに出ない）。reinforce は防御トークン、produceAttack は攻撃トークン
-    cost: { expand: 1, bridge: 3, strengthen: 2, destroy: 2, reinforce: 2, produceAttack: 3 },
+    // 破壊は資源2で、戦力トークンが1個以上必要（攻防で1個以上出す）。
+    // 生産：資源で戦力トークンを作る（行動回数を使わない・ログに出ない）
+    cost: { expand: 1, bridge: 3, strengthen: 2, destroy: 2, produce: 2 },
     // 手番終了時の資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
     // 食料：手番終了時に、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけセルを選んで捨てる
     food: { start: 0, core: 6, strong: 1, perCell: 1 },
-    strengthenGives: { attack: 1, defense: 1 },  // 強化でもらえるトークン
+    strengthenPower: 1,                 // 強化でもらえる戦力トークン
     // 強化済のセルの役目（コアも強化すれば同じ）
     //  拠点：破壊できるのは、自分の強化済のセルに隣接する相手のセルだけ
     //  城壁：強化済のセルに隣接する（同じ持ち主の）セルが狙われたら、防御側に +wallBonus
@@ -67,7 +66,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', mountain: '山岳マス', river: '河川マス' };
+  const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', forest: '森林マス', river: '河川マス' };
   // イベント。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、actions：行動回数
   const EVENTS = {
     famine: { name: '不作', text: 'このラウンド、食料生産が0.5倍', food: 0.5 },
@@ -80,10 +79,10 @@
     plague: { name: '疫病', text: 'このラウンド、行動可能回数 −1', actions: -1 },
   };
 
-  const TERRAIN_KINDS = ['mine', 'farm', 'forest', 'mountain'];   // 効果のある地形
+  const TERRAIN_KINDS = ['mine', 'farm', 'forest'];   // 効果のある地形
 
-  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', reinforce: '生産（防御トークン）', produceAttack: '生産（攻撃トークン）' };
-  const PRODUCE = ['reinforce', 'produceAttack'];   // 生産（行動回数を使わない）
+  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', destroy: '破壊', produce: '生産（戦力トークン）' };
+  const PRODUCE = ['produce'];   // 生産（行動回数を使わない）
 
   function shuffle(arr, rng) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -269,7 +268,7 @@
     const ratio = RULES.terrainRatio;
     const kinds = TERRAIN_KINDS;
     const effect = kinds.reduce((n, t) => n + (ratio[t] || 0), 0);
-    // 公平さのため、どのコアにも、距離2（足りなければ3）のマスに4種類を1つずつ置く
+    // 公平さのため、どのコアにも、距離2（足りなければ3）のマスに3種類を1つずつ置く
     const used = new Set(), owners = new Map();   // 置いたマスと、どのコアのために置いたか
     let placed = 0;
     for (const c of cores) {
@@ -327,9 +326,9 @@
       players: order.map((p, i) => {
         const [q, r] = cores[i];
         Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, attack: 0, defense: RULES.startDefense, food: RULES.food.start, alive: true, core: key(q, r),
-          // defenseSeen：ほかの人から見てわかる防御トークンの数の目安（生産の分と、攻防で出した数は含まない）
-          defenseSeen: RULES.startDefense };
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, power: RULES.startPower, food: RULES.food.start, alive: true, core: key(q, r),
+          // powerSeen：ほかの人から見てわかる戦力トークンの数の目安（見えている増え方から、攻防で少なくとも出したはずの数を引く。生産の分は含まない）
+          powerSeen: RULES.startPower };
       }),
       actionsPerTurn: actions,
       rounds,
@@ -462,11 +461,11 @@
       return '';
     }
     if (!(type in ACTION_NAMES)) return '不明な行動です';
-    // 補強は行動回数を使わない
+    // 生産は行動回数を使わない
     if (!PRODUCE.includes(type) && state.actionsLeft <= 0) return 'この手番の行動回数を使い切りました';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
     if (p.resource < min) return '資源トークンが足りません';
-    if (type === 'destroy' && p.attack < 1) return '破壊には攻撃トークンが1個以上必要です';
+    if (type === 'destroy' && p.power < 1) return '破壊には戦力トークンが1個以上必要です';
     return '';
   }
 
@@ -491,7 +490,7 @@
 
   /*
    * 行動を実行する。state は書き換わる。
-   * action: { type: 'expand'|'strengthen'|'destroy', q, r } / { type: 'reinforce' } / { type: 'endTurn' }
+   * action: { type: 'expand'|'strengthen'|'destroy', q, r } / { type: 'produce' } / { type: 'endTurn' }
    *         { type: 'bid', count }（破壊の攻防で、攻撃側・防御側が出すトークンの数を伏せて決める）
    */
   function apply(state, id, action) {
@@ -531,14 +530,9 @@
       return { ok: true };
     }
     // 生産：資源でトークンを作る。行動回数を使わず、ログにも出さない
-    if (action.type === 'reinforce') {
-      p.resource -= RULES.cost.reinforce;
-      p.defense += 1;
-      return { ok: true };
-    }
-    if (action.type === 'produceAttack') {
-      p.resource -= RULES.cost.produceAttack;
-      p.attack += 1;
+    if (action.type === 'produce') {
+      p.resource -= RULES.cost.produce;
+      p.power += 1;
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -559,11 +553,9 @@
     } else if (action.type === 'strengthen') {
       p.resource -= RULES.cost.strengthen;
       cell.strong = true;
-      const gives = RULES.strengthenGives;
-      p.attack += gives.attack;
-      p.defense += gives.defense;
-      p.defenseSeen += gives.defense;
-      let extra = `攻撃トークン +${gives.attack}・防御トークン +${gives.defense}`;
+      p.power += RULES.strengthenPower;
+      p.powerSeen += RULES.strengthenPower;   // ログに出るので、ほかの人にもわかる
+      let extra = `戦力トークン +${RULES.strengthenPower}`;
       const tg = terrainGain(p, cell);
       if (tg) extra += `・${tg}`;
       state.actionsLeft--;
@@ -573,17 +565,17 @@
       p.resource -= RULES.cost.destroy;
       state.actionsLeft--;
       addLog(state, `${p.name} が ${def.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}に破壊を宣言`, 'destroy');
-      // 攻撃側（攻撃トークン1個以上）・防御側が、出すトークンの数を伏せて決める。
-      // 防御トークンの数は相手に見えないので、防御側が0個でも攻撃側は数を選ぶ
+      // 攻撃側（1個以上）・防御側（0個から）が、出す戦力トークンの数を伏せて決める。
+      // 戦力トークンの数はおたがいに見えないので、0個しか出せなくても選ぶ
       state.pending = { attacker: id, defender: def.id, target: k, atk: null, def: null, wall: wallOf(state, cell) };
-      if (p.attack === 1) state.pending.atk = 1;                     // 1個しかなければ1個に決まる
+      if (p.power === 1) state.pending.atk = 1;                     // 1個しかなければ1個に決まる
       if (state.pending.atk !== null && state.pending.def !== null) resolveDestroy(state, state.pending.atk, state.pending.def);
     }
     return { ok: true };
   }
 
   // 破壊の攻防：攻撃側と防御側が出す数を伏せて決め、そろったら同時に公開する。
-  // 攻撃トークン1個で防御トークン1個を破るので、攻撃 ≧ 防御（＋城壁）なら破壊成功。出したトークンはすべてなくなる
+  // 出した数が多いほうが勝ち。攻撃 ＞ 防御（＋城壁）なら破壊成功で、同じ数なら守られる。出したトークンはすべてなくなる
   function bid(state, id, count) {
     const pd = state.pending;
     if (state.over || !pd) return fail('いまは攻防中ではありません');
@@ -591,9 +583,9 @@
     if (!side) return fail('この攻防には加わっていません');
     if (pd[side] !== null) return fail('もう決めました');
     const p = playerById(state, id);
-    const have = side === 'atk' ? p.attack : p.defense;
+    const have = p.power;
     const n = Number(count);
-    if (!Number.isInteger(n) || n < minBid(side) || n > have) return fail(side === 'atk' && n < 1 ? '攻撃トークンは1個以上出してください' : '出せる数ではありません');
+    if (!Number.isInteger(n) || n < minBid(side) || n > have) return fail(side === 'atk' && n < 1 ? '攻撃側は戦力トークンを1個以上出してください' : '出せる数ではありません');
     pd[side] = n;
     if (pd.atk !== null && pd.def !== null) resolveDestroy(state, pd.atk, pd.def);
     return { ok: true };
@@ -622,14 +614,15 @@
     state.pending = null;
     const cell = state.board[pd.target];
     const a = playerById(state, pd.attacker), d = playerById(state, pd.defender);
-    a.attack -= atk;
-    d.defense -= def;
+    a.power -= atk;
+    d.power -= def;
     const wall = pd.wall || 0;
-    const success = atk >= def + wall;
+    const success = atk > def + wall;
     // 出した数は公開しない（成功か失敗かだけ）。数は当人にだけ見せる（room.js）
     state.lastClash = { seq: state.logSeq + 1, attacker: pd.attacker, defender: pd.defender, target: pd.target, def, atk, wall, success };
-    // 守られたなら、防御側は「攻撃 − 城壁」より多く出したはず（攻撃トークンの数は見えるので、そこまではわかる）
-    if (!success) d.defenseSeen = Math.max(0, d.defenseSeen - Math.max(0, atk - wall + 1));
+    // 見えている数の目安：攻撃側は少なくとも1個（成功なら城壁＋1個）、守られたなら防御側は少なくとも「1 − 城壁」個は出したはず
+    a.powerSeen = Math.max(0, a.powerSeen - (success ? wall + 1 : 1));
+    if (!success) d.powerSeen = Math.max(0, d.powerSeen - Math.max(0, 1 - wall));
     const what = cell.core ? 'コア' : 'セル';
     addLog(state, `攻防：${a.name} と ${d.name} がトークンを出し合った（出した数は非公開）`, 'clash');
     if (!success) { addLog(state, `破壊失敗：${d.name} の${what}${cellLabel(cell)}は守られた`, 'defend'); return; }
@@ -642,28 +635,25 @@
     }
     addLog(state, `破壊成功：${a.name} が ${d.name} の${what}${cellLabel(cell)}を破壊`, 'destroy');
     if (wasCore) eliminate(state, d);
-    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山・山岳マスなら拡張と同じくトークン +1
+    // 破壊したマスはそのまま攻撃側のセル（未強化）になる。鉱山マスなら拡張と同じく戦力トークン +1
     Object.assign(cell, { owner: a.id, strong: false, core: false });
     let extra = terrainGain(a, cell);
     if (extra) extra = `（${extra}）`;
     addLog(state, `${a.name} が${TERRAIN_NAMES[cell.terrain]}${cellLabel(cell)}にそのまま拡張${extra}`, 'expand');
   }
 
-  // 鉱山・山岳マスを拡張・強化したとき（破壊で取ったときも）にもらえるトークン。ログ用の文を返す
+  // 鉱山マスを拡張・強化したとき（破壊で取ったときも）にもらえる戦力トークン。ログ用の文を返す
   function terrainGain(p, cell) {
-    if (cell.terrain === 'mine') { p.attack += RULES.mineAttack; return `鉱山：攻撃トークン +${RULES.mineAttack}`; }
-    if (cell.terrain === 'mountain') {
-      p.defense += RULES.mountainDefense;
-      p.defenseSeen += RULES.mountainDefense;   // ログに出るので、ほかの人にもわかる
-      return `山岳：防御トークン +${RULES.mountainDefense}`;
-    }
-    return '';
+    if (cell.terrain !== 'mine') return '';
+    p.power += RULES.minePower;
+    p.powerSeen += RULES.minePower;   // ログに出るので、ほかの人にもわかる
+    return `鉱山：戦力トークン +${RULES.minePower}`;
   }
 
   function eliminate(state, p) {
     p.alive = false;
     for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, strong: false, core: false });
-    p.resource = 0; p.attack = 0; p.defense = 0; p.food = 0; p.defenseSeen = 0;
+    p.resource = 0; p.power = 0; p.food = 0; p.powerSeen = 0;
     addLog(state, `💀 ${p.name} のコアが破壊され、脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);

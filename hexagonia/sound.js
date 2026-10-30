@@ -72,7 +72,7 @@
       tone({ freq: 784, dur: 0.16, vol: 0.1, type: 'triangle' });
       tone({ freq: 1175, t: 0.07, dur: 0.28, vol: 0.09, type: 'triangle' });
     },
-    reinforce() {   // 補強：ごとっ＋きらっ
+    produce() {     // 生産：ごとっ＋きらっ
       tone({ freq: 160, freqEnd: 110, dur: 0.16, vol: 0.2 });
       tone({ freq: 1046, t: 0.06, dur: 0.22, vol: 0.06, type: 'triangle' });
     },
