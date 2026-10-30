@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを破壊して争う2〜12人のオンライン陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=42">
+<link rel="stylesheet" href="style.css?v=45">
 </head>
 <body>
 
@@ -72,6 +72,23 @@
       <option value="21">21マス</option>
     </select>
 
+    <h3>モード</h3>
+    <select id="set-mode" class="select" aria-label="モード">
+      <option value="turn">ターン制</option>
+      <option value="realtime">リアルタイム（実験）</option>
+    </select>
+    <p id="mode-note" class="note muted small"></p>
+
+    <div id="rt-settings" hidden>
+      <h3>区切りの回数 <span id="ticks-note" class="muted"></span></h3>
+      <select id="set-ticks" class="select" aria-label="区切りの回数">
+        <option value="0">自動（人数に合わせる）</option>
+        <option value="20">20回（5分）</option><option value="24">24回（6分）</option><option value="32">32回（8分）</option>
+        <option value="40">40回（10分）</option><option value="48">48回（12分）</option><option value="60">60回（15分）</option>
+      </select>
+    </div>
+
+    <div id="turn-settings">
     <h3>1手番の行動回数とラウンド数 <span id="play-note" class="muted"></span></h3>
     <div class="row settings-row">
       <select id="set-actions" class="select" aria-label="1手番の行動回数">
@@ -85,6 +102,7 @@
         <option value="10">10ラウンド</option><option value="12">12ラウンド</option><option value="14">14ラウンド</option>
         <option value="16">16ラウンド</option><option value="20">20ラウンド</option>
       </select>
+    </div>
     </div>
 
     <h3>自分の陣営色</h3>
@@ -241,6 +259,18 @@
     </section>
 
     <section class="r-sec">
+      <h3><i class="ic" data-icon="act-expand"></i>リアルタイムモード（実験）</h3>
+      <p class="r-hint">ロビーの「モード」で選べます。上のルールとちがうところだけ書きます。</p>
+      <ul class="r-list">
+        <li>手番がなく、<b>いつでも行動できる</b>。拡張・強化・開墾・破壊・防御の設置・防御を壊すで<b>行動力</b>を1使う（5秒に1回復・上限5。生産と防御を外すは使わない）</li>
+        <li><b>15秒ごとの区切り</b>で、全員いっせいに資源と食料の処理（足りなければ自動でセルを捨てる）。決まった回数の区切りが終わったら、一番大きなかたまりで勝敗</li>
+        <li><b>破壊</b>は戦力トークン1個で、すぐ決まる（攻防はない）。自分のセルの隣なら、強化していなくても狙える</li>
+        <li><b>防御</b>：自分のセルの<b>ふちの近くを直接クリック</b>すると、その辺に防御を置ける（マスの中央をクリックすると、これまでどおりマスの操作）。使った戦力トークンの数が体力。防御は、そのセルの内側（中心寄り）に、置いた人の色の線で出る。相手のセルは、<b>こちらに面した辺に防御があると破壊できない</b>。先に、相手のセルのふちをクリックして防御を壊す（戦力1個で体力1）。自分の防御はいつでも外せる。守っていたセルを失うと消える</li>
+        <li>イベントは区切り4〜8回ごとに起き、区切り4回のあいだ続く。取り消しはできない</li>
+      </ul>
+    </section>
+
+    <section class="r-sec">
       <h3><i class="ic" data-icon="event"></i>イベント</h3>
       <p>ラウンドの始まりに <b>1/3</b> の確率で、どれか1つが起きて<b>そのラウンドの間</b>続きます。<b>予告はありません</b>。起きたイベントは画面上部とログに出ます。</p>
       <table class="r-table events">
@@ -304,11 +334,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=42"></script>
-<script src="shared/cpu.js?v=42"></script>
-<script src="shared/room.js?v=42"></script>
-<script src="sound.js?v=42"></script>
-<script src="board.js?v=42"></script>
-<script src="client.js?v=42"></script>
+<script src="shared/engine.js?v=45"></script>
+<script src="shared/cpu.js?v=45"></script>
+<script src="shared/room.js?v=45"></script>
+<script src="sound.js?v=45"></script>
+<script src="board.js?v=45"></script>
+<script src="client.js?v=45"></script>
 </body>
 </html>
