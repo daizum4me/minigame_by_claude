@@ -227,8 +227,7 @@
         for (const [q, r] of E.neighbors(c.q, c.r)) {
           const n = cellAt(g, q, r);
           if (!n || !n.owner || n.owner === id) continue;
-          const w = g.walls[E.edgeKey(ck, E.key(q, r))];
-          if (w && w.owner !== id) continue;
+          const w = g.walls[E.wallKey(ck, E.key(q, r))];   // 自分のマスの、相手に面した辺
           if (w && w.hp >= 3) continue;
           const count = Math.min(me.power, c.core ? 2 : 1);
           out.push({ s: (c.core ? 7 : 3.5) - (w ? w.hp : 0) + noise(), a: { type: 'wall', from: ck, to: E.key(q, r), count } });
@@ -243,9 +242,9 @@
         for (const [q, r] of E.neighbors(fq, fr)) {
           const n = cellAt(g, q, r);
           if (!n || n.owner !== id) continue;
-          const w = g.walls[E.edgeKey(f.core, E.key(q, r))];
+          const w = g.walls[E.wallKey(f.core, E.key(q, r))];   // 相手のコアの、こちらに面した辺
           if (!w || w.owner === id || me.power < w.hp + 1) continue;   // 壊したあと破壊する1個も残す
-          out.push({ s: 9 + noise(), a: { type: 'breakWall', from: E.key(q, r), to: f.core, count: w.hp } });
+          out.push({ s: 9 + noise(), a: { type: 'breakWall', from: f.core, to: E.key(q, r), count: w.hp } });
         }
       }
     }

@@ -1053,7 +1053,7 @@
   // ---------- 盤面の操作 ----------
 
   // マスを選ぶ：そのマスの情報と、できる行動のボタンをツールチップに出す
-  function onCellSelect(key) {
+  function onCellSelect(key, side) {
     const g = app.room && app.room.game;
     if (abandoning(g)) {
       // 捨てるセルを選ぶあいだは、ツールチップは出さない（出ていたら閉じる）。盤面の外や自分以外のマスを選んでも閉じるだけ
@@ -1067,8 +1067,11 @@
       render();
       return;
     }
-    if (!key || (app.tip && app.tip.pinned && app.tip.key === key)) { hideTip(); return; }
-    showTip({ key, pinned: true });
+    // リアルタイムモード：マスのふちの近くを選ぶと、その辺（防御を置く・壊す辺）を直接選べる。中央ならこれまでどおりマスを選ぶ
+    const sideOk = isRT(g) && key && side !== null && side !== undefined && wallSideOk(g, key, side);
+    const tipSide = sideOk ? side : null;
+    if (!key || (app.tip && app.tip.pinned && app.tip.key === key && (app.tip.side === undefined ? null : app.tip.side) === tipSide)) { hideTip(); return; }
+    showTip({ key, pinned: true, side: tipSide });
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
@@ -1143,8 +1146,9 @@
   function showTip(tip) {
     const g = app.room && app.room.game;
     if (!g || !g.board[tip.key]) { hideTip(); return; }
-    const changed = !app.tip || app.tip.key !== tip.key || app.tip.pinned !== tip.pinned;
+    const changed = !app.tip || app.tip.key !== tip.key || app.tip.pinned !== tip.pinned || app.tip.side !== tip.side;
     app.tip = tip;
+    if (tip.side !== null && tip.side !== undefined) { showSideTip(g, tip, changed); return; }
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
     const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
@@ -1160,8 +1164,6 @@
       } else if (r && r.note) {
         acts = `<div class="tt-acts"><p class="tt-why">${esc(r.note)}</p></div>`;
       }
-      // リアルタイム：自分のセルなら、辺の防御を置く・壊す・外す
-      if (isRT(g) && c.owner === app.me) acts += wallPanel(g, tip.key);
     }
     const el = $('#tooltip');
     const html = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▽ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
@@ -1203,66 +1205,65 @@
 
   // ---------- 防御（リアルタイムモード） ----------
 
-  // 自分のセルのツールチップに出す防御のパネル：6つの辺から1つ選び、置く・壊す・外す
-  function wallPanel(g, key) {
-    const c = g.board[key];
+  const SIDE_NAMES = ['右', '右上', '左上', '左', '左下', '右下'];   // E.DIRS の順
+
+  // そのマスのその辺（side）に、いま何かできるか：自分のマスなら防御を置ける。相手のマスなら、自分のセルに面した防御があれば壊せる
+  function wallSideOk(g, key, side) {
     const me = g.players.find(p => p.id === app.me);
-    const colors = {};
-    g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
-    const sel = app.wallSel && app.wallSel.cell === key ? app.wallSel.dir : null;
-    const C = 34, RAD = 25;
-    const pt = deg => [C + RAD * Math.cos(deg * Math.PI / 180), C + RAD * Math.sin(deg * Math.PI / 180)];
-    let lines = '';
-    E.DIRS.forEach(([dq, dr], i) => {
-      const nk = E.key(c.q + dq, c.r + dr);
-      if (!g.board[nk]) return;
-      const a = Math.atan2(1.5 * dr, Math.sqrt(3) * (dq + dr / 2)) * 180 / Math.PI;
-      const [x1, y1] = pt(a - 30), [x2, y2] = pt(a + 30);
-      const w = g.walls[E.edgeKey(key, nk)];
-      const col = w ? (colors[w.owner] || {}).light || '#fff' : '#77756c';
-      const [lx, ly] = [C + (RAD + 8) * Math.cos(a * Math.PI / 180), C + (RAD + 8) * Math.sin(a * Math.PI / 180)];
-      lines += `<g class="wall-dir${sel === i ? ' sel' : ''}" data-wall-dir="${i}">
-        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="transparent" stroke-width="12" stroke-linecap="round"/>
-        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${sel === i ? '#FFD36B' : col}" stroke-width="${w ? 5 : 2.5}" stroke-linecap="round" ${w ? '' : 'stroke-dasharray="3 3"'}/>
-        ${w ? `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="700" fill="${col}">${w.hp}</text>` : ''}
-      </g>`;
-    });
-    const svgHtml = `<svg class="wall-hex" viewBox="0 0 68 68" width="68" height="68" aria-label="辺を選ぶ">${lines}<circle cx="${C}" cy="${C}" r="4" fill="#77756c"/></svg>`;
-    let detail = '<p class="muted small">辺を選ぶと、防御を置いたり壊したりできます（戦力トークン1個で体力1・行動力を1使う）</p>';
-    if (sel !== null) {
-      const [dq, dr] = E.DIRS[sel];
-      const nk = E.key(c.q + dq, c.r + dr), n = g.board[nk];
-      const w = g.walls[E.edgeKey(key, nk)];
-      const other = n.owner ? g.players.find(p => p.id === n.owner) : null;
-      const whom = n.owner === app.me ? '自分のセル' : other ? `${esc(other.name)} のセル` : n.terrain === 'river' ? '河川' : '空きマス';
-      const power = me.power || 0;
-      const lackAp = (me.ap || 0) < 1;
-      if (w && w.owner !== app.me) {
-        const owner = g.players.find(p => p.id === w.owner);
-        const max = Math.min(power, w.hp);
-        app.wallN = Math.max(1, Math.min(app.wallN || 1, max || 1));
-        detail = `<p>${whom}とのあいだ：<b>${esc(owner ? owner.name : '')} の防御</b>（体力 ${w.hp}）</p>
-          <div class="wall-row"><input type="range" data-wall-n min="1" max="${Math.max(1, max)}" value="${app.wallN}" ${max <= 1 ? 'disabled' : ''}><b data-wall-n-label>${app.wallN}</b></div>
-          <button class="tt-act danger" data-wall-act="breakWall" ${max < 1 || lackAp ? 'disabled' : ''}><b>防御を壊す</b><span class="tt-cost">${TOKEN_SVG.power}<span data-wall-n-label>${app.wallN}</span></span><small>戦力トークン1個で体力を1減らす</small></button>`;
-      } else {
-        app.wallN = Math.max(1, Math.min(app.wallN || 1, power || 1));
-        detail = `<p>${whom}とのあいだ：${w ? `<b>自分の防御</b>（体力 ${w.hp}）` : '防御なし'}</p>
-          <div class="wall-row"><input type="range" data-wall-n min="1" max="${Math.max(1, power)}" value="${app.wallN}" ${power <= 1 ? 'disabled' : ''}><b data-wall-n-label>${app.wallN}</b></div>
-          <button class="tt-act" data-wall-act="wall" ${power < 1 || lackAp ? 'disabled' : ''}><b>${w ? '防御を足す' : '防御を置く'}</b><span class="tt-cost">${TOKEN_SVG.power}<span data-wall-n-label>${app.wallN}</span></span><small>使った戦力トークンの数が体力になる</small></button>
-          ${w ? '<button class="tt-act" data-wall-act="unwall"><b>防御を外す</b><small>戻ってこない・行動力は使わない</small></button>' : ''}`;
-      }
-      if (lackAp) detail += '<p class="tt-why">行動力が足りません（5秒に1回復）</p>';
-      else if (power < 1) detail += '<p class="tt-why">戦力トークンがありません（強化・鉱山・生産で増やせる）</p>';
-    }
-    return `<div class="tt-acts wall-panel"><div class="wall-head"><b>防御</b>${svgHtml}</div>${detail}</div>`;
+    if (!me || !me.alive) return false;
+    const c = g.board[key];
+    const [dq, dr] = E.DIRS[side];
+    const nk = E.key(c.q + dq, c.r + dr), n = g.board[nk];
+    if (!n) return false;
+    if (c.owner === app.me) return true;
+    return !!(g.walls[E.wallKey(key, nk)] && n.owner === app.me);
   }
 
   // 盤面で強調する、選んでいる辺
   function wallSelKey(g) {
-    if (!isRT(g) || !app.wallSel || !app.tip || !app.tip.pinned || app.tip.key !== app.wallSel.cell) return null;
-    const c = g.board[app.wallSel.cell];
-    const [dq, dr] = E.DIRS[app.wallSel.dir];
-    return E.edgeKey(app.wallSel.cell, E.key(c.q + dq, c.r + dr));
+    if (!isRT(g) || !app.tip || !app.tip.pinned || app.tip.side === null || app.tip.side === undefined) return null;
+    const c = g.board[app.tip.key];
+    if (!c) return null;
+    const [dq, dr] = E.DIRS[app.tip.side];
+    return E.wallKey(app.tip.key, E.key(c.q + dq, c.r + dr));
+  }
+
+  // 辺を選んだときのツールチップ：防御を置く・足す・外す（自分のマス）、壊す（相手のマス）
+  function showSideTip(g, tip, changed) {
+    const me = g.players.find(p => p.id === app.me);
+    const c = g.board[tip.key];
+    const [dq, dr] = E.DIRS[tip.side];
+    const nk = E.key(c.q + dq, c.r + dr), n = g.board[nk];
+    const w = g.walls[E.wallKey(tip.key, nk)];
+    const power = me.power || 0, lackAp = (me.ap || 0) < 1;
+    const mine = c.owner === app.me;
+    // 選んでいた辺が、防御が壊れたり、マスを失ったりして、もう何もできなくなっていたら閉じる
+    if (!mine && !w || (!mine && n.owner !== app.me)) { hideTip(); return; }
+    const wallOwner = w && g.players.find(p => p.id === w.owner);
+    const max = mine ? power : Math.min(power, w ? w.hp : 0);
+    app.wallN = Math.max(1, Math.min(app.wallN || 1, max || 1));
+    const slider = `<div class="wall-row"><input type="range" data-wall-n min="1" max="${Math.max(1, max)}" value="${app.wallN}" ${max <= 1 ? 'disabled' : ''} aria-label="使う戦力トークンの数"><b data-wall-n-label>${app.wallN}</b></div>`;
+    const cost = `<span class="tt-cost">${TOKEN_SVG.power}<span data-wall-n-label>${app.wallN}</span></span>`;
+    let body;
+    if (mine) {
+      body = `<div>${w ? `防御：体力 <b>${w.hp}</b>` : '防御：なし'}</div>${slider}
+        <button class="tt-act" data-wall-act="wall" ${power < 1 || lackAp ? 'disabled' : ''}><b>${w ? '足す' : '置く'}</b>${cost}<small>使った数が体力になる</small></button>
+        ${w ? '<button class="tt-act" data-wall-act="unwall"><b>外す</b><small>戻ってこない</small></button>' : ''}`;
+    } else {
+      body = `<div>${esc(wallOwner ? wallOwner.name : '')} の防御：体力 <b>${w.hp}</b></div>${slider}
+        <button class="tt-act danger" data-wall-act="breakWall" ${max < 1 || lackAp ? 'disabled' : ''}><b>壊す</b>${cost}<small>戦力トークン1個で体力1</small></button>`;
+    }
+    const why = lackAp ? '行動力が足りません（5秒に1回復）' : mine && power < 1 ? '戦力トークンがありません（強化・鉱山・生産で増やせる）' : '';
+    const el = $('#tooltip');
+    const html = `<div class="tt-head">${mine ? '自分' : '相手'}のセルの${SIDE_NAMES[tip.side]}の辺<span class="muted">(${c.q},${c.r})</span></div>
+      <div class="muted small">${n.owner === app.me ? '自分のセル' : n.owner ? `${esc((g.players.find(p => p.id === n.owner) || {}).name || '')} のセル` : n.terrain === 'river' ? '河川' : '空きマス'}に面している</div>
+      <div class="tt-acts wall-panel">${body}${why ? `<p class="tt-why">${esc(why)}</p>` : ''}</div>`;
+    const sliding = !changed && el.contains(document.activeElement) && document.activeElement.matches('input[type="range"]');
+    if (!sliding && el._html !== html) { el.innerHTML = html; el._html = html; }
+    el.classList.add('pinned');
+    el.hidden = false;
+    positionTip();
+    if (changed && view) view.setSelected(tip.key);
   }
 
   // 選んだマスのツールチップをクリックしたら（行動のボタンは除く）、マスの反対側に移す。
@@ -1276,7 +1277,6 @@
   function hideTip() {
     const had = app.tip && app.tip.pinned;
     app.tip = null;
-    app.wallSel = null;
     $('#tooltip').hidden = true;
     if (had && view) view.setSelected(null);
   }
@@ -1370,14 +1370,12 @@
     }, { passive: false });
     $('#tooltip').onclick = e => {
       // 防御のパネル（リアルタイムモード）
-      const dir = e.target.closest('[data-wall-dir]');
-      if (dir && app.tip) { app.wallSel = { cell: app.tip.key, dir: Number(dir.dataset.wallDir) }; render(); return; }
       const wb = e.target.closest('[data-wall-act]');
-      if (wb && app.wallSel && app.tip) {
+      if (wb && app.tip && app.tip.side !== null && app.tip.side !== undefined) {
         if (wb.disabled) return;
-        const c = app.room.game.board[app.wallSel.cell];
-        const [dq, dr] = E.DIRS[app.wallSel.dir];
-        send({ type: 'act', action: { type: wb.dataset.wallAct, from: app.wallSel.cell, to: E.key(c.q + dq, c.r + dr), count: app.wallN || 1 } });
+        const c = app.room.game.board[app.tip.key];
+        const [dq, dr] = E.DIRS[app.tip.side];
+        send({ type: 'act', action: { type: wb.dataset.wallAct, from: app.tip.key, to: E.key(c.q + dq, c.r + dr), count: app.wallN || 1 } });
         return;
       }
       if (e.target.closest('.wall-panel')) return;

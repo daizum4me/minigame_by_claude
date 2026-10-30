@@ -918,48 +918,55 @@ test('リアルタイム：区切りで全員いっせいに資源と食料。�
   assert.match(g.endReason, /回の区切り終了/);
 });
 
-test('リアルタイム：破壊は戦力トークン1個ですぐ決まる。隣のセルとのあいだに防御があると、その辺からは攻められない', () => {
+test('リアルタイム：破壊は戦力トークン1個ですぐ決まる。そのマスの、攻める側に面した辺に防御があると攻められない', () => {
   const { g, a, b } = rtGame();
-  const [cq, cr] = E.parseKey(P(g, a).core);
+  const core = P(g, a).core;
+  const [cq, cr] = E.parseKey(core);
   const [tq, tr] = nb(g, cq, cr)[0];
   const t = E.key(tq, tr);
   setCell(g, tq, tr, { owner: b });
   assert.ok(E.targets(g, a, 'destroy').includes(t));            // 強化していなくても、隣なら狙える
-  // b が自分のセル t と a のコアのあいだに防御を置くと、そこからは攻められない
+  // b が自分のセル t の、a のコアに面した辺に防御を置くと、そこからは攻められない
   P(g, b).power = 3;
-  assert.ok(E.apply(g, b, { type: 'wall', from: t, to: P(g, a).core, count: 2 }).ok);
-  assert.deepStrictEqual(g.walls[E.edgeKey(t, P(g, a).core)], { owner: b, hp: 2 });
+  assert.ok(E.apply(g, b, { type: 'wall', from: t, to: core, count: 2 }).ok);
+  assert.deepStrictEqual(g.walls[E.wallKey(t, core)], { owner: b, hp: 2 });
   assert.strictEqual(P(g, b).power, 1);
   assert.ok(!E.targets(g, a, 'destroy').includes(t));
-  // a が防御を壊す（戦力1個で体力1）
+  // a も自分のコアの、t に面した辺に防御を置ける（同じ辺の反対側。重ならない）。b の防御は壊れない
   P(g, a).power = 3;
-  assert.ok(E.apply(g, a, { type: 'breakWall', from: P(g, a).core, to: t, count: 1 }).ok);
-  assert.strictEqual(g.walls[E.edgeKey(t, P(g, a).core)].hp, 1);
-  assert.ok(E.apply(g, a, { type: 'breakWall', from: P(g, a).core, to: t, count: 2 }).ok);   // 体力（1）より多くは使わない
-  assert.strictEqual(g.walls[E.edgeKey(t, P(g, a).core)], undefined);
-  assert.strictEqual(P(g, a).power, 1);
+  assert.ok(E.apply(g, a, { type: 'wall', from: core, to: t, count: 1 }).ok);
+  assert.ok(g.walls[E.wallKey(core, t)] && g.walls[E.wallKey(t, core)]);
+  assert.ok(!E.targets(g, b, 'destroy').includes(core));
+  // a が b の防御を壊す（戦力1個で体力1）。自分のセルに面した防御だけ壊せる
+  assert.strictEqual(E.apply(g, a, { type: 'breakWall', from: core, to: t, count: 1 }).ok, false);   // 自分の防御は壊せない
+  assert.ok(E.apply(g, a, { type: 'breakWall', from: t, to: core, count: 1 }).ok);
+  assert.strictEqual(g.walls[E.wallKey(t, core)].hp, 1);
+  assert.ok(E.apply(g, a, { type: 'breakWall', from: t, to: core, count: 1 }).ok);
+  assert.strictEqual(g.walls[E.wallKey(t, core)], undefined);
   // 破壊：戦力1個ですぐ自分のセルに
+  assert.strictEqual(P(g, a).power, 0);
+  P(g, a).power = 1;
+  P(g, a).ap = 2;
   assert.ok(E.apply(g, a, { type: 'destroy', q: tq, r: tr }).ok);
   assert.deepStrictEqual([g.board[t].owner, P(g, a).power, g.pending], [a, 0, null]);
+  assert.strictEqual(g.walls[E.wallKey(t, core)], undefined);
 });
 
-test('リアルタイム：防御は自分のセルどうしのあいだにも置け、外せる。置いた人がどちらのマスも失うと消える', () => {
+test('リアルタイム：防御は自分のセルどうしのあいだにも置け、外せる。守るマスを失うと消える', () => {
   const { g, a, b } = rtGame();
   const core = P(g, a).core;
   const [nq, nr] = nb(g, ...E.parseKey(core))[0];
   const n = E.key(nq, nr);
   setCell(g, nq, nr, { owner: a });
-  P(g, a).power = 2;
+  P(g, a).power = 3;
   assert.ok(E.apply(g, a, { type: 'wall', from: n, to: core, count: 1 }).ok);
   assert.strictEqual(E.apply(g, b, { type: 'unwall', from: n, to: core }).ok, false);   // ほかの人は外せない
+  assert.strictEqual(E.apply(g, b, { type: 'wall', from: n, to: core, count: 1 }).ok, false);   // 相手のセルには置けない
   assert.ok(E.apply(g, a, { type: 'unwall', from: n, to: core }).ok);
-  assert.strictEqual(g.walls[E.edgeKey(n, core)], undefined);
-  // 置いたあと、a がどちらのマスも失うと消える
-  const far = Object.values(g.board).find(c => !c.owner && c.terrain === 'plain' && E.dist([c.q, c.r], [nq, nr]) === 1 && E.key(c.q, c.r) !== core);
-  setCell(g, far.q, far.r, { owner: a });
-  E.apply(g, a, { type: 'wall', from: E.key(far.q, far.r), to: n, count: 1 });
+  assert.strictEqual(g.walls[E.wallKey(n, core)], undefined);
+  // 置いたあと、そのマスを失うと防御も消える
+  E.apply(g, a, { type: 'wall', from: n, to: core, count: 1 });
   Object.assign(g.board[n], { owner: null });
-  Object.assign(g.board[E.key(far.q, far.r)], { owner: null });
   E.rtTick(g);
   assert.deepStrictEqual(g.walls, {});
 });

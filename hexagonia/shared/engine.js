@@ -405,7 +405,7 @@
       round: 0,              // 済んだ区切りの回数
       turn: -1,
       actionsLeft: 0,
-      walls: {},             // 辺のキー → { owner, hp }（置いた人と体力）
+      walls: {},             // 「守るマス>隣のマス」のキー → { owner, hp }。守るマスの、隣のマスに面した辺に置いた防御（置いた人と体力）
       tickInfo: {},          // 人ごとの、最後の区切りで増えた・減った資源と食料（画面の演出用）
       events: !(opts && opts.events === false),
       nextEventAt: rt.eventEvery[0] + Math.floor(rng() * (rt.eventEvery[1] - rt.eventEvery[0] + 1)),
@@ -416,8 +416,8 @@
     return state;
   }
 
-  // 辺のキー：隣り合う2マスのキーを並べたもの（向きによらず同じ）
-  const edgeKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  // 防御のキー：守るマス（from）の、隣のマス（to）に面した辺。同じ辺でも、両側のマスがそれぞれ別の防御を持てる
+  const wallKey = (from, to) => `${from}>${to}`;
 
   // 行動力の回復（部屋が5秒ごとに呼ぶ）
   function rtRegen(state) {
@@ -472,17 +472,17 @@
   function cleanWalls(state) {
     if (!state.walls) return;
     for (const [ek, w] of Object.entries(state.walls)) {
-      const [a, b] = ek.split('|');
-      if (![a, b].some(k => state.board[k] && state.board[k].owner === w.owner)) delete state.walls[ek];
+      const from = ek.split('>')[0];
+      if (!state.board[from] || state.board[from].owner !== w.owner) delete state.walls[ek];   // 守っていたマスを失ったら消える
     }
   }
 
-  // リアルタイムモード：そのマスを、防御のない辺から攻められるか（攻める人のセルが隣にあって、そのあいだに防御がない）
+  // リアルタイムモード：そのマスを、防御のない辺から攻められるか（攻める人のセルが隣にあって、そのマスの、そちらに面した辺に防御がない）
   function rtCanDestroy(state, id, c) {
     const k = key(c.q, c.r);
     return neighbors(c.q, c.r).some(([q, r]) => {
       const n = state.board[key(q, r)];
-      return n && n.owner === id && !state.walls[edgeKey(k, key(q, r))];
+      return n && n.owner === id && !state.walls[wallKey(k, key(q, r))];
     });
   }
 
@@ -500,14 +500,15 @@
     return '';
   }
 
-  // 防御の設置・壊す・外す。action：{ type, from: 自分のセルのキー, to: 隣のマスのキー, count }
+  // 防御の設置・壊す・外す。action：{ type, from: 守るマスのキー, to: 隣のマスのキー, count }
+  //  wall / unwall：from は自分のセル。breakWall：to が自分のセルで、from にある相手の防御を壊す
   function rtWallAction(state, id, action) {
     const p = playerById(state, id);
     const from = state.board[action.from], to = state.board[action.to];
     if (!from || !to || dist([from.q, from.r], [to.q, to.r]) !== 1) return fail('隣り合う2つのマスを選んでください');
-    const ek = edgeKey(action.from, action.to);
+    const ek = wallKey(action.from, action.to);
     const w = state.walls[ek];
-    const label = `${cellLabel(from)}と${cellLabel(to)}のあいだ`;
+    const label = `${cellLabel(from)}の${cellLabel(to)}側`;
     if (action.type === 'unwall') {
       if (!w || w.owner !== id) return fail('外せる防御がありません');
       delete state.walls[ek];
@@ -518,7 +519,6 @@
     if (!Number.isInteger(n) || n < 1 || n > p.power) return fail('使う戦力トークンの数が正しくありません');
     if (action.type === 'wall') {
       if (from.owner !== id) return fail('自分のセルの辺にだけ置けます');
-      if (w && w.owner !== id) return fail('ほかの人の防御があります。先に壊してください');
       state.walls[ek] = { owner: id, hp: (w ? w.hp : 0) + n };
       p.power -= n;
       p.powerSeen = Math.max(0, p.powerSeen - n);
@@ -526,8 +526,8 @@
       addLog(state, `${p.name} が${label}に防御を置いた（体力 ${state.walls[ek].hp}）`, 'strengthen');
       return { ok: true };
     }
-    // breakWall：自分のセルの辺にある、ほかの人の防御を壊す（戦力トークン1個で体力1）
-    if (from.owner !== id && to.owner !== id) return fail('自分のセルの辺の防御だけ壊せます');
+    // breakWall：自分のセルに面した、ほかの人の防御を壊す（戦力トークン1個で体力1）
+    if (to.owner !== id) return fail('自分のセルに面した防御だけ壊せます');
     if (!w || w.owner === id) return fail('壊せる防御がありません');
     const used = Math.min(n, w.hp);
     w.hp -= used;
@@ -1069,6 +1069,6 @@
     RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, ACTION_NAMES, EVENTS, PRODUCE,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, waiting, forfeit, current,
-    adjacentToStrong, autoTicks, rtTick, rtRegen, edgeKey, rtCanDestroy, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
+    adjacentToStrong, autoTicks, rtTick, rtRegen, wallKey, rtCanDestroy, largestGroup, extraActionCost, turnMs, suggestAbandon, autoSettings, minBid, foodMade, foodEaten, riversideCells, actionsThisTurn,
   };
 });

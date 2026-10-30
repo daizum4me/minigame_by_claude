@@ -667,10 +667,6 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .ap-dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); display: inline-block; }
 .ap-dot.on { background: var(--accent); box-shadow: 0 0 6px rgba(156, 198, 242, 0.6); }
 .wall-panel p { margin: 4px 0; }
-.wall-head { display: flex; align-items: center; justify-content: space-between; }
-.wall-hex { flex: none; }
-.wall-dir { cursor: pointer; }
-.wall-dir:hover line:last-of-type { stroke: #FFD36B; }
 .wall-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; }
 .wall-row input { flex: 1; accent-color: #FF8FA3; }
 .wall-row b { min-width: 1.5em; text-align: right; }
