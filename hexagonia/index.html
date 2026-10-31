@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを壊し合う2〜12人のリアルタイム陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=65">
+<link rel="stylesheet" href="style.css?v=66">
 </head>
 <body>
 
@@ -32,6 +32,7 @@
     <p id="top-msg" class="msg" hidden></p>
     <div class="row links">
       <button class="link" data-open="rules">ルール</button>
+      <button class="link" data-open="changelog">更新履歴</button>
       <button class="link" data-open="settings">設定</button>
     </div>
   </div>
@@ -178,7 +179,7 @@
         <figure class="r-fig"><svg viewBox="0 0 260 120" class="r-anim" aria-hidden="true"><rect x="20" y="22" width="68" height="34" rx="8" class="chip"/><text x="54" y="44" class="lbl" text-anchor="middle">あなた</text><g class="rk" style="animation-name:rk-15-85"><circle cx="82" cy="24" r="9" class="ok-dot"/><path d="M77 24 L81 28 L87 20" class="ok-mark"/></g><rect x="100" y="22" width="68" height="34" rx="8" class="chip"/><text x="134" y="44" class="lbl" text-anchor="middle">Bさん</text><g class="rk" style="animation-name:rk-35-85"><circle cx="162" cy="24" r="9" class="ok-dot"/><path d="M157 24 L161 28 L167 20" class="ok-mark"/></g><rect x="180" y="22" width="68" height="34" rx="8" class="chip"/><text x="214" y="44" class="lbl" text-anchor="middle">Cさん</text><g class="rk" style="animation-name:rk-55-85"><circle cx="242" cy="24" r="9" class="ok-dot"/><path d="M237 24 L241 28 L247 20" class="ok-mark"/></g><g class="rk" style="animation-name:rk-70-92"><text x="130" y="92" class="lbl accent" text-anchor="middle">全員そろったので、すぐ次のターンへ</text></g></svg><figcaption>「行動完了」を全員が押すと、30秒を待たずに次のターン（飛ばした時間ぶん行動力も回復）</figcaption></figure>
         <ul class="r-list">
           <li>下のバーの「行動完了」を押すと、このターンはもう行動しないという印がつく（もう一度押すと取り消し）</li>
-          <li>CPU と切断中の人は、押したものとみなす。ターンが変わると印は外れる</li>
+          <li>もうできる行動がない（資源や戦力が足りない）ときは、自動で行動完了になる。CPU は、やることがなくなると行動完了にする。切断中の人は押したものとみなす。ターンが変わると印は外れる</li>
         </ul>
       </section>
     </article>
@@ -282,6 +283,31 @@
   <form method="dialog"><button class="primary">閉じる</button></form>
 </dialog>
 
+<!-- 更新履歴（バージョンごとの変更点を短く） -->
+<dialog id="changelog" class="dialog changelog-dialog">
+  <h2>更新履歴</h2>
+  <section class="cl-ver">
+    <h3>v1.1</h3>
+    <ul class="r-list">
+      <li>CPU は、やることがなくなったときだけ行動完了にする</li>
+      <li>CPU の動く間隔にばらつき</li>
+      <li>できる行動がなくなったら、自動で行動完了</li>
+      <li>更新履歴を追加</li>
+    </ul>
+  </section>
+  <section class="cl-ver">
+    <h3>v1.0</h3>
+    <ul class="r-list">
+      <li>手番のないリアルタイム対戦（30秒ターン・行動力）</li>
+      <li>攻撃と防御・拠点・発展（農地・工場）</li>
+      <li>行動完了で次のターンへ</li>
+      <li>ルール画面・開始のカウントダウン</li>
+      <li>バージョンがちがうと対戦できない</li>
+    </ul>
+  </section>
+  <form method="dialog"><button class="primary">閉じる</button></form>
+</dialog>
+
 <!-- 設定 -->
 <dialog id="settings" class="dialog">
   <h2>設定</h2>
@@ -308,11 +334,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=65"></script>
-<script src="shared/cpu.js?v=65"></script>
-<script src="shared/room.js?v=65"></script>
-<script src="sound.js?v=65"></script>
-<script src="board.js?v=65"></script>
-<script src="client.js?v=65"></script>
+<script src="shared/engine.js?v=66"></script>
+<script src="shared/cpu.js?v=66"></script>
+<script src="shared/room.js?v=66"></script>
+<script src="sound.js?v=66"></script>
+<script src="board.js?v=66"></script>
+<script src="client.js?v=66"></script>
 </body>
 </html>

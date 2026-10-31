@@ -14,7 +14,7 @@
 
   const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
   const LOG_SEND = 80;      // 配信するログの件数
-  const CPU_RT_MS = 2500;   // CPU が考える間隔
+  const CPU_MS = [1500, 3500]; // CPU が考える間隔（この範囲でばらつかせる。平均2.5秒）
   const COUNTDOWN_MS = 3000; // ゲーム開始前のカウントダウン（このあいだは行動できず、時間も進まない）
   const CHAT_KEEP = 30;         // 残して配信するチャットの件数
   const CHAT_LEN = 80;          // チャット1件の文字数の上限
@@ -90,7 +90,6 @@
         this.players = this.players.filter(x => x !== p);
       } else if (this.game) {
         this.note(`🔌 ${p.name} の接続が切れました`);
-        this.checkReady();   // 切断した人は行動完了とみなす
       }
       this.changed();
     }
@@ -189,7 +188,6 @@
           if (this.countdownUntil) return err('まだ始まっていません');
           const r = E.apply(this.game, id, msg.action);
           if (!r.ok) return err(r.error);
-          if (msg.action.type === 'ready') this.checkReady();
           this.changed();
           return;
         }
@@ -217,6 +215,8 @@
 
     // 状態が変わったら：時間切れ・CPU の予約を見直してから全員に配信
     changed() {
+      this.autoReady();
+      this.checkReady();
       this.checkTimers();
       this.checkCpu();
       this.broadcast();
@@ -255,18 +255,35 @@
       }
     }
 
-    // 行動完了の人（CPU と切断中の人は、押したものとみなす）
+    // 行動完了の人（切断中の人は、押したものとみなす。CPU は、もうやりたい行動がないと判断したときに行動完了になる）
     readyIds() {
       const g = this.game;
-      return g ? g.players.filter(p => p.alive && (p.ready || (this.player(p.id) || {}).cpu || !(this.player(p.id) || {}).connected)).map(p => p.id) : [];
+      return g ? g.players.filter(p => p.alive && (p.ready || !this.isPlaying(p.id))).map(p => p.id) : [];
     }
 
-    // 生きている人間のプレイヤーがひとりでもいて、全員が行動完了なら、待たずに次のターンへ
+    // 行動完了を待つ相手か（CPU と、接続中の人）
+    isPlaying(id) {
+      const info = this.player(id);
+      return !!info && (info.cpu || info.connected);
+    }
+
+    // もうできる行動がない人は、自動で行動完了にする（自分で外したターンは除く）
+    autoReady() {
+      const g = this.game;
+      if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
+      for (const p of g.players) {
+        const info = this.player(p.id);
+        if (!p.alive || p.ready || p.readyOff || !info || info.cpu || !info.connected) continue;
+        if (!E.hasMoves(g, p.id)) p.ready = true;
+      }
+    }
+
+    // 待つ相手の全員が行動完了なら、待たずに次のターンへ
     checkReady() {
       const g = this.game;
       if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
-      const humans = g.players.filter(p => p.alive && !(this.player(p.id) || {}).cpu && (this.player(p.id) || {}).connected);
-      if (!humans.length || !humans.every(p => p.ready)) return;
+      const playing = g.players.filter(p => p.alive && this.isPlaying(p.id));
+      if (!playing.length || !playing.every(p => p.ready)) return;
       this.note('全員が行動完了したので、次のターンへ');
       // 飛ばした時間のぶん、行動力の回復も進める（秒単位）。回復の時刻を飛ばした時間だけ前に寄せ、
       // 途中で来るはずだった回復はまとめて行い、5秒に満たない端数は次の回復までの残り時間を縮める
@@ -283,23 +300,28 @@
       // checkTimers が次のターンのタイマーをかけ直す
     }
 
-    // CPU は一定の間隔で考えて、行動力があれば1つずつ動く
+    // CPU はそれぞれ、ばらつきのある間隔（1.5〜3.5秒）で考えて、行動力があれば1つずつ動く
     checkCpu() {
       const g = this.game;
-      const any = g && this.phase === 'game' && !g.over && !this.countdownUntil && this.players.some(p => p.cpu && g.players.some(x => x.id === p.id && x.alive));
-      if (!any) { this.stop('cpu'); return; }
-      if (!this.timers.cpu) this.timer('cpu', () => this.cpuActRealtime(), CPU_RT_MS);
+      const live = g && this.phase === 'game' && !g.over && !this.countdownUntil;
+      for (const p of this.players) {
+        if (!p.cpu) continue;
+        const name = 'cpu:' + p.id;
+        const alive = live && g.players.some(x => x.id === p.id && x.alive);
+        if (!alive) { this.stop(name); continue; }
+        if (!this.timers[name]) this.timer(name, () => this.cpuAct(p.id), CPU_MS[0] + Math.floor(this.rng() * (CPU_MS[1] - CPU_MS[0])));
+      }
     }
 
-    cpuActRealtime() {
+    // CPU が1回考える。動いたら行動完了を外し、もうやりたい行動がなければ行動完了にする
+    cpuAct(id) {
       const g = this.game;
       if (this.closed || !g || g.over) return;
-      for (const p of g.players) {
-        const info = this.player(p.id);
-        if (!p.alive || !info || !info.cpu) continue;
-        const action = CPU.decideRealtime(g, p.id, this.rng, info.level);
-        if (action) E.apply(g, p.id, action);
-      }
+      const p = g.players.find(x => x.id === id), info = this.player(id);
+      if (!p || !p.alive || !info) return;
+      const action = CPU.decideRealtime(g, id, this.rng, info.level);
+      if (action && E.apply(g, id, action).ok) p.ready = false;
+      else if (!CPU.wantsMore(g, id, info.level)) p.ready = true;
       this.changed();
     }
 
@@ -344,5 +366,5 @@
     }
   }
 
-  return { Room, COLORS, CHAT_KEEP, CHAT_LEN, COUNTDOWN_MS };
+  return { Room, COLORS, CHAT_KEEP, CHAT_LEN, COUNTDOWN_MS, CPU_MS };
 });

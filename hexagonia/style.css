@@ -633,3 +633,9 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 
 /* バージョンの表記 */
 .title .version { font-size: 13px; font-weight: 600; color: var(--muted); margin-left: 8px; letter-spacing: .04em; }
+
+/* 更新履歴 */
+.changelog-dialog { width: min(440px, calc(100% - 24px)); }
+.cl-ver { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border-left: 3px solid rgba(156, 198, 242, 0.45); }
+.cl-ver h3 { margin: 0 0 4px; color: var(--text); font-size: 15px; letter-spacing: .02em; }
+.cl-ver .r-list { font-size: 13.5px; }

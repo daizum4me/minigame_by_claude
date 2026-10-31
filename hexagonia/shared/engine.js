@@ -14,7 +14,7 @@
   'use strict';
 
   // ゲームのバージョン。ちがうバージョンどうしでは対戦できない（参加のときにホストが確かめる）
-  const VERSION = '1.0';
+  const VERSION = '1.1';
 
   // ルールの数値はすべてここ
   const RULES = {
@@ -371,7 +371,7 @@
     if (state.over) return;
     rng = rng || Math.random;
     state.round++;
-    for (const p of state.players) p.ready = false;
+    for (const p of state.players) { p.ready = false; p.readyOff = false; }
     addLog(state, `ターン ${state.round} / ${state.rounds}`, 'round');
     const seq = state.logSeq;
     for (const p of state.players) {
@@ -525,6 +525,7 @@
     // 行動完了：このターンはもう行動しない、という印（もう一度押すと取り消し）。ターンが変わると外れる
     if (action.type === 'ready') {
       p.ready = action.on === undefined ? !p.ready : !!action.on;
+      p.readyOff = !p.ready;   // 自分で外したら、このターンは自動では行動完了にしない
       return { ok: true };
     }
     const k = key(Number(action.q), Number(action.r));
@@ -676,6 +677,18 @@
     return best;
   }
 
+  // 行動力が満タンだったとして、何か行動できるか（拡張・強化・発展・攻撃。防御はいつでもできるので数えない）。
+  // できなければ、行動力の回復を待っても何もできないので、自動で行動完了にする
+  function hasMoves(state, id) {
+    const p = playerById(state, id);
+    if (!p || !p.alive || state.over) return false;
+    const ap = p.ap;
+    p.ap = apMax(state);
+    const ok = ['expand', 'strengthen', 'develop', 'destroy'].some(t => targets(state, id, t).length > 0);
+    p.ap = ap;
+    return ok;
+  }
+
   // 脱落させる（切断したまま戻らないときなどに使う）
   function forfeit(state, id) {
     const p = playerById(state, id);
@@ -687,6 +700,6 @@
     VERSION, RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, DEVELOP_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, forfeit,
-    adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, powerMade, riversideCells,
+    adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, hasMoves, largestGroup, suggestAbandon, foodMade, foodEaten, powerMade, riversideCells,
   };
 });
