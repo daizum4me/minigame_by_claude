@@ -401,7 +401,7 @@
     }
 
     // 葉を描く（得点の輪や数字はつけない）
-    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw) {
+    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw, dashed) {
       ctx.save();
       ctx.globalAlpha = alpha;
       this.hexPath(ctx, x, y, this.S * 0.78 * scale);
@@ -409,6 +409,7 @@
       ctx.fill();
       ctx.lineWidth = lw || 2;
       ctx.strokeStyle = stroke || color;
+      if (dashed) ctx.setLineDash([Math.max(3, this.S * 0.28), Math.max(2, this.S * 0.2)]);   // ヤドリギ：枠が破線
       ctx.stroke();
       ctx.restore();
     }
@@ -486,7 +487,7 @@
         if (!inView(x)) continue;
         const w = clamp((t - 200) / 800, 0, 1);
         if (w >= 1) continue;
-        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4);
+        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4, !!lf.mist);
       }
     }
 
@@ -546,25 +547,13 @@
         }
         const cellXY = ck => { const c = geo.cells[ck]; return [this.px(c.x, dx), this.py(c.y)]; };
 
-        // ヤドリギの葉から、宿主の枝（他の人の枝）へ細い線
-        ctx.setLineDash([2, 3]); ctx.lineWidth = 1.4;
-        for (const [ck, lf] of Object.entries(g.leaves)) {
-          if (!lf.host || !g.edges[lf.host]) continue;
-          const [x, y] = cellXY(ck);
-          if (!inView(x) || !inViewY(y)) continue;
-          const [x1, y1, x2, y2] = this.edgePts(lf.host, dx);
-          ctx.strokeStyle = rgba(colors[lf.owner], 0.8);
-          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo((x1 + x2) / 2, (y1 + y2) / 2); ctx.stroke();
-        }
-        ctx.setLineDash([]);
-
         // 葉
         for (const [ck, lf] of Object.entries(g.leaves)) {
           const [x, y] = cellXY(ck);
           if (!inView(x) || !inViewY(y)) continue;
           const color = colors[lf.owner];
           const isNew = g.round > 0 && lf.round === g.round;
-          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2);
+          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2, !!lf.host);
           if (topCells.has(ck)) {
             this.hexPath(ctx, x, y, S * 0.67);
             ctx.lineWidth = S * 0.2;
@@ -579,7 +568,7 @@
         // 折れる前（数字がこぼれているあいだ）は、これから折れる葉も残して見せる
         if (phase === 'pre') for (const lf of lt.removedLeafList || []) {
           const [x, y] = cellXY(lf.cell);
-          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2);
+          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2, !!lf.mist);
         }
 
         // 幹（根から今の長さまで）。次に伸びる1辺は点線

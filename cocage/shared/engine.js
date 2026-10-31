@@ -38,9 +38,11 @@
     scarTurns: 3,            // 傷あと：枝が折れた根元の頂点からは、その持ち主は次の3ターン枝を伸ばせない
     trunkStart: 1,           // 最初から伸びている幹の辺の数（そこから毎ターン1辺ずつ伸びる）
     mistletoeMinPlayers: 3,  // ヤドリギを使える人数（2人戦は全員とすでに関われるので使えない）
-    // 列の一番上の葉のボーナス「下にある他人の葉の数」に、ヤドリギの葉を最大いくつまで数えるか（人数別。数値ひとつでもよい）
-    // 人数が多いほど宿主が遠く・多くなってヤドリギが強くなるので、4〜5人は多めに数える（CPUどうしの対戦で釣り合う値）
-    mistletoeFeedMax: { 3: 1, 4: 2, 5: 2 },
+    // ヤドリギの葉は、宿主の列の一番上の葉のボーナス「下にある他人の葉の数」に、ふつうの葉と同じく数えられる（宿主を太らせる＝ヤドリギ側のリスク）。
+    // 数えるヤドリギの葉の上限（人数別。数値ひとつでもよい）。初期値は上限なし
+    mistletoeFeedMax: 99,
+    // 養分を吸う（ヤドリギ側のリターン）：宿主の枝が残っているあいだ、毎ターン、ヤドリギの葉1枚につき、宿主から drain 点を奪って自分に足す
+    mistletoeDrain: 0.2,
     mistletoeCost: 2,        // ヤドリギ（相手の枝を土台に、遠くへ葉を置く）の行動力。1ターンに1回まで
     leafOnTrunk: false,      // 幹に接するだけのセルに葉を置けるか（仕様では「自分の枝に接するセル」なので false）
   };
@@ -522,7 +524,7 @@
       }
     }
     for (const [ck, lf] of Object.entries(state.leaves)) {
-      if (!leafAnchored(state, geo, ck, lf.owner)) { info.removedLeafList.push({ cell: ck, owner: lf.owner }); delete state.leaves[ck]; info.removedLeaves++; }
+      if (!leafAnchored(state, geo, ck, lf.owner)) { info.removedLeafList.push({ cell: ck, owner: lf.owner, mist: !!lf.host }); delete state.leaves[ck]; info.removedLeaves++; }
     }
 
     // 4. 光合成：列ごとに得点
@@ -531,6 +533,17 @@
     for (const [ck, pt] of Object.entries(points)) {
       const p = playerById(state, state.leaves[ck].owner);
       p.gain += pt;
+    }
+    // 養分を吸う：宿主の枝が残っているヤドリギの葉ごとに、宿主から奪う（宿主の持ち点が 0 を下回るぶんは奪えない）
+    info.drained = 0;
+    if (RULES.mistletoeDrain > 0) {
+      for (const lf of Object.values(state.leaves)) {
+        if (!lf.host || !state.edges[lf.host]) continue;
+        const host = playerById(state, state.edges[lf.host].owner), me = playerById(state, lf.owner);
+        if (!host || !me || host === me) continue;
+        const amt = Math.max(0, Math.min(RULES.mistletoeDrain, host.score + host.gain));
+        host.gain -= amt; me.gain += amt; info.drained += amt;
+      }
     }
     for (const p of state.players) {
       p.score += p.gain;

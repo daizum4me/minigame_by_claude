@@ -114,7 +114,9 @@
       const r = E.checkMistletoe(geo, state, net, ck, pr.pendingLeaves);
       if (typeof r === 'string') continue;
       const surv = survival(ctx, r.host, 1, horizon / 2);
-      const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon, true) * LEAF_BIAS * MISTLE_W / E.RULES.mistletoeCost;
+      // 養分を吸う：宿主から奪うぶん（自分の得＋相手の損）を、残りターンと残りやすさで掛ける
+      const drain = E.RULES.mistletoeDrain * (1 + ATTACK) * horizon * surv;
+      const v = (leafValue(state, geo, id, ck, extraLeaves, surv, horizon, true) * LEAF_BIAS + drain) * MISTLE_W / E.RULES.mistletoeCost;
       consider(v + (v > 0 ? 0.3 : 0) + noise(), { type: 'addMistletoe', cell: ck });
     }
     // 枝：新しい辺に接するセルに葉を置く価値（の一部）。高い・根本が重いほど折れやすいので割り引く。

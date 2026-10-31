@@ -393,7 +393,7 @@ test('ヤドリギ：同じセルを選んだら抽選。自分の枝に接す�
   assert.ok(!r.ok && /他の人の枝/.test(r.error), r.error);
 });
 
-test('ヤドリギ：2人戦では使えない。宿主のボーナスに数えるのは、3人戦は1枚・4〜5人戦は2枚まで', () => {
+test('ヤドリギ：2人戦では使えない。ヤドリギの葉も、宿主のボーナスの「下にある他人の葉」に数えられる（上限は設定できる）', () => {
   const g2 = newGame(2), geo = E.geometry(g2.cols);
   const v0 = geo.trunks[1].verts[2];
   const ek = geo.verts[v0].edges.find(k => !geo.reserved.has(k) && geo.edges[k].cells.length === 2);
@@ -403,10 +403,42 @@ test('ヤドリギ：2人戦では使えない。宿主のボーナスに数え�
   assert.ok(!E.apply(g2, 'a', { type: 'addMistletoe', cell: geo.edges[ek].cells[0] }).ok);
   // 得点：宿主 a が一番上、下に b・c のヤドリギの葉が3枚（ほかの人の葉は他に無い）
   const col = n => E.scoreColumn([{ r: 9, owner: 'a' }, { r: 4, owner: 'b', mist: true }, { r: 3, owner: 'c', mist: true }, { r: 2, owner: 'd', mist: true }], n).map(v => Math.round(v * 1000) / 1000);
-  const h = E.RULES.score.height; E.RULES.score.height = 0;
+  const h = E.RULES.score.height, f = E.RULES.mistletoeFeedMax;
+  E.RULES.score.height = 0;
   try {
+    assert.strictEqual(col(3)[0], 1 + 3);                       // 初期値：ヤドリギの葉もふつうの葉と同じく数える（上限3）
+    E.RULES.mistletoeFeedMax = { 3: 1, 4: 2, 5: 2 };
     assert.strictEqual(col(3)[0], 1 + 1);     // 3人戦：ヤドリギの葉は1枚まで
     assert.strictEqual(col(5)[0], 1 + 2);     // 5人戦：2枚まで
-    assert.strictEqual(E.scoreColumn([{ r: 9, owner: 'a' }, { r: 4, owner: 'b' }, { r: 3, owner: 'c', mist: true }], 3)[0], 1 + 2);   // ふつうの葉は数える
+    E.RULES.mistletoeFeedMax = 0;
+    assert.strictEqual(col(5)[0], 1);         // 0：数えない
+    assert.strictEqual(E.scoreColumn([{ r: 9, owner: 'a' }, { r: 4, owner: 'b' }, { r: 3, owner: 'c', mist: true }], 3)[0], 1 + 1);   // ふつうの葉だけ数える
+  } finally { E.RULES.score.height = h; E.RULES.mistletoeFeedMax = f; }
+});
+
+test('ヤドリギ：養分を吸う。宿主の枝が残っているあいだ毎ターン、宿主から drain 点を奪う。宿主の持ち点が足りなければ奪えない', () => {
+  const g = newGame(3), geo = E.geometry(g.cols);
+  const v0 = geo.trunks[1].verts[2];
+  const ek = geo.verts[v0].edges.find(k => !geo.reserved.has(k) && geo.edges[k].cells.length === 2);
+  const e = geo.edges[ek], to = e.a === v0 ? e.b : e.a;
+  g.edges[ek] = { owner: 'b', from: v0, to, parent: null, l: 1, h: e.h, round: 0 };
+  const ck = geo.edges[ek].cells[0];
+  g.leaves[ck] = { owner: 'a', round: 0, host: ek };
+  const drain = E.RULES.mistletoeDrain, h = E.RULES.score.height;
+  E.RULES.score.height = 0;
+  try {
+    P(g, 'b').score = 10;
+    const info = E.resolveTurn(g, NEVER);
+    // a の葉：その列で自分だけの一番上 → 1点 + 吸った drain。b は持ち点 10 から drain を奪われる
+    assert.ok(Math.abs(P(g, 'a').gain - (1 + drain)) < 1e-9, String(P(g, 'a').gain));
+    assert.ok(Math.abs(P(g, 'b').gain + drain) < 1e-9);
+    assert.ok(Math.abs(info.drained - drain) < 1e-9);
+    P(g, 'b').score = 0; P(g, 'b').gain = 0;
+    E.resolveTurn(g, NEVER);
+    assert.ok(Math.abs(P(g, 'b').score) < 1e-9, '持ち点 0 のときは奪えない');
+    // 宿主の枝がなくなったら、吸えない（葉も消える）
+    delete g.edges[ek];
+    const info3 = E.resolveTurn(g, NEVER);
+    assert.strictEqual(info3.drained, 0);
   } finally { E.RULES.score.height = h; }
 });
