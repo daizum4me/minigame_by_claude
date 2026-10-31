@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア — 効果音（Web Audio で合成。音声ファイルなし）
+ * ヘキサブルグ — 効果音（Web Audio で合成。音声ファイルなし）
  * HexSound.play(name) / HexSound.setOn(bool) / HexSound.on
  */
 (function () {
@@ -7,7 +7,7 @@
 
   let ctx = null, master = null, noiseBuf = null;
   let on = true;
-  try { on = localStorage.getItem('hexagonia.sound') !== 'off'; } catch (e) { /* 保存できなくても既定はON */ }
+  try { on = localStorage.getItem('hexaburg.sound') !== 'off'; } catch (e) { /* 保存できなくても既定はON */ }
 
   function ensure() {
     if (!ctx) {
@@ -71,36 +71,11 @@
     go() {          // 開始：ぴーっ（高く長め）
       tone({ freq: 1320, dur: 0.5, vol: 0.12, type: 'square' });
     },
+    pip(n) {        // 終了時の数え上げ：数えるたびに少しずつ高くなる「ぴっ」
+      tone({ freq: Math.min(1600, 520 + (n || 0) * 22), dur: 0.06, vol: 0.07, type: 'triangle' });
+    },
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
-    },
-    strengthen() {  // 強化：きらっ
-      tone({ freq: 784, dur: 0.16, vol: 0.1, type: 'triangle' });
-      tone({ freq: 1175, t: 0.07, dur: 0.28, vol: 0.09, type: 'triangle' });
-    },
-    produce() {     // 生産：ごとっ＋きらっ
-      tone({ freq: 160, freqEnd: 110, dur: 0.16, vol: 0.2 });
-      tone({ freq: 1046, t: 0.06, dur: 0.22, vol: 0.06, type: 'triangle' });
-    },
-    declare() {     // 攻撃（防御を削った）：ひゅっ
-      noise({ dur: 0.28, type: 'bandpass', freq: 600, freqEnd: 2400, q: 2, vol: 0.18 });
-      tone({ freq: 220, freqEnd: 330, type: 'sawtooth', dur: 0.25, vol: 0.05 });
-    },
-    block() {       // 攻撃が防御に当たった（防御を削った）：かきん
-      tone({ freq: 1320, dur: 0.25, vol: 0.08, type: 'square' });
-      tone({ freq: 1760, dur: 0.2, vol: 0.05, type: 'square' });
-      noise({ dur: 0.08, type: 'highpass', freq: 4000, vol: 0.1 });
-    },
-    success() {     // 攻撃成功（セルを奪った）：がしゃん
-      noise({ dur: 0.45, type: 'lowpass', freq: 3000, freqEnd: 300, vol: 0.3 });
-      tone({ freq: 140, freqEnd: 60, dur: 0.35, vol: 0.2 });
-    },
-    abandon() {     // セルを捨てる：さらさら
-      noise({ dur: 0.5, type: 'bandpass', freq: 1800, freqEnd: 500, q: 1.5, vol: 0.12, attack: 0.05 });
-    },
-    event() {       // イベント：ぼーん（鐘）
-      tone({ freq: 392, dur: 0.9, vol: 0.1, type: 'triangle', attack: 0.01 });
-      tone({ freq: 588, t: 0.02, dur: 0.8, vol: 0.05, type: 'sine' });
     },
     out() {         // 脱落：下がる3音
       [523, 415, 311].forEach((f, i) => tone({ freq: f, t: i * 0.16, dur: 0.3, vol: 0.12, type: 'triangle' }));
@@ -110,10 +85,6 @@
     },
     lose() {        // 敗北：低く下がる
       [392, 330, 262].forEach((f, i) => tone({ freq: f, t: i * 0.2, dur: 0.45, vol: 0.1 }));
-    },
-    attacked() {    // 自分のセルが攻撃された：警報のように2回
-      [0, 0.16].forEach(t => tone({ freq: 880, freqEnd: 520, t, dur: 0.13, vol: 0.11, type: 'square' }));
-      noise({ t: 0, dur: 0.2, type: 'lowpass', freq: 1500, freqEnd: 300, vol: 0.15 });
     },
   };
 
@@ -126,12 +97,12 @@
     get on() { return on; },
     setOn(v) {
       on = !!v;
-      try { localStorage.setItem('hexagonia.sound', on ? 'on' : 'off'); } catch (e) { /* 無視 */ }
+      try { localStorage.setItem('hexaburg.sound', on ? 'on' : 'off'); } catch (e) { /* 無視 */ }
       if (on) ensure();
     },
-    play(name) {
+    play(name, arg) {
       if (!on || !sounds[name] || !ensure()) return;
-      try { sounds[name](); } catch (e) { /* 音が出せなくても続ける */ }
+      try { sounds[name](arg); } catch (e) { /* 音が出せなくても続ける */ }
     },
   };
 })();

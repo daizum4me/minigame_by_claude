@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア — 部屋（ロビー・ゲーム進行・切断の扱い）
+ * ヘキサブルグ — 部屋（ロビー・ゲーム進行・切断の扱い）
  * ホスト権威型：ホストのブラウザでこの Room を動かし、参加者からの要求を handle() で受けて
  * ルール上可能かを確かめてから状態を更新し、全員に最新の状態を配信する。
  * CPU もここで動かす（ホストのブラウザの中で考えて行動する）。
@@ -42,7 +42,6 @@
       this.phase = 'lobby';
       // 盤面の直径（マス）・ターン数。0 は人数に合わせる
       this.settings = { diameter: 0, ticks: 0 };
-      this.events = true;       // イベントを起こすか
       this.chat = [];           // { seq, from, name, color, text }（ロビーとゲームで続けて使う）
       this.chatSeq = 0;
       this.game = null;
@@ -173,7 +172,7 @@
           if (this.players.length < E.RULES.minPlayers) return err(`${E.RULES.minPlayers}人以上でないと始められません`);
           const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
           try {
-            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, rounds: this.settings.ticks, events: this.events });
+            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, rounds: this.settings.ticks });
           } catch (e) {
             return err(e.message);
           }
@@ -325,19 +324,13 @@
       this.changed();
     }
 
-    // その人に見せてよい情報：ほかの人の戦力トークンの数と、セルの防御の数は見せない
+    // その人に送る状態（ログは新しいものだけ）
     view(forId) {
       const g = this.game;
       const now = this.now();
       let game = null;
       if (g) {
-        // ほかの人の戦力トークンの数は見せない
-        game = Object.assign({}, g, {
-          log: g.log.slice(-LOG_SEND),
-          players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
-          // セルの防御の数は、そのセルの持ち主にしか見せない（ほかの人には、あるかどうかもわからない）
-          board: Object.fromEntries(Object.entries(g.board).map(([k, c]) => [k, c.def && c.owner !== forId ? Object.assign({}, c, { def: 0 }) : c])),
-        });
+        game = Object.assign({}, g, { log: g.log.slice(-LOG_SEND) });
       }
       const live = g && !g.over && this.phase === 'game';
       return {

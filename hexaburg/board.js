@@ -1,5 +1,5 @@
 /*
- * ヘキサゴニア — 盤面の描画と操作（canvas）
+ * ヘキサブルグ — 盤面の描画と操作（canvas）
  * 拡大・縮小（ホイール／ピンチ）、移動（ドラッグ）、マスの選択（クリック／タップ）、
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
@@ -23,11 +23,6 @@
     frame: '#2A2A28',
     cell: '#3A3A38',
     edge: '#56554F',
-    mark: '#A3A198',
-    river: '#2E4250',
-    riverEdge: '#45606F',
-    wave: '#7FA4BC',
-    plank: '#B9A88C',
   };
 
   // アキシャル座標 → 世界座標（マスの半径 = 1、とがった頂点が上）
@@ -126,6 +121,12 @@
       const t = performance.now();
       for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255', ms: ms || FLASH_MS });
       if (keys.length) this.animate();
+    }
+
+    // 終了時の数え上げで塗るマス（Map：キー → 色）。null で消す
+    setCounted(map) {
+      this.counted = map;
+      this.draw();
     }
 
     setSelected(key) {
@@ -315,77 +316,19 @@
 
       const cells = Object.entries(g.board);
       const targets = new Set(d.targets);
-      // 地形
+      // マス（すべて平原）
       for (const [, c] of cells) {
         const [wx, wy] = toWorld(c.q, c.r);
         const x = this.ox + wx * s, y = this.oy + wy * s;
         if (x < -s || y < -s || x > w + s || y > h + s) continue;
-        const river = c.terrain === 'river';
         hexPath(ctx, x, y, s * 0.97);
-        ctx.fillStyle = river ? COL.river : COL.cell;
+        ctx.fillStyle = COL.cell;
         ctx.fill();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = river ? COL.riverEdge : COL.edge;
+        ctx.strokeStyle = COL.edge;
         ctx.stroke();
-        if (river) {
-          if (c.owner) {
-            // 橋：板を並べた形
-            ctx.strokeStyle = COL.plank;
-            ctx.lineWidth = Math.max(1, s * 0.07);
-            ctx.beginPath();
-            ctx.moveTo(x - s * 0.45, y - s * 0.22); ctx.lineTo(x + s * 0.45, y - s * 0.22);
-            ctx.moveTo(x - s * 0.45, y + s * 0.22); ctx.lineTo(x + s * 0.45, y + s * 0.22);
-            for (let i = -2; i <= 2; i++) { ctx.moveTo(x + i * s * 0.18, y - s * 0.22); ctx.lineTo(x + i * s * 0.18, y + s * 0.22); }
-            ctx.stroke();
-          } else {
-            // 河川：波の線
-            ctx.strokeStyle = COL.wave;
-            ctx.lineWidth = Math.max(1, s * 0.05);
-            for (const dy of [-0.12, 0.12]) {
-              ctx.beginPath();
-              for (let i = 0; i <= 8; i++) {
-                const px = x - s * 0.3 + i * s * 0.075, py = y + dy * s + Math.sin(i / 8 * Math.PI * 2) * s * 0.05;
-                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-              }
-              ctx.stroke();
-            }
-          }
-        } else if (c.terrain === 'mine') {
-          // 鉱山：◆
-          ctx.beginPath();
-          ctx.moveTo(x, y - s * 0.27);
-          ctx.lineTo(x + s * 0.2, y);
-          ctx.lineTo(x, y + s * 0.27);
-          ctx.lineTo(x - s * 0.2, y);
-          ctx.closePath();
-          ctx.fillStyle = COL.mark;
-          ctx.fill();
-        } else if (c.terrain === 'forest') {
-          // 森林：▽（縁取りだけ）
-          ctx.beginPath();
-          ctx.moveTo(x, y + s * 0.25);
-          ctx.lineTo(x + s * 0.27, y - s * 0.2);
-          ctx.lineTo(x - s * 0.27, y - s * 0.2);
-          ctx.closePath();
-          ctx.strokeStyle = COL.mark;
-          ctx.lineWidth = Math.max(1.2, s * 0.06);
-          ctx.lineJoin = 'round';
-          ctx.stroke();
-        } else if (c.terrain === 'factory') {
-          // 工場：□（枠だけ）
-          ctx.strokeStyle = COL.mark;
-          ctx.lineWidth = Math.max(1.2, s * 0.06);
-          ctx.lineJoin = 'miter';
-          ctx.strokeRect(x - s * 0.2, y - s * 0.2, s * 0.4, s * 0.4);
-        } else if (c.terrain === 'farm') {
-          // 農地：●
-          ctx.beginPath();
-          ctx.arc(x, y, s * 0.2, 0, Math.PI * 2);
-          ctx.fillStyle = COL.mark;
-          ctx.fill();
-        }
       }
-      // セル（半透明なので下の地形マークが透ける）
+      // セル
       for (const [, c] of cells) {
         if (!c.owner) continue;
         const col = d.colors[c.owner];
@@ -397,19 +340,10 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
-        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印）のあいだ（印とは接しないように）を、1つにつき辺1本ぶんずつ埋める。6で一周
-        if (c.def > 0) this.defRing(ctx, x, y, s, this.defSides(g, c).slice(0, Math.min(6, c.def)), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
         this.edge(ctx, x, y, s * 0.88, c.core ? Math.max(2.5, s * 0.11) : Math.max(1.5, s * 0.06), col.light, pat);
         ctx.restore();
-        if (c.strong) {
-          hexPath(ctx, x, y, s * 0.62);
-          ctx.lineWidth = Math.max(1.2, s * 0.05);
-          ctx.strokeStyle = col.light;
-          ctx.setLineDash([]);
-          ctx.stroke();
-        }
         if (c.core) {
           ctx.beginPath();
           ctx.arc(x, y, s * 0.27, 0, Math.PI * 2);
@@ -419,6 +353,14 @@
           ctx.strokeStyle = col.light;
           ctx.stroke();
         }
+      }
+      // 終了時の数え上げで数えたマス：明るい色で塗る
+      if (this.counted) for (const [k, color] of this.counted) {
+        if (!g.board[k]) continue;
+        const [x, y] = this.screenOf(k);
+        hexPath(ctx, x, y, s * 0.8);
+        ctx.fillStyle = rgba(color, 0.75);
+        ctx.fill();
       }
       // 行動できるマス（薄く光らせる）
       for (const k of targets) {
@@ -468,34 +410,6 @@
         ctx.stroke();
       }
       if (this.h.onView) this.h.onView();
-    }
-
-    // 防御を埋める辺の順番（0〜5。辺 i は頂点 i と i+1 のあいだ、上の頂点から時計回り）：
-    // 相手のセルと接している辺から。残りは、相手と接している辺に近いものから（どこにも接していなければ上から時計回り）
-    defSides(g, c) {
-      const foe = [];
-      for (const [dq, dr] of E.DIRS) {
-        const [wx, wy] = toWorld(dq, dr);
-        const i = ((Math.round(Math.atan2(wy, wx) * 180 / Math.PI / 60) + 1) % 6 + 6) % 6;
-        const n = g.board[E.key(c.q + dq, c.r + dr)];
-        if (n && n.owner && n.owner !== c.owner) foe.push(i);
-      }
-      const near = i => foe.length ? Math.min(...foe.map(f => { const d = Math.abs(f - i) % 6; return Math.min(d, 6 - d); })) : 0;
-      return [0, 1, 2, 3, 4, 5].sort((a, b) => near(a) - near(b) || a - b);
-    }
-
-    // 防御の帯：sides の辺ごとに、縁と内側の六角形（強化の印より少し外）のあいだの台形を塗る（セルの明るい色）
-    defRing(ctx, x, y, s, sides, col) {
-      const ro = s * 0.86, ri = s * 0.71;   // 内側は強化の印（0.62）とすき間をあける
-      const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
-      ctx.fillStyle = col.light;
-      for (const i of sides) {
-        ctx.beginPath();
-        ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));
-        ctx.lineTo(...pt(ri, i + 1)); ctx.lineTo(...pt(ri, i));
-        ctx.closePath();
-        ctx.fill();
-      }
     }
 
     // セルの縁（陣営ごとの模様：実線・点線・二重線・破線）

@@ -53,18 +53,6 @@ test('CPU は何もしない相手に勝つ', () => {
   assert.ok(wins >= 9, `${wins} / 10`);
 });
 
-test('CPU の強さ：よわいはふつうに負け越す（2人戦）', () => {
-  let w = 0;
-  for (let seed = 1; seed <= 60; seed++) {
-    const rng = seeded(seed * 7);
-    const g = E.createGame(PLAYERS.slice(0, 2), rng);
-    const weak = g.players[seed % 2].id;
-    play(g, rng, id => (id === weak ? 'weak' : 'normal'));
-    if (g.winners.includes(weak)) w += 1 / g.winners.length;
-  }
-  assert.ok(w / 60 < 0.4, `よわい ${w / 60}`);
-});
-
 test('部屋に CPU を入れて遊べる（CPU はばらつきのある間隔で考える。CPU には何も送らない）', () => {
   const timers = [];
   const inbox = {};
@@ -101,38 +89,15 @@ test('部屋に CPU を入れて遊べる（CPU はばらつきのある間隔�
   assert.strictEqual(room.players.length, 3);
 });
 
-function rtSetup() {
+test('CPU：一番大きなかたまりを伸ばす方を選ぶ。拡張できなければ待つ', () => {
   const rng = seeded(5);
-  const g = E.createGame(PLAYERS.slice(0, 2), rng, { events: false });
-  const [a, b] = g.players;
-  return { g, a, b, rng };
-}
-
-test('CPU：相手のセルが近づいてきたら、コアに先に防御をつぎ込む', () => {
-  const { g, a, b, rng } = rtSetup();
-  const [cq, cr] = E.parseKey(a.core);
-  const [nq, nr] = E.neighbors(cq, cr).find(([q, r]) => g.board[E.key(q, r)] && g.board[E.key(q, r)].terrain !== 'river');
-  const far = E.neighbors(nq, nr).find(([q, r]) => g.board[E.key(q, r)] && E.dist([q, r], [cq, cr]) === 2 && !g.board[E.key(q, r)].owner && g.board[E.key(q, r)].terrain !== 'river');
-  Object.assign(g.board[E.key(...far)], { owner: b.id });
-  a.resource = 0; a.power = 3; a.ap = 0;      // 資源・行動力がないので、防御だけ選べる
+  const g = E.createGame(PLAYERS.slice(0, 2), rng);
+  const a = g.players[0];
   const act = CPU.decideRealtime(g, a.id, rng, 'strong');
-  assert.deepStrictEqual([act.type, E.key(act.q, act.r)], ['fortify', a.core]);
-  assert.ok(E.apply(g, a.id, act).ok);
-  assert.strictEqual(g.board[a.core].def, 1);
-});
-
-test('CPU：防御のある相手のコアは、攻撃を重ねて防御を削ってから壊す（相手の防御の数は見ずに見積もる）', () => {
-  const { g, a, b, rng } = rtSetup();
-  const [fq, fr] = E.parseKey(b.core);
-  const [nq, nr] = E.neighbors(fq, fr).find(([q, r]) => g.board[E.key(q, r)] && g.board[E.key(q, r)].terrain !== 'river');
-  Object.assign(g.board[E.key(nq, nr)], { owner: a.id, strong: true });   // 攻撃の拠点
-  g.board[b.core].def = 1;
-  a.resource = 0; a.power = 5; a.ap = 2;      // 攻撃は行動力を1使う
-  const act = CPU.decideRealtime(g, a.id, rng, 'strong');
-  assert.deepStrictEqual([act.type, E.key(act.q, act.r)], ['destroy', b.core]);
-  assert.ok(E.apply(g, a.id, act).ok);
-  assert.strictEqual(g.board[b.core].def, 0);   // 1回目は防御が減るだけ
-  const act2 = CPU.decideRealtime(g, a.id, rng, 'strong');
-  assert.ok(E.apply(g, a.id, act2).ok);
-  assert.strictEqual(b.alive, false);          // 2回目でコアを壊す
+  assert.strictEqual(act.type, 'expand');
+  const [q, r] = [act.q, act.r];
+  assert.ok(E.neighbors(q, r).some(([x, y]) => E.key(x, y) === a.core));   // コアの隣（かたまりがつながる）
+  a.resource = 0;
+  assert.strictEqual(CPU.decideRealtime(g, a.id, rng, 'strong'), null);
+  assert.strictEqual(CPU.wantsMore(g, a.id), false);
 });

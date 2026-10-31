@@ -1,4 +1,4 @@
-/* ヘキサゴニア（仮）— 暗めのグレーを基調にした、モダンでミニマルな見た目 */
+/* ヘキサブルグ— 暗めのグレーを基調にした、モダンでミニマルな見た目 */
 :root {
   --bg: #1F1F1D;
   --frame: #2A2A28;
@@ -607,35 +607,55 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 @keyframes rk-4-90 { 0%, 4% { opacity: 0; } 7%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
 @keyframes rk-5-40 { 0%, 5% { opacity: 0; } 8%, 40% { opacity: 1; } 43%, 100% { opacity: 0; } }
 @keyframes rk-8-88 { 0%, 8% { opacity: 0; } 11%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
+@keyframes rk-10-24 { 0%, 10% { opacity: 0; } 13%, 24% { opacity: 1; } 27%, 100% { opacity: 0; } }
 @keyframes rk-10-45 { 0%, 10% { opacity: 0; } 13%, 45% { opacity: 1; } 48%, 100% { opacity: 0; } }
+@keyframes rk-10-92 { 0%, 10% { opacity: 0; } 13%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-15-85 { 0%, 15% { opacity: 0; } 18%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
+@keyframes rk-15-92 { 0%, 15% { opacity: 0; } 18%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-20-88 { 0%, 20% { opacity: 0; } 23%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
 @keyframes rk-20-90 { 0%, 20% { opacity: 0; } 23%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
 @keyframes rk-22-28 { 0%, 22% { opacity: 0; } 25%, 28% { opacity: 1; } 31%, 100% { opacity: 0; } }
+@keyframes rk-24-38 { 0%, 24% { opacity: 0; } 27%, 38% { opacity: 1; } 41%, 100% { opacity: 0; } }
+@keyframes rk-24-92 { 0%, 24% { opacity: 0; } 27%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-32-88 { 0%, 32% { opacity: 0; } 35%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
 @keyframes rk-35-85 { 0%, 35% { opacity: 0; } 38%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
 @keyframes rk-35-90 { 0%, 35% { opacity: 0; } 38%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
 @keyframes rk-36-90 { 0%, 36% { opacity: 0; } 39%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
+@keyframes rk-37-92 { 0%, 37% { opacity: 0; } 40%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
+@keyframes rk-38-52 { 0%, 38% { opacity: 0; } 41%, 52% { opacity: 1; } 55%, 100% { opacity: 0; } }
+@keyframes rk-38-92 { 0%, 38% { opacity: 0; } 41%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-44-88 { 0%, 44% { opacity: 0; } 47%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
 @keyframes rk-50-56 { 0%, 50% { opacity: 0; } 53%, 56% { opacity: 1; } 59%, 100% { opacity: 0; } }
 @keyframes rk-50-85 { 0%, 50% { opacity: 0; } 53%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
 @keyframes rk-50-90 { 0%, 50% { opacity: 0; } 53%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
+@keyframes rk-52-66 { 0%, 52% { opacity: 0; } 55%, 66% { opacity: 1; } 69%, 100% { opacity: 0; } }
 @keyframes rk-52-90 { 0%, 52% { opacity: 0; } 55%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
+@keyframes rk-52-92 { 0%, 52% { opacity: 0; } 55%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-55-85 { 0%, 55% { opacity: 0; } 58%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
 @keyframes rk-56-88 { 0%, 56% { opacity: 0; } 59%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
+@keyframes rk-59-92 { 0%, 59% { opacity: 0; } 62%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
+@keyframes rk-66-92 { 0%, 66% { opacity: 0; } 69%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-68-90 { 0%, 68% { opacity: 0; } 71%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
 @keyframes rk-70-88 { 0%, 70% { opacity: 0; } 73%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
 @keyframes rk-70-92 { 0%, 70% { opacity: 0; } 73%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-78-84 { 0%, 78% { opacity: 0; } 81%, 84% { opacity: 1; } 87%, 100% { opacity: 0; } }
+@keyframes rk-84-96 { 0%, 84% { opacity: 0; } 87%, 96% { opacity: 1; } 99%, 100% { opacity: 0; } }
 @keyframes rk-84-98 { 0%, 84% { opacity: 0; } 87%, 98% { opacity: 1; } 100%, 100% { opacity: 0; } }
 @keyframes rk-88-98 { 0%, 88% { opacity: 0; } 91%, 98% { opacity: 1; } 100%, 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .r-anim .rk { animation: none !important; opacity: 1; } .r-anim .bar { animation: none; } }
 
-/* バージョンの表記 */
-.title .version { font-size: 13px; font-weight: 600; color: var(--muted); margin-left: 8px; letter-spacing: .04em; }
 
-/* 更新履歴 */
-.changelog-dialog { width: min(440px, calc(100% - 24px)); }
-.cl-ver { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border-left: 3px solid rgba(156, 198, 242, 0.45); }
-.cl-ver h3 { margin: 0 0 4px; color: var(--text); font-size: 15px; letter-spacing: .02em; }
-.cl-ver .r-list { font-size: 13.5px; }
+
+.r-anim .c-count { fill: #FFD36B; opacity: .8; }
+.r-anim .lbl.big { font-size: 34px; font-weight: 800; fill: #FFD36B; }
+
+/* 終了時の数え上げ */
+.finale { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 9; width: min(360px, calc(100% - 24px)); background: var(--glass); border: 1px solid rgba(255, 211, 107, 0.5); border-radius: 14px; padding: 10px 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .45); }
+.finale[hidden] { display: none; }
+.finale h3 { margin: 0 0 6px; color: var(--warn); font-size: 14px; }
+.finale ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.finale li { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 8px; opacity: .65; }
+.finale li .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finale li b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.finale li.now { opacity: 1; background: rgba(255, 255, 255, 0.06); }
+.finale li.win { opacity: 1; background: rgba(255, 211, 107, 0.18); color: var(--warn); }
