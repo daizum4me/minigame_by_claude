@@ -208,7 +208,7 @@
       if (this.closed || !this.live() || seq !== this.turnSeq) return;
       const gp = g.players.find(x => x.id === id), info = this.player(id);
       if (!gp || !info || gp.finished) return;
-      const a = E.planCost(gp.plan) < E.RULES.ap ? CPU.nextAction(g, id, this.rng, info.level) : null;
+      const a = gp.plan.length < E.RULES.ap ? CPU.nextAction(g, id, this.rng, info.level) : null;
       if (a && E.apply(g, id, a).ok) {
         this.broadcast();
         this.timer('cpu:' + id, () => this.cpuAct(id, seq), CPU_STEP_MS);
