@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cocage</title>
+<meta name="description" content="Cocage— 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232A2A28%22/><path d=%22M50 94 L50 40 M50 62 L72 44 M50 52 L28 36%22 stroke=%22%237BD39A%22 stroke-width=%228%22 stroke-linecap=%22round%22 fill=%22none%22/><polygon points=%2250,6 70,17 70,39 50,50 30,39 30,17%22 fill=%22%237BD39A%22 fill-opacity=%22.45%22 stroke=%22%237BD39A%22 stroke-width=%225%22/></svg>">
+<!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+
+<!-- トップ -->
+<main id="top" class="screen center">
+  <div class="card top-card">
+    <h1 class="title"><span class="logo" aria-hidden="true"></span>Cocage</h1>
+    <p class="lead">幹から枝と葉を伸ばし、各列の「一番上の葉」で得点を競うゲーム。全員が同時に行動を決める、2〜5人用。</p>
+
+    <label class="field">
+      <span>なまえ（12文字まで）</span>
+      <input id="in-name" type="text" maxlength="24" autocomplete="nickname" placeholder="ゲスト">
+    </label>
+
+    <button id="btn-create" class="primary big">部屋を作る</button>
+    <div class="row">
+      <input id="in-code" type="text" maxlength="6" placeholder="部屋ID" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <button id="btn-join">参加する</button>
+    </div>
+    <div class="divider"><span>または</span></div>
+    <button id="btn-local" class="big">CPUと遊ぶ（ひとりで・通信なし）</button>
+    <p id="top-msg" class="msg" hidden></p>
+    <div class="row links">
+      <button class="link" data-open="rules">ルール</button>
+    </div>
+  </div>
+</main>
+
+<!-- ロビー -->
+<main id="lobby" class="screen center" hidden>
+  <div class="card lobby-card">
+    <h2>ロビー</h2>
+    <div id="lobby-online">
+      <div class="room-id">
+        <span>部屋ID</span>
+        <strong id="lobby-code">-----</strong>
+      </div>
+      <div class="row">
+        <input id="invite-url" type="text" readonly>
+        <button id="btn-copy">招待URLをコピー</button>
+      </div>
+      <p id="host-warn" class="note warn" hidden>この部屋はあなたのブラウザで動いています。ゲームが終わるまで、このページを閉じたり再読み込みしたりしないでください。</p>
+    </div>
+    <p id="lobby-local" class="note muted" hidden>CPUと遊ぶ（通信なし）。CPUは1〜4人まで入れられます。</p>
+
+    <h3>参加者 <span id="lobby-count" class="muted"></span></h3>
+    <ul id="lobby-players" class="lobby-players"></ul>
+    <button id="btn-add-cpu" class="add-cpu" hidden>＋ CPUを追加</button>
+    <p id="lobby-board" class="note muted"></p>
+
+    <button id="btn-start" class="primary big" hidden>ゲーム開始</button>
+    <p id="lobby-wait" class="note muted"></p>
+    <div class="row links">
+      <button class="link" data-open="rules">ルール</button>
+      <button class="link" id="btn-leave">退出する</button>
+    </div>
+  </div>
+</main>
+
+<!-- ゲーム -->
+<main id="game" class="screen game" hidden>
+  <section class="board-wrap">
+    <div class="hud">
+      <div class="pill"><span class="muted">ターン</span> <strong id="hud-round">1 / 36</strong></div>
+      <div class="seg" id="overlay-seg" role="group" aria-label="折れやすさの表示">
+        <button data-overlay="normal" class="on">通常</button>
+        <button data-overlay="p">折れる確率</button>
+        <button data-overlay="loss">期待損失</button>
+      </div>
+      <div class="legend" id="overlay-legend" hidden><span>低</span><i></i><span>高</span><small id="overlay-note"></small></div>
+    </div>
+    <div class="board-tools">
+      <button id="btn-center" class="tool" title="盤面を自分の幹が真ん中に来るように回す">⟲ 自分の幹へ</button>
+      <button class="tool" data-open="rules" title="ルール">？</button>
+    </div>
+    <div class="canvas-box"><canvas id="board" aria-label="盤面"></canvas></div>
+    <div id="tooltip" class="tooltip" hidden></div>
+    <section id="dock" class="dock">
+      <div class="tickbar" id="tickbar"><i></i></div>
+      <div class="dock-row">
+        <div class="seg" id="mode-seg" role="group" aria-label="置くもの">
+          <button data-mode="b" class="on">枝を置く</button>
+          <button data-mode="l">葉を置く</button>
+        </div>
+        <ol id="plan" class="plan"></ol>
+        <button id="btn-finish" class="primary">全て確定</button>
+      </div>
+      <p id="hint" class="hint"></p>
+    </section>
+  </section>
+
+  <aside class="panel">
+    <section>
+      <h3>合計点 <small class="muted">（右は今ターンの加点）</small></h3>
+      <ul id="scores" class="scores"></ul>
+    </section>
+    <section>
+      <h3>ターンごとの合計点</h3>
+      <svg id="chart" class="chart" viewBox="0 0 300 130" role="img" aria-label="合計点の推移"></svg>
+    </section>
+    <section class="log-wrap">
+      <h3>このターンに起きたこと</h3>
+      <ul id="events" class="events"></ul>
+    </section>
+  </aside>
+
+  <div id="result" class="overlay" hidden></div>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
+
+<!-- ルール -->
+<dialog id="rules" class="dialog rules-dialog">
+  <h2>ルール</h2>
+  <div class="rules">
+    <h3>目的</h3>
+    <p>幹から枝と葉を伸ばし、各列の「一番上の葉」で得点を稼ぎます。全36ターンで、合計点がいちばん高い人の勝ちです。全員が同時に行動を決めるので、手番の待ち時間はありません。</p>
+    <h3>盤面</h3>
+    <ul>
+      <li>18行のヘックスで、左右がつながった横ループです（ドラッグで回せます）。列の数は 6 × 人数です。</li>
+      <li>幹は全員同じ形で立っていて、毎ターン自動で1辺ずつ伸びます（36ターンで最上部）。</li>
+    </ul>
+    <h3>1ターンの流れ</h3>
+    <ol>
+      <li><b>同時行動</b>：全員が<b>行動力3</b>の範囲で行動を選びます（枝も葉も1）。制限時間は90秒。使い切らなくてもかまいません（余りは持ち越せません）。</li>
+      <li><b>幹の成長</b>：全員の幹が1辺伸びます。</li>
+      <li><b>折れ判定</b>：すべての枝の辺について、折れるかを抽選します。</li>
+      <li><b>光合成</b>：各列の得点を計算して加算します。</li>
+    </ol>
+    <ul>
+      <li>行動は1つずつ「確定」できます。全員が確定したら、90秒を待たずに次へ進みます。時間になったら、その時点の内容で自動で確定します。</li>
+      <li>確定の順番や時刻は勝敗に影響せず、ほかの人からは見えません。</li>
+    </ul>
+    <h3>枝と葉</h3>
+    <ul>
+      <li><b>枝</b>：自分の幹・枝の頂点から、辺に1本つなぎます。幹が通る予定の辺には置けません。</li>
+      <li><b>葉</b>：自分の枝に接するセルに1枚置きます。あとから動かせません。枝が折れて土台を失うと、一緒に消えます。</li>
+      <li>同じ辺・セルを複数人が選んだら、等確率の抽選で1人だけが成功します（負けても行動力は戻りません）。選んだ人が1人なら、必ず成功します。</li>
+    </ul>
+    <h3>枝が折れる確率</h3>
+    <p class="formula">p = 0.05% ＋ 0.03% × 高さ ＋ 0.05% × 長さ</p>
+    <ul>
+      <li>高さ＝その辺の行番号、長さ＝幹から枝をたどった辺の数。毎ターン、辺ごとに独立に抽選します。幹は折れません。</li>
+      <li>折れると、その辺とその先の枝・葉がすべて消えます（あとから作り直せます）。</li>
+      <li>枝にカーソルを合わせると、折れやすさ・10ターン生き残る確率・失うものが見られます。上の「折れる確率」「期待損失」で、盤面全体の危険度を色で一覧できます。</li>
+    </ul>
+    <h3>得点</h3>
+    <ul>
+      <li>列で<b>一番上の葉</b>：1 ＋ min(3, その列の下にある他人の葉の数)（最大4点）。</li>
+      <li>一番上ではない葉：上に他人の葉があれば 0.3 点、上が自分の葉だけなら 0 点。</li>
+      <li>一番上の葉が消えたら、その下の葉が新しい一番上になります。</li>
+    </ul>
+    <h3>操作</h3>
+    <ul>
+      <li>「枝を置く」では置ける辺が点線で光ります。クリックで計画に加わります。「葉を置く」では置けるセルが光ります。</li>
+      <li>計画した行動は数字つきで盤面に出ます（自分にだけ見えます）。下のバーで確定したり、外したりできます。「全て確定」で、残りを使わずに確定できます。</li>
+      <li>盤面は左右にドラッグして回せます。</li>
+    </ul>
+  </div>
+  <div class="row"><button class="primary" data-close>閉じる</button></div>
+</dialog>
+
+<script src="shared/engine.js?v=1"></script>
+<script src="shared/cpu.js?v=1"></script>
+<script src="shared/room.js?v=1"></script>
+<script src="board.js?v=1"></script>
+<script src="client.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,289 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const E = require('../shared/engine');
+
+// 再現できる乱数
+function seeded(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+const NEVER = () => 0.9999;   // 折れも抽選の「先頭以外」も起きない乱数
+const FIRST = () => 0;        // 抽選では先頭の人が勝ち、折れ判定は全部折れる
+
+const PLAYERS = 'abcde'.split('').map(id => ({ id, name: id.toUpperCase() }));
+const newGame = n => E.createGame(PLAYERS.slice(0, n), seeded(1));
+const P = (g, id) => g.players.find(p => p.id === id);
+const act = (g, id, a) => { const r = E.apply(g, id, a); assert.ok(r.ok, r.error); };
+
+// 幹を s 辺まで伸ばす
+function grow(g, s) { for (const p of g.players) p.trunkLen = s; }
+
+test('盤面：18行・列数は 6×人数。セルの数・幹の位置・隣の幹との間は通常の列がちょうど4列', () => {
+  for (const n of [2, 3, 4, 5]) {
+    const g = newGame(n), geo = E.geometry(g.cols);
+    assert.strictEqual(g.cols, 6 * n);
+    assert.strictEqual(Object.keys(geo.cells).length, 18 * 6 * n);
+    assert.deepStrictEqual(geo.trunks.map(t => t.col), [2, 8, 14, 20, 26].slice(0, n));
+    // 幹のそばの2列（幹の列とその右隣）を除くと、次の幹までに通常の列が4列
+    const near = new Set(geo.trunks.flatMap(t => [t.col, t.col + 1]));
+    let run = 0, started = false;
+    const runs = [];
+    for (let c = 0; c < g.cols * 2; c++) {
+      if (near.has(c % g.cols)) { if (started && run) runs.push(run); run = 0; started = true; } else run++;
+    }
+    assert.ok(runs.length && runs.every(r => r === 4), `通常の列の並び ${runs}`);
+  }
+  assert.throws(() => E.createGame(PLAYERS.slice(0, 1), seeded(1)));
+  assert.throws(() => E.createGame([...PLAYERS, { id: 'f', name: 'F' }], seeded(1)));
+});
+
+test('頂点には辺が3本ずつ集まり（上下の端を除く）、幹の辺は36本・根から最上部まで続く', () => {
+  const geo = E.geometry(12);
+  const deg = {};
+  for (const v of Object.values(geo.verts)) deg[v.edges.length] = (deg[v.edges.length] || 0) + 1;
+  assert.deepStrictEqual(deg, { 2: 24, 3: 432 });
+  for (const t of geo.trunks) {
+    assert.strictEqual(t.verts.length, 37);
+    assert.ok(t.edges.slice(1).every(ek => geo.edges[ek]));
+    assert.strictEqual(geo.verts[t.verts[0]].y, 0);
+    assert.strictEqual(geo.verts[t.verts[36]].y, 36);
+    // 1行 = 2辺。辺の高さは 1,1,2,2,…,18,18
+    assert.deepStrictEqual(t.edges.slice(1).map(ek => geo.edges[ek].h), Array.from({ length: 36 }, (_, i) => Math.floor(i / 2) + 1));
+  }
+  assert.strictEqual(geo.reserved.size, 72);
+});
+
+test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×長さ。長さ8・高さ9の先端の葉は10ターン生き残る確率が約65%', () => {
+  assert.ok(Math.abs(E.breakProb(9, 8) - 0.0072) < 1e-12);
+  assert.ok(Math.abs(E.breakProb(1, 1) - 0.0013) < 1e-12);
+  const g = newGame(2);
+  let parent = null;
+  for (let l = 1; l <= 8; l++) { const k = 'e' + l; g.edges[k] = { owner: 'a', from: 'x', to: 'y', parent, l, h: 9, round: 0 }; parent = k; }
+  const st = E.edgeStats(g, 'e8', 10);
+  assert.ok(Math.abs(st.survive - 0.65) < 0.02, `生存率 ${st.survive}`);
+  assert.deepStrictEqual([st.lostEdges, st.p], [1, 0.0072]);
+});
+
+test('幹の成長：毎ターン1辺。ターン36で最上部に達して止まり、ゲームが終わる', () => {
+  const g = newGame(2);
+  for (let t = 1; t <= 36; t++) {
+    assert.strictEqual(g.over, false);
+    E.resolveTurn(g, NEVER);
+    assert.deepStrictEqual(g.players.map(p => p.trunkLen), [t, t]);
+  }
+  assert.ok(g.over);
+  assert.strictEqual(g.round, 36);
+  const geo = E.geometry(g.cols);
+  assert.strictEqual(geo.verts[geo.trunks[0].verts[g.players[0].trunkLen]].y, 36);   // 18行目の頂点
+  assert.deepStrictEqual(g.winners, ['a', 'b']);                                      // 何も置かなければ同点
+  assert.strictEqual(E.resolveTurn(g, NEVER), null);
+});
+
+test('枝：自分の幹・枝の頂点から1本つなぐ。幹の辺・使われた辺・つながらない辺・両端がつながった辺は置けない', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const root = geo.trunks[0].verts[0];
+  const around = geo.verts[root].edges;
+  const trunkEdge = geo.trunks[0].edges[1];
+  assert.ok(around.includes(trunkEdge));
+  assert.match(E.apply(g, 'a', { type: 'addBranch', edge: trunkEdge }).error, /幹が通る/);
+  assert.match(E.apply(g, 'a', { type: 'addBranch', edge: geo.trunks[1].edges[1] }).error, /幹が通る/);   // 相手の幹の予約もだめ
+  const far = Object.keys(geo.edges).find(k => !geo.edges[k].a.startsWith('7,') && !geo.edges[k].b.startsWith('7,') && !geo.reserved.has(k));
+  assert.match(E.apply(g, 'a', { type: 'addBranch', edge: far }).error, /つながる/);
+  assert.match(E.apply(g, 'a', { type: 'addBranch', edge: 'x|y' }).error, /辺はありません/);
+  const ok = around.find(k => !geo.reserved.has(k));
+  act(g, 'a', { type: 'addBranch', edge: ok });
+  assert.match(E.apply(g, 'a', { type: 'addBranch', edge: ok }).error, /もう枝/);
+  // 幹はまだ根だけ。幹の先（これから伸びる頂点）にはつなげない
+  const c = E.candidates(g, 'a');
+  assert.ok(c.edges.every(k => !geo.reserved.has(k)));
+  assert.ok(c.cells.length > 0);
+});
+
+test('葉：自分の枝に接するセルに置ける（幹に接するだけではだめ）。計画した枝にもつなげられる', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const trunkCell = geo.edges[geo.trunks[0].edges[1]].cells[0];
+  assert.match(E.apply(g, 'a', { type: 'addLeaf', cell: trunkCell }).error, /枝に接する/);
+  const ek = geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k));
+  act(g, 'a', { type: 'addBranch', edge: ek });
+  const cell = E.candidates(g, 'a').cells[0];
+  assert.ok(geo.cells[cell].edges.includes(ek));
+  act(g, 'a', { type: 'addLeaf', cell });
+  assert.match(E.apply(g, 'a', { type: 'addLeaf', cell }).error, /もう葉/);
+  assert.strictEqual(P(g, 'a').plan.length, 2);
+});
+
+test('行動力は毎ターン3。4つ目は計画できない。外すと、それにつながる行動も外れる。確定は全員そろうまで取り消せる', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const ek = geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k));
+  act(g, 'a', { type: 'addBranch', edge: ek });
+  const cell = E.candidates(g, 'a').cells[0];
+  act(g, 'a', { type: 'addLeaf', cell });
+  const farV = geo.edges[ek].a === geo.trunks[0].verts[0] ? geo.edges[ek].b : geo.edges[ek].a;
+  const next = E.candidates(g, 'a').edges.find(k => geo.edges[k].a === farV || geo.edges[k].b === farV);   // 最初の枝の先につなぐ
+  act(g, 'a', { type: 'addBranch', edge: next });
+  assert.strictEqual(E.apply(g, 'a', { type: 'addLeaf', cell: E.candidates(g, 'a').cells[0] || cell }).ok, false);   // もう3つ
+  assert.deepStrictEqual(E.candidates(g, 'a'), { edges: [], cells: [] });
+  act(g, 'a', { type: 'remove', index: 0 });                              // 最初の枝を外す → つながる葉・枝も外れる
+  assert.deepStrictEqual(P(g, 'a').plan, []);
+  act(g, 'a', { type: 'addBranch', edge: ek });
+  act(g, 'a', { type: 'confirm', index: 0 });
+  assert.strictEqual(P(g, 'a').plan[0].done, true);
+  assert.strictEqual(P(g, 'a').finished, false);                         // 3つそろっていないので、まだ待たない
+  act(g, 'a', { type: 'finish' });
+  assert.strictEqual(P(g, 'a').finished, true);
+  act(g, 'a', { type: 'finish', on: false });
+  assert.deepStrictEqual([P(g, 'a').finished, P(g, 'a').plan[0].done], [false, false]);
+  act(g, 'a', { type: 'finish' });
+  act(g, 'a', { type: 'addBranch', edge: E.candidates(g, 'a').edges[0] });   // 計画を変えると、確定は外れる
+  assert.strictEqual(P(g, 'a').finished, false);
+  assert.strictEqual(E.apply(g, 'a', { type: 'dance' }).ok, false);
+});
+
+test('同時行動：自分だけが選んだ辺・セルは必ず成功。同じ辺を複数人が選ぶと等確率の抽選で1人だけが成功し、負けても行動力は戻らない', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  // a と b の枝が同じ辺を選ぶ状況を作る：b の幹の根を a の枝の先につなげる（b の幹の頂点から）
+  const ek = geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k));
+  const e = geo.edges[ek];
+  const farV = geo.trunks[0].verts.includes(e.a) ? e.b : e.a;
+  // b の枝を、a の枝の先の頂点（farV）に伸びる辺まで届く形で用意する
+  g.edges['b-pre'] = { owner: 'b', from: geo.trunks[1].verts[0], to: farV, parent: null, l: 1, h: 1, round: 0 };
+  P(g, 'b').trunkLen = 0;
+  act(g, 'a', { type: 'addBranch', edge: ek });
+  // b は farV を自分の頂点として持つので、b の側から同じ辺は「両端がつながった」になるため、別の辺で衝突を作る
+  const other = geo.verts[farV].edges.find(k => k !== ek && !geo.reserved.has(k) && !g.edges[k]);
+  assert.ok(other);
+  act(g, 'b', { type: 'addBranch', edge: other });
+  act(g, 'a', { type: 'finish' }); act(g, 'b', { type: 'finish' });
+  const info = E.resolveTurn(g, NEVER);
+  assert.deepStrictEqual([info.contested, info.lost.length, info.placedBranches], [0, 0, 2]);   // 選んだ人が1人なら必ず成功
+
+  // 同じセルに葉：a と b が同じセルを選ぶ。a・b ともにそのセルに接する枝を持つ
+  const g2 = newGame(2), geo2 = E.geometry(g2.cols);
+  const cell = Object.keys(geo2.cells)[100];
+  const ce = geo2.cells[cell].edges;
+  g2.edges[ce[0]] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 1, round: 0 };
+  g2.edges[ce[3]] = { owner: 'b', from: 'x', to: 'y', parent: null, l: 1, h: 1, round: 0 };
+  act(g2, 'a', { type: 'addLeaf', cell }); act(g2, 'b', { type: 'addLeaf', cell });
+  const info2 = E.resolveTurn(g2, () => 0);   // 先頭（a）が勝つ。折れ判定は rng()<p で全部折れてしまうので、枝の判定は別に
+  assert.strictEqual(info2.contested, 1);
+  assert.strictEqual(info2.lost.length, 1);
+  assert.deepStrictEqual(info2.lost[0], { owner: 'b', t: 'l', key: cell });
+  // 勝敗は等確率：多数回やって、ほぼ半々
+  let aWins = 0;
+  const rng = seeded(5);
+  for (let i = 0; i < 400; i++) {
+    const h = newGame(2), hg = E.geometry(h.cols);
+    h.edges[hg.cells[cell].edges[0]] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 1, round: 0 };
+    h.edges[hg.cells[cell].edges[3]] = { owner: 'b', from: 'x', to: 'y', parent: null, l: 1, h: 1, round: 0 };
+    act(h, 'a', { type: 'addLeaf', cell }); act(h, 'b', { type: 'addLeaf', cell });
+    const calls = [rng(), 0.9999, 0.9999, 0.9999];
+    let n = 0;
+    E.resolveTurn(h, () => (n < 1 ? calls[n++] : 0.9999));
+    if (h.leaves[cell] && h.leaves[cell].owner === 'a') aWins++;
+  }
+  assert.ok(aWins > 140 && aWins < 260, `a の勝ち ${aWins}/400`);
+});
+
+test('折れる：その辺とその先の枝・葉がすべて消え、あとから作り直せる。折れたターンの記録が残る', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  // a：根から3本の枝（e1 → e2 → e3）と、e3 に接するセルの葉。ほかに e1 から分かれる e2b
+  const path = [];
+  let v = geo.trunks[0].verts[0];
+  const seen = new Set([v]);
+  for (let i = 0; i < 3; i++) {
+    const ek = geo.verts[v].edges.find(k => !geo.reserved.has(k) && !g.edges[k] && !seen.has(geo.edges[k].a === v ? geo.edges[k].b : geo.edges[k].a));
+    const e = geo.edges[ek], to = e.a === v ? e.b : e.a;
+    g.edges[ek] = { owner: 'a', from: v, to, parent: path.length ? path[path.length - 1] : null, l: i + 1, h: e.h, round: 0 };
+    path.push(ek); seen.add(to); v = to;
+  }
+  const cell = geo.edges[path[2]].cells[0];
+  g.leaves[cell] = { owner: 'a', round: 0 };
+  // 真ん中の辺（path[1]）だけが折れる乱数：辺の順に判定される。path[1] は2番目
+  const order = Object.keys(g.edges);
+  const idx = order.indexOf(path[1]);
+  let n = 0;
+  const info = E.resolveTurn(g, () => (n++ === idx ? 0 : 0.9999));
+  assert.deepStrictEqual(info.broken, [path[1]]);
+  assert.ok(g.edges[path[0]] && !g.edges[path[1]] && !g.edges[path[2]]);
+  assert.strictEqual(g.leaves[cell], undefined);
+  assert.deepStrictEqual(info.removed.map(r => [r.key, r.primary]).sort(), [[path[1], true], [path[2], false]].sort());
+  assert.strictEqual(info.removedLeaves, 1);
+  // 作り直せる
+  act(g, 'a', { type: 'addBranch', edge: path[1] });
+});
+
+test('葉は、ほかの枝にも支えられていれば残る（支えがすべてなくなると消える）', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const cell = Object.keys(geo.cells)[60], ce = geo.cells[cell].edges;
+  g.edges[ce[0]] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 1, round: 0 };
+  g.edges[ce[2]] = { owner: 'a', from: 'x2', to: 'y2', parent: null, l: 1, h: 1, round: 0 };
+  g.leaves[cell] = { owner: 'a', round: 0 };
+  const order = Object.keys(g.edges);
+  let n = 0;
+  E.resolveTurn(g, () => (n++ === order.indexOf(ce[0]) ? 0 : 0.9999));
+  assert.ok(g.leaves[cell]);                       // ce[2] が残っている
+  n = 0;
+  const order2 = Object.keys(g.edges);
+  E.resolveTurn(g, () => (n++ === order2.indexOf(ce[2]) ? 0 : 0.9999));
+  assert.strictEqual(g.leaves[cell], undefined);
+});
+
+test('得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。上に他人の葉がある葉は 0.3、上が自分の葉だけなら 0', () => {
+  const s = list => E.scoreColumn(list.map(([r, owner]) => ({ r, owner })));
+  assert.deepStrictEqual(s([[5, 'a']]), [1]);                                     // 自分だけでも 1 点
+  assert.deepStrictEqual(s([[5, 'a'], [2, 'b']]), [2, 0.3]);                      // 上が a：1+1。下の b は覆われている
+  assert.deepStrictEqual(s([[5, 'a'], [2, 'a']]), [1, 0]);                        // 下も自分の葉：他人ではないので +0、上が自分だけなので 0
+  assert.deepStrictEqual(s([[9, 'a'], [8, 'b'], [7, 'a'], [6, 'c'], [5, 'd']]), [4, 0.3, 0.3, 0.3, 0.3]);   // 下の他人は4枚でも上限3
+  assert.deepStrictEqual(s([[9, 'a'], [8, 'a'], [7, 'b']]), [2, 0, 0.3]);         // 上が自分の葉と他人の葉
+  assert.deepStrictEqual(s([[3, 'b'], [8, 'a'], [5, 'c']]), [0.3, 3, 0.3]);       // 並びは順不同でよい
+});
+
+test('光合成：ターンの終わりに列ごとに得点が入り、合計・加点・推移が記録される。一番上の入れ替わりを数える', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const colCells = Object.keys(geo.cells).filter(k => k.startsWith('4,')).sort((x, y) => +x.split(',')[1] - +y.split(',')[1]);
+  const mk = (cell, owner) => {
+    const ek = geo.cells[cell].edges[0];
+    g.edges[ek] = { owner, from: 'x', to: 'y', parent: null, l: 1, h: 1, round: 0 };
+    g.leaves[cell] = { owner, round: 0 };
+  };
+  mk(colCells[3], 'a'); mk(colCells[1], 'b');
+  const info = E.resolveTurn(g, NEVER);
+  assert.deepStrictEqual([P(g, 'a').gain, P(g, 'b').gain], [2, 0.3]);
+  assert.deepStrictEqual([P(g, 'a').score, P(g, 'b').score], [2, 0.3]);
+  assert.deepStrictEqual(P(g, 'a').history, [0, 2]);
+  assert.strictEqual(info.topChanges, 0);
+  // b が上に葉を置く → 一番上が入れ替わる
+  mk(colCells[6], 'b');
+  const info2 = E.resolveTurn(g, NEVER);
+  assert.strictEqual(info2.topChanges, 1);
+  assert.deepStrictEqual([P(g, 'a').gain, P(g, 'b').gain], [0.3, 2.3]);   // b：一番上（下の他人は a の1枚）→ 2、下の葉も a の葉に覆われて 0.3。a は 0.3
+  assert.deepStrictEqual(P(g, 'a').history, [0, 2, 2.3]);
+});
+
+test('ターンの解決で計画と確定はクリアされる。勝者は合計点が最高の人（同点は全員）', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const ek = geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k));
+  act(g, 'a', { type: 'addBranch', edge: ek });
+  act(g, 'a', { type: 'finish' });
+  E.resolveTurn(g, NEVER);
+  assert.deepStrictEqual(g.players.map(p => [p.plan.length, p.finished]), [[0, false], [0, false]]);
+  assert.ok(g.edges[ek]);
+  assert.strictEqual(g.edges[ek].round, 1);
+  g.round = 35;
+  P(g, 'a').score = 5.5; P(g, 'b').score = 5;
+  E.resolveTurn(g, NEVER);
+  assert.ok(g.over);
+  assert.deepStrictEqual(g.winners, ['a']);
+});
+
+test('枝の折れやすさ：確率・内訳・失うもの', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  g.edges['e1'] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 4, round: 0 };
+  g.edges['e2'] = { owner: 'a', from: 'y', to: 'z', parent: 'e1', l: 2, h: 5, round: 0 };
+  const st = E.edgeStats(g, 'e1', 10);
+  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0005)) < 1e-12);
+  assert.deepStrictEqual([st.lostEdges, st.parts.base], [2, 0.0005]);
+  assert.deepStrictEqual(E.subtree(g, 'e1').sort(), ['e1', 'e2']);
+  assert.deepStrictEqual(E.pathTo(g, 'e2'), ['e2', 'e1']);
+  assert.strictEqual(E.edgeStats(g, 'nope'), null);
+});
