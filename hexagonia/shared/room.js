@@ -268,6 +268,11 @@
       const humans = g.players.filter(p => p.alive && !(this.player(p.id) || {}).cpu && (this.player(p.id) || {}).connected);
       if (!humans.length || !humans.every(p => p.ready)) return;
       this.note('全員が行動完了したので、次のターンへ');
+      // 飛ばした時間のぶん、行動力も回復させる（このターンの終わりまでに来るはずだった回復の回数）
+      const now = this.now(), step = E.RULES.rt.apSeconds * 1000;
+      let t = this.regenDeadline;
+      while (t <= now) t += step;
+      for (; t <= this.tickDeadline; t += step) E.rtRegen(g);
       this.stop('rtTick');
       E.rtTick(g, this.rng);
       // checkTimers が次のターンのタイマーをかけ直す
