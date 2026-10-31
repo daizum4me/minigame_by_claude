@@ -64,12 +64,13 @@ test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×長さ。長さ8・�
   assert.deepStrictEqual([st.lostEdges, st.p], [1, 0.0072]);
 });
 
-test('幹の成長：毎ターン1辺。ターン36で最上部に達して止まり、ゲームが終わる', () => {
+test('幹の成長：最初から1辺伸びていて、毎ターン1辺ずつ伸びる。最上部に達したら止まり、ゲームが終わる', () => {
   const g = newGame(2);
+  assert.deepStrictEqual(g.players.map(p => p.trunkLen), [1, 1]);
   for (let t = 1; t <= 36; t++) {
     assert.strictEqual(g.over, false);
     E.resolveTurn(g, NEVER);
-    assert.deepStrictEqual(g.players.map(p => p.trunkLen), [t, t]);
+    assert.deepStrictEqual(g.players.map(p => p.trunkLen), [Math.min(36, t + 1), Math.min(36, t + 1)]);
   }
   assert.ok(g.over);
   assert.strictEqual(g.round, 36);
@@ -77,6 +78,32 @@ test('幹の成長：毎ターン1辺。ターン36で最上部に達して止�
   assert.strictEqual(geo.verts[geo.trunks[0].verts[g.players[0].trunkLen]].y, 36);   // 18行目の頂点
   assert.deepStrictEqual(g.winners, ['a', 'b']);                                      // 何も置かなければ同点
   assert.strictEqual(E.resolveTurn(g, NEVER), null);
+});
+
+test('最初から伸びている幹の先（頂点1）にも、枝をつなげられる', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const tip = geo.trunks[0].verts[1];
+  const ek = geo.verts[tip].edges.find(k => !geo.reserved.has(k));
+  assert.ok(ek);
+  assert.ok(E.apply(g, 'a', { type: 'addBranch', edge: ek }).ok);
+  const far = geo.trunks[0].verts[2];
+  // まだ伸びていない先の頂点には、つなげない
+  assert.match(E.apply(g, 'a', { type: 'addBranch', edge: geo.verts[far].edges.find(k => !geo.reserved.has(k)) }).error, /つながる/);
+});
+
+test('幹に接するだけのセルへの葉：既定ではだめ。RULES.leafOnTrunk を true にすると置けて、枝がなくても消えない', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  const trunkCell = geo.edges[geo.trunks[0].edges[1]].cells[0];
+  assert.ok(!E.candidates(g, 'a').cells.includes(trunkCell));
+  assert.match(E.apply(g, 'a', { type: 'addLeaf', cell: trunkCell }).error, /枝に接する/);
+  E.RULES.leafOnTrunk = true;
+  try {
+    assert.ok(E.candidates(g, 'a').cells.includes(trunkCell));
+    assert.ok(E.apply(g, 'a', { type: 'addLeaf', cell: trunkCell }).ok);
+    E.apply(g, 'a', { type: 'finish' }); E.apply(g, 'b', { type: 'finish' });
+    E.resolveTurn(g, NEVER);
+    assert.ok(g.leaves[trunkCell]);                       // 幹は折れないので、葉も残る
+  } finally { E.RULES.leafOnTrunk = false; }
 });
 
 test('枝：自分の幹・枝の頂点から1本つなぐ。幹の辺・使われた辺・つながらない辺・両端がつながった辺は置けない', () => {

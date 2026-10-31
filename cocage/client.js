@@ -282,12 +282,12 @@
     toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
   }
 
-  function setReconnecting(on) { $('#reconnecting').hidden = !on; }
+  function setReconnecting(on) { if (on && $('#reconnecting').hidden) window.CocageSound.play('warn'); $('#reconnecting').hidden = !on; }
 
   function onMessage(msg) {
     if (msg.type === 'error') {
       if (msg.fatal) leaveRoom(msg.text);
-      else toast(msg.text, 'bad');
+      else { toast(msg.text, 'bad'); window.CocageSound.play('deny'); }
       return;
     }
     if (msg.type !== 'state') return;
@@ -302,7 +302,11 @@
         history.replaceState(null, '', url);
       }
     }
+    if (prev && prev.phase === 'lobby' && msg.room.phase === 'game') window.CocageSound.play('start');
     if (!prev || prev.phase !== msg.room.phase) {
+      app.endPlayed = false;
+      app.prevPlan = null;
+      app.prevTops = null;
       app.resultHidden = false;
       app.lastRound = null;
       hideTip();
@@ -410,7 +414,9 @@
     const candidates = live && !me.finished ? E.candidates(g, app.me) : null;
     boardView().setData({ game: g, me: app.me, overlay: app.overlay, colors, candidates });
     // 新しいターンが解決されたら、点数を稼いだ葉から数字をこぼす（最初に画面を開いたときは出さない）
+    if (app.lastRound == null && g.over) app.endPlayed = true;   // 終わったあとに開いたときは、鳴らさない
     if (app.lastRound != null && g.round > app.lastRound) {
+      soundTurn(g);
       const { points } = E.scoreBoard(g);
       board.playTurn(Object.entries(points).filter(([, v]) => v > 0).map(([ck, v]) => ({ cell: ck, pts: v, color: colors[g.leaves[ck].owner] })), g.lastTurn);
     }
@@ -442,13 +448,15 @@
     $('#hint').textContent = g.over ? ''
       : !me ? '観戦中です'
       : me.finished ? `確定ずみ。ほかの人を待っています（確定した人：${room.finishedCount}/${n}人）。時間まで、取り消して変更できます`
-      : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動';
+      : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動'
+        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '');
     $('#tickbar').hidden = g.over;
 
     renderScores(g);
     renderChart(g);
     renderEvents(g);
     renderResult(room);
+    soundState(g, me);
     tickTimer();
   }
 
@@ -557,6 +565,79 @@
     else act({ type: 'addLeaf', cell: c.key });
   }
 
+  // ---------- 効果音 ----------
+
+  // 自分の計画・確定の変化（置いた・取り消した・確定した）と、ゲームの終わり
+  function soundState(g, me) {
+    const S = window.CocageSound;
+    // 一番上の持ち主（入れ替わりの音のため。毎回覚えておく）
+    const tops = {};
+    for (const [c, t] of Object.entries(E.scoreBoard(g).tops)) tops[c] = t.owner;
+    app.prevTops = tops;
+    if (me && !g.over) {
+      const sig = it => it.t + ':' + (it.e || it.c);
+      const cur = { round: g.round, keys: me.plan.map(sig), done: me.plan.map(it => !!it.done), finished: !!me.finished };
+      const prev = app.prevPlan;
+      app.prevPlan = cur;
+      if (prev && prev.round === cur.round) {
+        const added = cur.keys.filter(k => !prev.keys.includes(k)), removed = prev.keys.filter(k => !cur.keys.includes(k));
+        if (added.length) S.play(added[0][0] === 'b' ? 'planBranch' : 'planLeaf');
+        else if (removed.length) S.play('cancel');
+        else if (cur.finished !== prev.finished) S.play(cur.finished ? 'finish' : 'unfinish');
+        else if (cur.done.some((d, i) => d !== prev.done[i])) S.play('confirm');
+      }
+    }
+    if (g.over && !app.endPlayed) {
+      app.endPlayed = true;
+      S.play('end', { delay: 0.6 });
+      S.play(me && g.winners.includes(me.id) ? 'win' : 'lose', { delay: 1.8 });
+    }
+  }
+
+  // ターンが解決されたときの音：風が通り → 置かれる → 抽選に負ける → 点数が散る → 一番上の入れ替わり → （数字がこぼれたあとに）枝が折れる
+  function soundTurn(g) {
+    const S = window.CocageSound, lt = g.lastTurn, me = app.me;
+    if (!lt) return;
+    S.play('resolve');
+    for (let i = 0; i < Math.min(4, lt.placedBranches); i++) S.play('placedBranch', { delay: 0.12 + i * 0.07, vol: 1 - i * 0.15 });
+    for (let i = 0; i < Math.min(4, lt.placedLeaves); i++) S.play('placedLeaf', { delay: 0.2 + i * 0.09, vol: 1 - i * 0.15 });
+    const mine = lt.lost.filter(l => l.owner === me).length;
+    if (lt.lost.length) S.play('lost', { delay: 0.38, vol: mine ? 1 : 0.45 });
+    S.play('grow', { delay: 0.5 });
+    // 点数（点数の大きい葉から、最大10枚。自分の葉は大きめ）
+    const { points, tops } = E.scoreBoard(g);
+    Object.entries(points).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 10)
+      .forEach(([ck, v], i) => S.play('spill', { delay: 0.05 + i * 0.06, pts: v, vol: g.leaves[ck].owner === me ? 1 : 0.5 }));
+    // 一番上の入れ替わり
+    let up = 0, down = 0;
+    for (const [c, t] of Object.entries(tops)) {
+      const was = app.prevTops && app.prevTops[c];
+      if (was && was !== t.owner) { if (t.owner === me) up++; else if (was === me) down++; }
+    }
+    if (up) S.play('topUp', { delay: 0.75 });
+    if (down) S.play('topDown', { delay: 0.8 });
+    // 枝が折れる（盤面の演出に合わせて、数字がこぼれたあと）
+    const leaves = lt.removedLeafList || [];
+    if (lt.removed.length || leaves.length) {
+      const base = window.CocageBoard.PART_MS / 1000;
+      const prim = lt.removed.filter(r => r.primary).slice(0, 3);
+      prim.forEach((r, i) => {
+        const own = r.owner === me ? 1.2 : 0.8;
+        S.play('breakFlash', { delay: base + i * 0.05 });
+        S.play('snap', { delay: base + 0.2 + i * 0.09, vol: own });
+        S.play('label', { delay: base + 0.3 + i * 0.09, vol: r.owner === me ? 1 : 0.6 });
+        S.play('fall', { delay: base + 0.6 + i * 0.08 });
+      });
+      lt.removed.filter(r => !r.primary).slice(0, 6).forEach((r, i) => S.play('fall', { delay: base + 0.5 + i * 0.1 }));
+      if (leaves.length) S.play('leafGone', { delay: base + 0.5, vol: leaves.some(l => l.owner === me) ? 1.2 : 0.7 });
+    }
+  }
+
+  function renderSoundButtons() {
+    const on = window.CocageSound.isOn();
+    document.querySelectorAll('[data-sound-toggle]').forEach(b => { b.textContent = on ? '🔊 音あり' : '🔇 音なし'; b.setAttribute('aria-pressed', String(on)); });
+  }
+
   // ターンの残り時間
   function tickTimer() {
     const room = app.room;
@@ -566,7 +647,10 @@
     const bar = $('#tickbar');
     bar.classList.toggle('low', left <= 10000);
     bar.firstElementChild.style.width = `${Math.min(100, left / total * 100)}%`;
-    $('#hud-round').textContent = `${room.game.round + 1} / ${room.game.turns}・残り${Math.ceil(left / 1000)}秒`;
+    // 残り10秒からは、小枝を鳴らすような音で知らせる（確定していない人だけ）
+    const me = room.game.players.find(p => p.id === app.me), sec = Math.ceil(left / 1000);
+    if (me && !me.finished && sec >= 1 && sec <= 10 && sec !== app.lastTickSec) window.CocageSound.play('tick', { hot: sec <= 3 });
+    app.lastTickSec = sec;
   }
 
   // ---------- 初期化 ----------
@@ -611,6 +695,18 @@
     document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { const d = $('#' + b.dataset.open); d.showModal(); d.scrollTop = 0; }));
     document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
 
+    document.querySelectorAll('[data-sound-toggle]').forEach(b => b.addEventListener('click', () => {
+      window.CocageSound.setOn(!window.CocageSound.isOn());
+      renderSoundButtons();
+      window.CocageSound.play('ui');
+    }));
+    renderSoundButtons();
+    // ボタンを押したときの小さな音（計画の確定などは、それぞれ別の音）
+    document.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b || b.closest('#plan') || b.id === 'btn-finish' || b.hasAttribute('data-sound-toggle')) return;
+      window.CocageSound.play('ui');
+    });
     setInterval(tickTimer, 250);
     window.addEventListener('pagehide', () => { if (app.conn && app.conn.isHost) app.conn.close(); });
     window.addEventListener('beforeunload', e => {

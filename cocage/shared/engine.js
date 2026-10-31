@@ -11,7 +11,7 @@
  * 頂点・辺は、六角形の外接円の半径 S の半分を 1 とする整数座標 (x, y) で表す：
  *   セル (c, r) の中心は x = 3c、y = 偶数列なら 2r+1、奇数列なら 2r（y は上向きに 1 = 半セルの高さの半分… つまり √3/2·S の単位）。
  *   角は 中心から (±2, 0)、(±1, ±1)。
- * 幹は、列 2+6i と その右隣の列の境界を、下から上へジグザグに伸びる（1行 = 2辺。全部で 36 辺）。
+ * 幹は、列 2+6i と その右隣の列の境界を、下から上へジグザグに伸びる（1行 = 2辺。全部で 36 辺）。最初から1辺伸びていて、毎ターン1辺ずつ伸びる。
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -34,6 +34,7 @@
     break: { base: 0.0005, height: 0.0003, length: 0.0005 },
     // 得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。一番上でない葉は、上に他人の葉があれば 0.3
     score: { top: 1, bonusMax: 3, covered: 0.3 },
+    trunkStart: 1,           // 最初から伸びている幹の辺の数（そこから毎ターン1辺ずつ伸びる）
     leafOnTrunk: false,      // 幹に接するだけのセルに葉を置けるか（仕様では「自分の枝に接するセル」なので false）
   };
   const AP = RULES.ap;
@@ -126,7 +127,7 @@
       over: false,
       winners: [],
       players: players.map((p, i) => ({
-        id: p.id, name: p.name, color: i, trunk: i, trunkLen: 0,
+        id: p.id, name: p.name, color: i, trunk: i, trunkLen: RULES.trunkStart,
         score: 0, gain: 0, history: [0],
         plan: [],             // このターンの行動：{ t: 'b', e: 辺キー } / { t: 'l', c: セルキー }、done：確定ずみ
         finished: false,      // このターンの行動を確定しおえた
@@ -166,6 +167,15 @@
     if (ia && ib) return '両端がもう自分の幹か枝につながっています';
     const from = ia ? e.a : e.b, to = ia ? e.b : e.a, at = net.v.get(from);
     return { from, to, l: at.l + 1, parent: at.edge, h: e.h };
+  }
+
+  // 葉の土台が残っているか：自分の枝（gone に入っていないもの）か、（許されていれば）自分の幹
+  function leafAnchored(state, geo, ck, owner, gone) {
+    const cell = geo.cells[ck];
+    if (cell.edges.some(k => state.edges[k] && state.edges[k].owner === owner && !(gone && gone.has(k)))) return true;
+    if (!RULES.leafOnTrunk) return false;
+    const p = playerById(state, owner), tr = geo.trunks[p.trunk];
+    return cell.edges.some(k => { const i = tr.edges.indexOf(k); return i > 0 && i <= p.trunkLen; });
   }
 
   // 葉を置けるか。だめなら理由の文字列、置けるなら null
@@ -215,7 +225,9 @@
         if (typeof checkBranch(geo, state, net, ek, pendingEdges) !== 'string') edges.push(ek);
       }
     }
-    for (const ek of net.edges) {
+    const bases = [...net.edges];
+    if (RULES.leafOnTrunk) for (let k = 1; k <= p.trunkLen; k++) bases.push(geo.trunks[p.trunk].edges[k]);
+    for (const ek of bases) {
       for (const ck of geo.edges[ek].cells) if (!checkLeaf(geo, state, net, ck, pendingLeaves, p)) cells.add(ck);
     }
     return { edges: [...new Set(edges)], cells: [...cells] };
@@ -350,8 +362,7 @@
     const lost = subtree(state, ek), gone = new Set(lost);
     let lostLeaves = 0;
     for (const [ck, lf] of Object.entries(state.leaves)) {
-      const anchored = geo.cells[ck].edges.some(k => state.edges[k] && state.edges[k].owner === lf.owner && !gone.has(k));
-      if (!anchored) lostLeaves++;
+      if (!leafAnchored(state, geo, ck, lf.owner, gone)) lostLeaves++;
     }
     return { edge: e, parts, p: parts.p, survive, lostEdges: lost.length, lostLeaves, expectedLoss: parts.p * (lost.length + lostLeaves) };
   }
@@ -417,8 +428,7 @@
     }
     info.broken = brokenNow;
     for (const [ck, lf] of Object.entries(state.leaves)) {
-      const anchored = geo.cells[ck].edges.some(k => state.edges[k] && state.edges[k].owner === lf.owner);
-      if (!anchored) { info.removedLeafList.push({ cell: ck, owner: lf.owner }); delete state.leaves[ck]; info.removedLeaves++; }
+      if (!leafAnchored(state, geo, ck, lf.owner)) { info.removedLeafList.push({ cell: ck, owner: lf.owner }); delete state.leaves[ck]; info.removedLeaves++; }
     }
 
     // 4. 光合成：列ごとに得点
