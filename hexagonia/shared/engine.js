@@ -13,6 +13,9 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // ゲームのバージョン。ちがうバージョンどうしでは対戦できない（参加のときにホストが確かめる）
+  const VERSION = '1.0';
+
   // ルールの数値はすべてここ
   const RULES = {
     minPlayers: 2,
@@ -681,7 +684,7 @@
   }
 
   return {
-    RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, DEVELOP_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
+    VERSION, RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, DEVELOP_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, forfeit,
     adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, powerMade, riversideCells,

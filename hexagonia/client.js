@@ -31,7 +31,7 @@
   const P2P = Object.assign({
     peerjsSrc: 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
     peerOptions: {},            // 自前の PeerServer を使うときは { host, port, path, secure }
-    idPrefix: 'hexagonia-v2-',   // ターン制の頃の版（v1）の部屋と混ざらないように
+    idPrefix: 'hexagonia-v3-',   // v1.0 より前の版の部屋とは混ざらないように（v1.0 からは、参加のときにバージョンを確かめる）
     codeChars: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
     codeLength: 5,
     joinTimeoutMs: 15000,
@@ -241,6 +241,8 @@
         const tok = typeof msg.token === 'string' ? msg.token.slice(0, 64) : '';
         const reject = text => { safeSend(conn, { type: 'error', text, fatal: true }); setTimeout(() => conn.close(), 300); };
         if (!tok) return reject('接続情報が正しくありません');
+        // バージョンがちがうと、ルールや画面がずれるので対戦できない
+        if (msg.version !== E.VERSION) return reject(`バージョンがちがうため参加できません（ホスト v${E.VERSION}・あなた ${msg.version ? 'v' + msg.version : '古い版'}）。ページを再読み込みしてから、もう一度参加してください`);
         if (tok === this.token) return reject('ホストと同じブラウザからは参加できません（別のブラウザかシークレットウィンドウで開いてください）');
         // 同じ人の古い接続は閉じる
         for (const [c, i] of this.conns) {
@@ -381,26 +383,7 @@
   function send(msg) { if (app.conn) app.conn.send(msg); }
 
   function show(id) {
-    for (const s of ['gate', 'top', 'lobby', 'game']) $('#' + s).hidden = s !== id;
-  }
-
-  // ---------- メンテナンス中の入口（一時的なもの） ----------
-  // パスワードを入れるとトップに進める。ページの中で確かめるだけなので、本当の鍵ではない（中身を見れば外せる）。
-  // ソースに平文で残さないよう、SHA-256 の値だけを持つ。一度通れば、そのタブを閉じるまでは聞かない
-  const GATE_HASH = '00c467cf500b5e228062213f6836a176f9106558b4754ff7ae236e0e2ddaec36';
-  const gateOpen = () => { try { return sessionStorage.getItem('hexagonia.gate') === GATE_HASH; } catch (e) { return false; } };
-  async function sha256(text) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  function initGate() {
-    $('#gate-form').addEventListener('submit', async e => {
-      e.preventDefault();
-      const h = await sha256($('#gate-pass').value.trim().toUpperCase()).catch(() => '');
-      if (h !== GATE_HASH) { $('#gate-msg').hidden = false; $('#gate-pass').select(); return; }
-      try { sessionStorage.setItem('hexagonia.gate', h); } catch (err) { /* 保存できなくても進める */ }
-      show('top');
-    });
+    for (const s of ['top', 'lobby', 'game']) $('#' + s).hidden = s !== id;
   }
 
   let toastTimer = 0;
@@ -504,7 +487,7 @@
     } else {
       const code = $('#in-code').value.trim().toUpperCase();
       if (!code) { topMsg('部屋IDを入れてください'); return; }
-      app.conn = new GuestTransport({ type: 'join', code, token: token(), name });
+      app.conn = new GuestTransport({ type: 'join', code, token: token(), name, version: E.VERSION });
     }
     topMsg('接続しています…', 'info');
     $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = true;
@@ -641,7 +624,8 @@
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
     const max = E.apMax(g);
-    const apDots = n => Array.from({ length: max }, (_, i) => `<span class="ap-dot${i < n ? ' on' : ''}"></span>`).join('');
+    // 次に回復する丸は、回復までの進み具合だけ塗る（tickTimers で動かす）
+    const apDots = n => Array.from({ length: max }, (_, i) => `<span class="ap-dot${i < n ? ' on' : i === n ? ' next' : ''}"></span>`).join('');
     const meAct = $('#me-actions');
     const actHtml = !me ? '' : !me.alive ? '脱落' : `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${max}）">行動力 ${apDots(me.ap || 0)}</span>`;
     if (meAct._html !== actHtml) { meAct.innerHTML = actHtml; meAct._html = actHtml; }
@@ -833,6 +817,13 @@
     const bar = $('#dock-tickbar');
     bar.classList.toggle('low', left <= 3000);
     bar.firstElementChild.style.width = `${Math.min(100, left / total * 100)}%`;
+    // 行動力：次の回復までの進み具合
+    const next = document.querySelector('#me-actions .ap-dot.next');
+    if (next) {
+      const step = R.rt.apSeconds * 1000;
+      const done = Math.max(0, Math.min(1, 1 - Math.max(0, room.regenLeftMs - pass) / step));
+      next.style.setProperty('--p', `${Math.round(done * 100)}%`);
+    }
   }
 
   function renderResult(room, g) {
@@ -1037,6 +1028,7 @@
   function init() {
     fillIcons();
     initRulesPages();
+    $('#version').textContent = `v${E.VERSION}`;
     new ResizeObserver(updateDock).observe($('#dock'));
     const params = new URLSearchParams(location.search);
     $('#in-name').value = store.get('name') || '';
@@ -1133,8 +1125,7 @@
     });
 
     // 前回の部屋に入っていた参加者は、招待URLを開き直せば同じプレイヤーとして戻れる
-    initGate();
-    if (gateOpen()) show('top'); else { show('gate'); $('#gate-pass').focus(); }
+    show('top');
   }
 
   // 結果を閉じたあと、もう一度開くためのボタン
