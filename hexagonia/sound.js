@@ -61,15 +61,13 @@
   }
 
   const sounds = {
-    round() {       // ターンが始まった：低めの2音
+    turn() {        // 自分の手番：上がる2音
+      tone({ freq: 660, dur: 0.18, vol: 0.12 });
+      tone({ freq: 990, t: 0.12, dur: 0.3, vol: 0.12 });
+    },
+    round() {       // ターン・ラウンドが変わった：低めの2音（自分の手番の音より落ち着いた感じ）
       tone({ freq: 392, dur: 0.22, vol: 0.1, type: 'triangle' });
       tone({ freq: 523, t: 0.14, dur: 0.34, vol: 0.1, type: 'triangle' });
-    },
-    count() {       // 開始のカウントダウン（3・2・1）：ぴっ
-      tone({ freq: 660, dur: 0.14, vol: 0.12, type: 'square' });
-    },
-    go() {          // 開始：ぴーっ（高く長め）
-      tone({ freq: 1320, dur: 0.5, vol: 0.12, type: 'square' });
     },
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
@@ -82,18 +80,25 @@
       tone({ freq: 160, freqEnd: 110, dur: 0.16, vol: 0.2 });
       tone({ freq: 1046, t: 0.06, dur: 0.22, vol: 0.06, type: 'triangle' });
     },
-    declare() {     // 攻撃（防御を削った）：ひゅっ
+    declare() {     // 破壊の宣言：ひゅっ
       noise({ dur: 0.28, type: 'bandpass', freq: 600, freqEnd: 2400, q: 2, vol: 0.18 });
       tone({ freq: 220, freqEnd: 330, type: 'sawtooth', dur: 0.25, vol: 0.05 });
     },
-    block() {       // 攻撃が防御に当たった（防御を削った）：かきん
+    bid() {         // 出す数を決めた：かちっ
+      noise({ dur: 0.04, type: 'highpass', freq: 3000, vol: 0.2, attack: 0.001 });
+    },
+    success() {     // 破壊成功：がしゃん
+      noise({ dur: 0.45, type: 'lowpass', freq: 3000, freqEnd: 300, vol: 0.3 });
+      tone({ freq: 140, freqEnd: 60, dur: 0.35, vol: 0.2 });
+    },
+    fail() {        // 破壊失敗（守られた）：かきん
       tone({ freq: 1320, dur: 0.25, vol: 0.08, type: 'square' });
       tone({ freq: 1760, dur: 0.2, vol: 0.05, type: 'square' });
       noise({ dur: 0.08, type: 'highpass', freq: 4000, vol: 0.1 });
     },
-    success() {     // 攻撃成功（セルを奪った）：がしゃん
-      noise({ dur: 0.45, type: 'lowpass', freq: 3000, freqEnd: 300, vol: 0.3 });
-      tone({ freq: 140, freqEnd: 60, dur: 0.35, vol: 0.2 });
+    buy() {         // 行動 +1：ちゃりん
+      tone({ freq: 1568, dur: 0.12, vol: 0.08, type: 'triangle' });
+      tone({ freq: 2093, t: 0.08, dur: 0.3, vol: 0.08, type: 'triangle' });
     },
     abandon() {     // セルを捨てる：さらさら
       noise({ dur: 0.5, type: 'bandpass', freq: 1800, freqEnd: 500, q: 1.5, vol: 0.12, attack: 0.05 });
@@ -101,6 +106,9 @@
     event() {       // イベント：ぼーん（鐘）
       tone({ freq: 392, dur: 0.9, vol: 0.1, type: 'triangle', attack: 0.01 });
       tone({ freq: 588, t: 0.02, dur: 0.8, vol: 0.05, type: 'sine' });
+    },
+    endTurn() {     // 手番終了：とん
+      tone({ freq: 330, freqEnd: 260, dur: 0.1, vol: 0.1 });
     },
     out() {         // 脱落：下がる3音
       [523, 415, 311].forEach((f, i) => tone({ freq: f, t: i * 0.16, dur: 0.3, vol: 0.12, type: 'triangle' }));
@@ -111,9 +119,8 @@
     lose() {        // 敗北：低く下がる
       [392, 330, 262].forEach((f, i) => tone({ freq: f, t: i * 0.2, dur: 0.45, vol: 0.1 }));
     },
-    attacked() {    // 自分のセルが攻撃された：警報のように2回
-      [0, 0.16].forEach(t => tone({ freq: 880, freqEnd: 520, t, dur: 0.13, vol: 0.11, type: 'square' }));
-      noise({ t: 0, dur: 0.2, type: 'lowpass', freq: 1500, freqEnd: 300, vol: 0.15 });
+    tick() {        // 持ち時間が残りわずか：こつ
+      tone({ freq: 1500, dur: 0.05, vol: 0.06, type: 'square' });
     },
   };
 

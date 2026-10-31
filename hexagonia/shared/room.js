@@ -13,9 +13,13 @@
   'use strict';
 
   const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
+  const TURN_MS = E.RULES.turnSeconds.normal * 1000;   // 1手番の持ち時間（7人以上は E.turnMs で60秒）。攻防のあいだも止まらない
+  const BID_MS = 30000;     // 攻防で出す数を決める時間。切れたら 0 個
+  const ABANDON_MS = 60000; // 食料が足りないとき、捨てるセルを選ぶ時間（60秒）。切れたら自動で選ぶ
+  const GRACE_MS = 30000;   // 切断した人の手番は、これだけ待ってから自動で終える
   const LOG_SEND = 80;      // 配信するログの件数
-  const CPU_MS = [1500, 3500]; // CPU が考える間隔（この範囲でばらつかせる。平均2.5秒）
-  const COUNTDOWN_MS = 3000; // ゲーム開始前のカウントダウン（このあいだは行動できず、時間も進まない）
+  const CPU_DELAY_MS = 900;     // CPU が1回行動するまでの間（人が目で追えるように）
+  const CPU_REPLY_MS = 700;     // CPU が攻防で応答するまでの間
   const CHAT_KEEP = 30;         // 残して配信するチャットの件数
   const CHAT_LEN = 80;          // チャット1件の文字数の上限
   const CHAT_GAP_MS = 800;      // 続けて送れる間隔（連投よけ）
@@ -40,17 +44,22 @@
       this.players = [];        // { id, token, name, color, connected, cpu }
       this.hostId = null;
       this.phase = 'lobby';
-      // 盤面の直径（マス）・ターン数。0 は人数に合わせる
-      this.settings = { diameter: 0, ticks: 0 };
-      this.events = true;       // イベントを起こすか
+      // 盤面の直径（マス）・1手番の行動回数・ラウンド数。0 は人数に合わせる
+      this.settings = { diameter: 0, actions: 0, rounds: 0 };
+      this.events = true;       // イベントを起こすか（チュートリアルでは起こさない）
       this.chat = [];           // { seq, from, name, color, text }（ロビーとゲームで続けて使う）
       this.chatSeq = 0;
       this.game = null;
       this.seq = 0;
-      this.timers = {};         // rtTick / rtRegen / cpu
-      this.tickDeadline = 0;
-      this.regenDeadline = 0;
-      this.countdownUntil = 0;  // ゲーム開始前のカウントダウンが終わる時刻
+      this.timers = {};         // turn / bid / grace / cpu
+      this.turnKey = null;      // いまの手番（"ラウンド:何番目"）
+      this.turnDeadline = 0;
+      this.turnExpired = false; // 攻防のあいだに持ち時間が切れた（攻防が終わったらすぐ手番終了）
+      this.bidFor = null;       // 時間を計っている攻防
+      this.bidDeadline = 0;
+      this.graceFor = null;
+      this.graceDeadline = 0;
+      this.cpuAt = null;
       this.closed = false;
     }
 
@@ -135,7 +144,7 @@
         case 'cpuLevel': {
           if (id !== this.hostId || this.phase !== 'lobby') return;
           const t = this.players.find(x => x.id === msg.target && x.cpu);
-          if (!t || !CPU.LEVELS[msg.level]) return;
+          if (!t || !CPU.LEVELS[msg.level] || msg.level === 'test') return;   // tutorial はチュートリアルで使う
           t.level = msg.level;
           this.changed();
           return;
@@ -157,11 +166,17 @@
             if (d !== 0 && !(Number.isInteger(d) && d % 2 === 1 && d >= lo * 2 + 1 && d <= hi * 2 + 1)) return err('盤面の大きさが正しくありません');
             next.diameter = d;
           }
-          if ('ticks' in msg) {
-            const t = Number(msg.ticks);
-            const [lo, hi] = E.RULES.rt.ticksRange;
-            if (t !== 0 && !(Number.isInteger(t) && t >= lo && t <= hi)) return err('ターン数が正しくありません');
-            next.ticks = t;
+          if ('actions' in msg) {
+            const a = Number(msg.actions);
+            const [lo, hi] = E.RULES.actionsRange;
+            if (a !== 0 && !(Number.isInteger(a) && a >= lo && a <= hi)) return err('行動回数が正しくありません');
+            next.actions = a;
+          }
+          if ('rounds' in msg) {
+            const r = Number(msg.rounds);
+            const [lo, hi] = E.RULES.roundsRange;
+            if (r !== 0 && !(Number.isInteger(r) && r >= lo && r <= hi)) return err('ラウンド数が正しくありません');
+            next.rounds = r;
           }
           this.settings = next;
           this.changed();
@@ -172,20 +187,18 @@
           if (this.phase !== 'lobby') return;
           if (this.players.length < E.RULES.minPlayers) return err(`${E.RULES.minPlayers}人以上でないと始められません`);
           const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
+          const { actions, rounds } = this.settings;
           try {
-            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, rounds: this.settings.ticks, events: this.events });
+            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, actions, rounds, events: this.events });
           } catch (e) {
             return err(e.message);
           }
           this.phase = 'game';
-          this.countdownUntil = this.now() + COUNTDOWN_MS;
-          this.timer('countdown', () => { this.countdownUntil = 0; this.changed(); }, COUNTDOWN_MS);
           this.changed();
           return;
         }
         case 'act': {
           if (this.phase !== 'game' || !this.game) return;
-          if (this.countdownUntil) return err('まだ始まっていません');
           const r = E.apply(this.game, id, msg.action);
           if (!r.ok) return err(r.error);
           this.changed();
@@ -215,8 +228,6 @@
 
     // 状態が変わったら：時間切れ・CPU の予約を見直してから全員に配信
     changed() {
-      this.autoReady();
-      this.checkReady();
       this.checkTimers();
       this.checkCpu();
       this.broadcast();
@@ -234,98 +245,127 @@
 
     player(id) { return this.players.find(x => x.id === id); }
 
-    // 15秒ごとのターンと、5秒ごとの行動力の回復
+    // 持ち時間（120秒）・攻防で数を決める時間（30秒）・切断した人の待ち時間（30秒）
     checkTimers() {
       const g = this.game;
       const now = this.now();
       if (!g || this.phase !== 'game' || g.over) {
-        ['rtTick', 'rtRegen', 'countdown'].forEach(n => this.stop(n));
-        this.countdownUntil = 0;
+        ['turn', 'bid', 'grace', 'abandon'].forEach(n => this.stop(n));
+        this.turnKey = this.bidFor = this.graceFor = this.abandonFor = null;
         return;
       }
-      if (this.countdownUntil) return;   // カウントダウンが終わってから時間を進める
-      const rt = E.RULES.rt;
-      if (!this.timers.rtTick) {
-        this.tickDeadline = now + rt.tickSeconds * 1000;
-        this.timer('rtTick', () => { E.rtTick(this.game, this.rng); this.changed(); }, rt.tickSeconds * 1000);
+      if (g.abandon) {
+        // 捨てるセルを選ぶあいだ（手番はもう終わっている）
+        ['turn', 'grace', 'bid'].forEach(n => this.stop(n));
+        this.graceFor = this.bidFor = null;
+        if (this.abandonFor !== g.abandon) {
+          const ab = this.abandonFor = g.abandon;
+          this.abandonDeadline = now + ABANDON_MS;
+          this.timer('abandon', () => this.abandonTimeout(ab), ABANDON_MS);
+        }
+        return;
       }
-      if (!this.timers.rtRegen) {
-        this.regenDeadline = now + rt.apSeconds * 1000;
-        this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, rt.apSeconds * 1000);
+      this.stop('abandon');
+      this.abandonFor = null;
+      if (g.pending) {
+        // 攻防のあいだも持ち時間は止めない（切れたら、攻防が終わってから手番終了）
+        this.stop('grace');
+        this.graceFor = null;
+        if (this.bidFor !== g.pending) {
+          const pd = this.bidFor = g.pending;
+          this.bidDeadline = now + BID_MS;
+          this.timer('bid', () => this.bidTimeout(pd), BID_MS);
+        }
+        return;
       }
-    }
-
-    // 行動完了の人（切断中の人は、押したものとみなす。CPU は、もうやりたい行動がないと判断したときに行動完了になる）
-    readyIds() {
-      const g = this.game;
-      return g ? g.players.filter(p => p.alive && (p.ready || !this.isPlaying(p.id))).map(p => p.id) : [];
-    }
-
-    // 行動完了を待つ相手か（CPU と、接続中の人）
-    isPlaying(id) {
-      const info = this.player(id);
-      return !!info && (info.cpu || info.connected);
-    }
-
-    // もうできる行動がない人は、自動で行動完了にする（自分で外したターンは除く）
-    autoReady() {
-      const g = this.game;
-      if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
-      for (const p of g.players) {
-        const info = this.player(p.id);
-        if (!p.alive || p.ready || p.readyOff || !info || info.cpu || !info.connected) continue;
-        if (!E.hasMoves(g, p.id)) p.ready = true;
+      this.stop('bid');
+      this.bidFor = null;
+      const key = `${g.round}:${g.turn}`;
+      if (key !== this.turnKey) {
+        this.turnKey = key;
+        this.turnExpired = false;
+        this.turnDeadline = now + E.turnMs(g);
+        this.timer('turn', () => this.turnTimeout(key, '持ち時間が切れました'), E.turnMs(g));
+      } else if (this.turnExpired && !this.timers.turn) {
+        this.timer('turn', () => this.turnTimeout(key, '持ち時間が切れました'), 0);
       }
-    }
-
-    // 待つ相手の全員が行動完了なら、待たずに次のターンへ
-    checkReady() {
-      const g = this.game;
-      if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
-      const playing = g.players.filter(p => p.alive && this.isPlaying(p.id));
-      if (!playing.length || !playing.every(p => p.ready)) return;
-      this.note('全員が行動完了したので、次のターンへ');
-      // 飛ばした時間のぶん、行動力の回復も進める（秒単位）。回復の時刻を飛ばした時間だけ前に寄せ、
-      // 途中で来るはずだった回復はまとめて行い、5秒に満たない端数は次の回復までの残り時間を縮める
-      const now = this.now(), step = E.RULES.rt.apSeconds * 1000;
-      let skip = Math.max(0, this.tickDeadline - now);
-      let left = Math.max(0, this.regenDeadline - now);   // 次の回復までの残り
-      while (skip >= left) { E.rtRegen(g); skip -= left; left = step; }
-      left -= skip;
-      this.stop('rtRegen');
-      this.regenDeadline = now + left;
-      this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, left);
-      this.stop('rtTick');
-      E.rtTick(g, this.rng);
-      // checkTimers が次のターンのタイマーをかけ直す
-    }
-
-    // CPU はそれぞれ、ばらつきのある間隔（1.5〜3.5秒）で考えて、行動力があれば1つずつ動く
-    checkCpu() {
-      const g = this.game;
-      const live = g && this.phase === 'game' && !g.over && !this.countdownUntil;
-      for (const p of this.players) {
-        if (!p.cpu) continue;
-        const name = 'cpu:' + p.id;
-        const alive = live && g.players.some(x => x.id === p.id && x.alive);
-        if (!alive) { this.stop(name); continue; }
-        if (!this.timers[name]) this.timer(name, () => this.cpuAct(p.id), CPU_MS[0] + Math.floor(this.rng() * (CPU_MS[1] - CPU_MS[0])));
+      // 手番の人が切断していたら、持ち時間より早く（30秒で）進める
+      const cur = E.current(g).id;
+      const p = this.player(cur);
+      const need = p && !p.connected && !p.cpu ? key : null;
+      if (need !== this.graceFor) {
+        this.stop('grace');
+        this.graceFor = need;
+        if (need) {
+          this.graceDeadline = now + GRACE_MS;
+          this.timer('grace', () => this.turnTimeout(key, '切断中のため手番を終えます'), GRACE_MS);
+        }
       }
     }
 
-    // CPU が1回考える。動いたら行動完了を外し、もうやりたい行動がなければ行動完了にする
-    cpuAct(id) {
+    turnTimeout(key, why) {
       const g = this.game;
-      if (this.closed || !g || g.over) return;
-      const p = g.players.find(x => x.id === id), info = this.player(id);
-      if (!p || !p.alive || !info) return;
-      const action = CPU.decideRealtime(g, id, this.rng, info.level);
-      if (action && E.apply(g, id, action).ok) p.ready = false;
-      else if (!CPU.wantsMore(g, id, info.level)) p.ready = true;
+      if (this.closed || !g || g.over || `${g.round}:${g.turn}` !== key) return;
+      if (g.pending) { this.turnExpired = true; return; }   // 攻防が終わってから手番終了
+      const p = E.current(g);
+      this.note(`⏳ ${p.name}：${why}`);
+      E.apply(g, p.id, { type: 'endTurn' });
       this.changed();
     }
 
-    // その人に見せてよい情報：ほかの人の戦力トークンの数と、セルの防御の数は見せない
+    // 時間切れ：おすすめのセルを捨てる
+    abandonTimeout(ab) {
+      const g = this.game;
+      if (this.closed || !g || g.abandon !== ab) return;
+      const p = g.players.find(x => x.id === ab.player);
+      this.note(`⏳ ${p.name}：時間切れのため、捨てるセルを自動で選びます`);
+      E.apply(g, ab.player, { type: 'abandon', cells: E.suggestAbandon(g, ab.player) });
+      this.changed();
+    }
+
+    // 決めていない人は、出せる最小の数（攻撃側は1個、防御側は0個）
+    bidTimeout(pd) {
+      const g = this.game;
+      if (this.closed || !g || g.pending !== pd) return;
+      for (const id of E.waiting(g)) {
+        const n = E.minBid(pd.attacker === id ? 'atk' : 'def');
+        this.note(`⏳ ${g.players.find(x => x.id === id).name}：時間切れのため ${n} 個`);
+        E.apply(g, id, { type: 'bid', count: n });
+      }
+      this.changed();
+    }
+
+    // CPU の操作待ちなら、少し間をおいて CPU に打たせる（攻防では2人とも CPU のこともある）
+    checkCpu() {
+      const g = this.game;
+      const cpus = g && this.phase === 'game' && !g.over ? E.waiting(g).filter(id => (this.player(id) || {}).cpu) : [];
+      if (!cpus.length) { this.stop('cpu'); this.cpuAt = null; return; }
+      const pd = g.pending;
+      const at = `${g.logSeq}:${pd ? `${pd.atk}/${pd.def}` : ''}:${g.abandon ? 'ab' : ''}:${cpus.join(',')}`;
+      if (this.timers.cpu && this.cpuAt === at) return;   // 同じ局面にはすでに予約済み
+      this.cpuAt = at;
+      this.timer('cpu', () => this.cpuAct(), pd ? CPU_REPLY_MS : CPU_DELAY_MS);
+    }
+
+    cpuAct() {
+      this.cpuAt = null;
+      const g = this.game;
+      if (this.closed || !g || g.over) return;
+      for (const id of E.waiting(g)) {
+        if (!(this.player(id) || {}).cpu || !E.waiting(g).includes(id)) continue;
+        const action = CPU.decide(g, id, this.rng, (this.player(id) || {}).level);
+        const r = action ? E.apply(g, id, action) : { ok: false };
+        // 万一ルール上できない手を選んだら、止まらないように進める
+        if (!r.ok) {
+          if (g.pending) E.apply(g, id, { type: 'bid', count: E.minBid(g.pending.attacker === id ? 'atk' : 'def') });
+          else if (g.abandon) E.apply(g, id, { type: 'abandon', cells: E.suggestAbandon(g, id) });
+          else E.apply(g, id, { type: 'endTurn' });
+        }
+      }
+      this.changed();
+    }
+
+    // その人に見せてよい情報：攻防で相手が決めた数は、公開されるまで「決めたかどうか」だけ
     view(forId) {
       const g = this.game;
       const now = this.now();
@@ -335,9 +375,24 @@
         game = Object.assign({}, g, {
           log: g.log.slice(-LOG_SEND),
           players: g.players.map(p => p.id === forId ? p : Object.assign({}, p, { power: null })),
-          // セルの防御の数は、そのセルの持ち主にしか見せない（ほかの人には、あるかどうかもわからない）
-          board: Object.fromEntries(Object.entries(g.board).map(([k, c]) => [k, c.def && c.owner !== forId ? Object.assign({}, c, { def: 0 }) : c])),
+          eventPlan: undefined,
+          // 取り消しの記録は、手番の人にだけ、何を取り消せるかだけ届ける（生産したことや戦力トークンの数がわからないように）
+          undo: g.over || E.current(g).id !== forId ? [] : (g.undo || []).map(u => ({ label: u.label })),   // 先のラウンドのイベントは送らない（今のラウンドの分だけ）
+          // 攻防で出した数は、当人の分だけ見せる（ほかの人には成功か失敗かだけ）
+          lastClash: g.lastClash && Object.assign({}, g.lastClash, {
+            atk: forId === g.lastClash.attacker ? g.lastClash.atk : null,
+            def: forId === g.lastClash.defender ? g.lastClash.def : null,
+          }),
         });
+        const pd = g.pending;
+        if (pd) {
+          game.pending = Object.assign({}, pd, {
+            atk: forId === pd.attacker ? pd.atk : null,
+            def: forId === pd.defender ? pd.def : null,
+            atkReady: pd.atk !== null,
+            defReady: pd.def !== null,
+          });
+        }
       }
       const live = g && !g.over && this.phase === 'game';
       return {
@@ -346,10 +401,11 @@
         hostId: this.hostId,
         settings: this.settings,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu, level: p.cpu ? p.level : undefined })),
-        readyIds: live ? this.readyIds() : [],
-        countdownMs: live && this.countdownUntil ? Math.max(0, this.countdownUntil - now) : 0,
-        tickLeftMs: live && !this.countdownUntil ? Math.max(0, this.tickDeadline - now) : 0,
-        regenLeftMs: live ? Math.max(0, this.regenDeadline - now) : 0,
+        turnLeftMs: live && !g.abandon ? Math.max(0, this.turnDeadline - now) : 0,
+        abandonLeftMs: live && g.abandon ? Math.max(0, this.abandonDeadline - now) : 0,
+        bidLeftMs: live && g.pending ? Math.max(0, this.bidDeadline - now) : 0,
+        graceFor: live && this.graceFor ? E.current(g).id : null,
+        graceLeftMs: live && this.graceFor ? Math.max(0, this.graceDeadline - now) : 0,
         chat: this.chat,
         game,
       };
@@ -366,5 +422,5 @@
     }
   }
 
-  return { Room, COLORS, CHAT_KEEP, CHAT_LEN, COUNTDOWN_MS, CPU_MS };
+  return { Room, COLORS, TURN_MS, BID_MS, GRACE_MS, ABANDON_MS, CHAT_KEEP, CHAT_LEN };
 });
