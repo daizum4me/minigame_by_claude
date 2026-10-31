@@ -23,7 +23,7 @@
   const ZOOM_MAX = 6;
   const PAN_SLACK = 0.45;   // 縦に動かせる余白（画面の高さに対する割合）
 
-  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880' };
+  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880', dim: '#77756D' };   // dim：折れる確率の表示で、自分の幹と枝以外をこの灰色にする
   const FONT = '"Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif';
 
   const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
@@ -387,13 +387,13 @@
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
 
-    // 折れやすさの値（オーバーレイ用）を辺ごとに出す
-    edgeValues(g, kind) {
+    // 折れる確率（オーバーレイ用）を、自分の枝だけ出す。色は自分の枝の中で相対（いちばん高いものが赤）
+    edgeValues(g, me) {
       const vals = {};
       let max = 1e-12;
-      for (const ek of Object.keys(g.edges)) {
-        const st = E.edgeStats(g, ek, 10);
-        const v = kind === 'p' ? st.p : st.expectedLoss;
+      for (const [ek, e] of Object.entries(g.edges)) {
+        if (e.owner !== me) continue;
+        const v = E.edgeStats(g, ek, 10).p;
         vals[ek] = v;
         if (v > max) max = v;
       }
@@ -515,7 +515,8 @@
       ctx.clip();
 
       const overlay = d.overlay || 'normal';
-      const ov = overlay === 'normal' ? null : this.edgeValues(g, overlay === 'p' ? 'p' : 'loss');
+      const ov = overlay === 'p' ? this.edgeValues(g, d.me) : null;
+      const dim = !!ov;   // 折れる確率の表示：自分の幹と枝以外は、すべて灰色
       const { points, tops } = this.score;
       const topCells = new Set(Object.values(tops).map(t => t.cell));
       const hoverEdge = this.hover && this.hover.edge;
@@ -551,7 +552,7 @@
         for (const [ck, lf] of Object.entries(g.leaves)) {
           const [x, y] = cellXY(ck);
           if (!inView(x) || !inViewY(y)) continue;
-          const color = colors[lf.owner];
+          const color = dim ? COL.dim : colors[lf.owner];
           const isNew = g.round > 0 && lf.round === g.round;
           this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2, !!lf.host);
           if (topCells.has(ck)) {
@@ -577,10 +578,11 @@
           const tr = geo.trunks[p.trunk], color = colors[p.id];
           ctx.setLineDash([]);
           ctx.lineWidth = 2.4;
-          ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;   // 幹は明るい方の色（枝と見分けやすく）
+          const trunkCol = dim && p.id !== d.me ? COL.dim : lighten(color, 0.55);   // 幹は明るい方の色（枝と見分けやすく）。折れる確率の表示では、自分の幹だけ色を残す
+          ctx.strokeStyle = trunkCol;
           for (let i = 1; i <= p.trunkLen; i++) this.line(ctx, tr.edges[i], dx);
           if (!g.over && p.trunkLen < tr.edges.length - 1) {
-            ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;
+            ctx.strokeStyle = trunkCol;
             ctx.setLineDash([1.5, 6]);
             this.line(ctx, tr.edges[p.trunkLen + 1], dx);
             ctx.setLineDash([]);
@@ -591,7 +593,7 @@
         for (const [ek, e] of Object.entries(g.edges)) {
           ctx.lineWidth = 2.4;
           ctx.setLineDash([]);
-          ctx.strokeStyle = ov ? heat(ov.vals[ek] / ov.max) : colors[e.owner];
+          ctx.strokeStyle = !ov ? colors[e.owner] : e.owner === d.me ? heat(ov.vals[ek] / ov.max) : COL.dim;
           this.line(ctx, ek, dx);
         }
 

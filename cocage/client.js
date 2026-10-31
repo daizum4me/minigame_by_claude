@@ -261,7 +261,7 @@
     conn: null,
     me: null,
     room: null,
-    overlay: 'normal',  // 折れやすさの表示：normal／p／loss
+    overlay: 'normal',  // 折れやすさの表示：normal／p
     graceAt: 0,
   };
 
@@ -426,7 +426,7 @@
     $('#hud-round').textContent = g.over ? '終了' : `${g.round + 1} / ${g.turns}`;
     document.querySelectorAll('[data-overlay]').forEach(b => b.classList.toggle('on', b.dataset.overlay === app.overlay));
     $('#overlay-legend').hidden = app.overlay === 'normal';
-    $('#overlay-note').textContent = app.overlay === 'p' ? '毎ターンの折れる確率（いまの盤面で相対）' : '確率 × 失う枝と葉の数（いまの盤面で相対）';
+    $('#overlay-note').textContent = '自分の枝の毎ターンの折れる確率（自分の枝の中で相対）。ほかは灰色';
 
     // 下のバー：置くもの・計画・確定
     $('#btn-finish').hidden = !live;
@@ -447,7 +447,7 @@
       : me.finished ? `確定ずみ。ほかの人を待っています（確定した人：${room.finishedCount}/${n}人）。時間まで、取り消して変更できます`
       : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動'
         + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '')
-        + (candidates && candidates.mistle && candidates.mistle.length ? '。点線のセルは「ヤドリギ」：他の人の枝に接するセルに、行動力2で葉を置けます（その枝が折れると一緒に消えます）' : '');
+        + (candidates && candidates.mistle && candidates.mistle.length ? '。点線のセルは「ヤドリギ」：他の人の枝に接するセルに、行動力3（そのターンすべて）で葉を置けます（その枝が折れると一緒に消えます）' : '');
     $('#tickbar').hidden = g.over;
 
     renderScores(g);

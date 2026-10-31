@@ -7,7 +7,7 @@
 <meta name="description" content="Cocage — 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232A2A28%22/><path d=%22M50 94 L50 40 M50 62 L72 44 M50 52 L28 36%22 stroke=%22%237BD39A%22 stroke-width=%228%22 stroke-linecap=%22round%22 fill=%22none%22/><polygon points=%2250,6 70,17 70,39 50,50 30,39 30,17%22 fill=%22%237BD39A%22 fill-opacity=%22.45%22 stroke=%22%237BD39A%22 stroke-width=%225%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -77,7 +77,6 @@
       <div class="seg" id="overlay-seg" role="group" aria-label="折れやすさの表示">
         <button data-overlay="normal" class="on">通常</button>
         <button data-overlay="p">折れる確率</button>
-        <button data-overlay="loss">期待損失</button>
       </div>
       <div class="legend" id="overlay-legend" hidden><span>低</span><i></i><span>高</span><small id="overlay-note"></small></div>
     </div>
@@ -146,16 +145,16 @@
     <ul>
       <li><b>枝</b>：自分の幹・枝の頂点から、辺に1本つなぎます。幹が通る予定の辺には置けません。</li>
       <li><b>葉</b>：自分の枝に接するセルに1枚置きます。あとから動かせません。枝が折れて土台を失うと、一緒に消えます。</li>
-      <li><b>ヤドリギ</b>（3人以上のとき。行動力2・1ターンに1回）：<b>他の人の枝に接するセル</b>に、自分の枝がなくても葉を1枚置けます（遠くの人にちょっかいを出せます。候補は点線のセル。置いた葉は枠が破線になります）。その葉は<b>宿主（その人の枝）に寄生</b>するので、宿主が折れると一緒に消えます。宿主の枝は、その葉の分だけ重くなって折れやすくなります。</li>
-      <li><b>ヤドリギの養分</b>：宿主の枝が残っているあいだ、毎ターン、ヤドリギの葉1枚につき、宿主から<b>3人戦は0.13点・4人戦は0.05点・5人戦は0.02点</b>を奪って自分に足します（人数が多いほど吸える相手が増えるので、少なくしてあります）。ただし、ヤドリギの葉も宿主の列の一番上の葉の「下にある他人の葉」に数えられるので、宿主を太らせるリスクがあります。</li>
+      <li><b>ヤドリギ</b>（3人以上のとき。行動力3＝そのターンの行動力をすべて使う・1ターンに1回）：<b>他の人の枝に接するセル</b>に、自分の枝がなくても葉を1枚置けます（遠くの人にちょっかいを出せます。候補は点線のセル。置いた葉は枠が破線になります）。その葉は<b>宿主（その人の枝）に寄生</b>するので、宿主が折れると一緒に消えます。宿主の枝は、その葉の分だけ重くなって折れやすくなります。</li>
+      <li><b>ヤドリギの養分</b>：宿主の枝が残っているあいだ、毎ターン、ヤドリギの葉1枚につき、宿主から<b>3人戦は0.13点・4〜5人戦は0.16点</b>を奪って自分に足します。ただし、ヤドリギの葉も宿主の列の一番上の葉の「下にある他人の葉」に数えられるので、宿主を太らせるリスクがあります。</li>
       <li>同じ辺・セルを複数人が選んだら、等確率の抽選で1人だけが成功します（負けても行動力は戻りません）。選んだ人が1人なら、必ず成功します。</li>
     </ul>
     <h3>枝が折れる確率</h3>
-    <p class="formula">p = 0.05% ＋ 0.03% × 高さ ＋ 0.05% × 支える枝の数</p>
+    <p class="formula">p = 0.05% ＋ 0.03% × 高さ ＋ 0.15% × 支える枝の数</p>
     <ul>
       <li>高さ＝その辺の行番号、支える枝の数＝その辺と、その先にある枝の数（先端の辺は1）。<b>根本ほど重さがかかって折れやすく</b>、折れると先がまるごと消えます。毎ターン、辺ごとに独立に抽選します。幹は折れません。</li>
       <li>折れると、その辺とその先の枝・葉がすべて消えます。折れた根元の頂点には<b>傷あと</b>（数字の輪）が残り、持ち主はそこから<b>3ターン</b>枝を伸ばせません（ほかの頂点からは伸ばせます。そのあとは作り直せます）。</li>
-      <li>枝にカーソルを合わせると、折れやすさ・10ターン生き残る確率・失うものが見られます。上の「折れる確率」「期待損失」で、盤面全体の危険度を色で一覧できます。</li>
+      <li>枝にカーソルを合わせると、折れやすさ・10ターン生き残る確率・失うものが見られます。上の「折れる確率」で、自分の枝の危険度を色（緑→赤）で一覧できます（自分の幹と枝以外は灰色になります）。</li>
     </ul>
     <h3>得点</h3>
     <ul>
@@ -173,11 +172,11 @@
   <div class="row"><button class="primary" data-close>閉じる</button></div>
 </dialog>
 
-<script src="shared/engine.js?v=7"></script>
-<script src="shared/cpu.js?v=7"></script>
-<script src="shared/room.js?v=7"></script>
-<script src="sound.js?v=7"></script>
-<script src="board.js?v=7"></script>
-<script src="client.js?v=7"></script>
+<script src="shared/engine.js?v=8"></script>
+<script src="shared/cpu.js?v=8"></script>
+<script src="shared/room.js?v=8"></script>
+<script src="sound.js?v=8"></script>
+<script src="board.js?v=8"></script>
+<script src="client.js?v=8"></script>
 </body>
 </html>

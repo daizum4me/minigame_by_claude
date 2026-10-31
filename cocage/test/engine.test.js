@@ -53,17 +53,17 @@ test('頂点には辺が3本ずつ集まり（上下の端を除く）、幹の�
   assert.strictEqual(geo.reserved.size, 72);
 });
 
-test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×支えている枝の数。根本ほど折れやすい。長さ8・高さ9の先端の葉は10ターン生き残る確率が約65%', () => {
-  assert.ok(Math.abs(E.breakProb(9, 8) - 0.0072) < 1e-12);
-  assert.ok(Math.abs(E.breakProb(1, 1) - 0.0013) < 1e-12);
+test('折れる確率：p = 0.05% + 0.03%×高さ + 0.15%×支えている枝の数。根本ほど折れやすい。長さ8・高さ9の先端の葉は10ターン生き残る確率が約45%', () => {
+  assert.ok(Math.abs(E.breakProb(9, 8) - 0.0152) < 1e-12);
+  assert.ok(Math.abs(E.breakProb(1, 1) - 0.0023) < 1e-12);
   const g = newGame(2);
   let parent = null;
   for (let l = 1; l <= 8; l++) { const k = 'e' + l; g.edges[k] = { owner: 'a', from: 'x', to: 'y', parent, l, h: 9, round: 0 }; parent = k; }
   const st = E.edgeStats(g, 'e8', 10);
-  assert.ok(Math.abs(st.survive - 0.65) < 0.02, `生存率 ${st.survive}`);
-  assert.ok(Math.abs(st.p - 0.0037) < 1e-12);                       // 先端は自分だけを支える（1本）
+  assert.ok(Math.abs(st.survive - 0.45) < 0.02, `生存率 ${st.survive}`);
+  assert.ok(Math.abs(st.p - 0.0047) < 1e-12);                       // 先端は自分だけを支える（1本）
   assert.strictEqual(E.edgeStats(g, 'e1', 10).parts.w, 8);           // 根本は8本を支える
-  assert.ok(Math.abs(E.edgeStats(g, 'e1', 10).p - 0.0072) < 1e-12);
+  assert.ok(Math.abs(E.edgeStats(g, 'e1', 10).p - 0.0152) < 1e-12);
   assert.deepStrictEqual(E.loads(g), { e1: 8, e2: 7, e3: 6, e4: 5, e5: 4, e6: 3, e7: 2, e8: 1 });
 });
 
@@ -336,14 +336,14 @@ test('枝の折れやすさ：確率・内訳・失うもの', () => {
   g.edges['e1'] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 4, round: 0 };
   g.edges['e2'] = { owner: 'a', from: 'y', to: 'z', parent: 'e1', l: 2, h: 5, round: 0 };
   const st = E.edgeStats(g, 'e1', 10);
-  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0005 * 2)) < 1e-12);   // e1 は e1・e2 の2本を支える
+  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0015 * 2)) < 1e-12);   // e1 は e1・e2 の2本を支える
   assert.deepStrictEqual([st.lostEdges, st.parts.base], [2, 0.0005]);
   assert.deepStrictEqual(E.subtree(g, 'e1').sort(), ['e1', 'e2']);
   assert.deepStrictEqual(E.pathTo(g, 'e2'), ['e2', 'e1']);
   assert.strictEqual(E.edgeStats(g, 'nope'), null);
 });
 
-test('ヤドリギ：他人の枝に接するセルに行動力2で葉を置ける（1ターン1回）。宿主の枝が折れると一緒に消え、宿主を重くする', () => {
+test('ヤドリギ：他人の枝に接するセルに行動力3（そのターンすべて）で葉を置ける（1ターン1回）。宿主の枝が折れると一緒に消え、宿主を重くする', () => {
   const g = newGame(3), geo = E.geometry(g.cols);
   // b の枝を1本（根から）。a はそこに接するセルへヤドリギ
   const v0 = geo.trunks[1].verts[2];       // 2行目の幹の頂点から出る、セルが2つ接する辺
@@ -356,13 +356,13 @@ test('ヤドリギ：他人の枝に接するセルに行動力2で葉を置け�
   assert.ok(!E.candidates(g, 'b').mistle.includes(ck));                      // 自分の枝に接するセルには要らない
   assert.ok(!E.apply(g, 'b', { type: 'addMistletoe', cell: ck }).ok);
   act(g, 'a', { type: 'addMistletoe', cell: ck });
-  assert.strictEqual(E.planCost(P(g, 'a').plan), 2);
-  assert.deepStrictEqual(E.candidates(g, 'a').mistle, []);                   // 1ターン1回
-  const r2 = E.apply(g, 'a', { type: 'addMistletoe', cell: cand[1] });
-  assert.ok(!r2.ok);
-  // 残りの行動力1：葉は自分の枝がないので置けないが、行動力3を超えない
-  act(g, 'a', { type: 'addBranch', edge: geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k)) });
-  assert.ok(!E.apply(g, 'a', { type: 'addBranch', edge: geo.verts[geo.trunks[0].verts[1]].edges.find(k => !geo.reserved.has(k)) }).ok);
+  assert.strictEqual(E.planCost(P(g, 'a').plan), 3);                         // 行動力3＝そのターンすべて
+  assert.deepStrictEqual(E.candidates(g, 'a'), { edges: [], cells: [], mistle: [] });   // 1ターン1回。ほかには何も置けない
+  assert.ok(!E.apply(g, 'a', { type: 'addMistletoe', cell: cand[1] }).ok);
+  assert.ok(!E.apply(g, 'a', { type: 'addBranch', edge: geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k)) }).ok);
+  // 先に枝を置いてしまうと、行動力が足りなくてヤドリギは置けない
+  act(g, 'c', { type: 'addBranch', edge: geo.verts[geo.trunks[2].verts[0]].edges.find(k => !geo.reserved.has(k)) });
+  assert.deepStrictEqual(E.candidates(g, 'c').mistle, []);
   E.resolveTurn(g, NEVER);
   assert.deepStrictEqual(g.leaves[ck], { owner: 'a', round: 1, host: ek });
   assert.strictEqual(E.loads(g)[ek], 2);                                     // 宿主は葉の分、重くなる

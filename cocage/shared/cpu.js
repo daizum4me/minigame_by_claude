@@ -108,7 +108,7 @@
       const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon) * LEAF_BIAS + insurance(state, geo, id, ck, ctx, surv, horizon);
       consider(v + (v > 0 ? 0.3 : 0) + noise(), { type: 'addLeaf', cell: ck });
     }
-    // ヤドリギ：他人の枝に接するセルに葉を置く（行動力2）。宿主の枝が折れると一緒に消えるので、宿主の残りやすさで割り引く。
+    // ヤドリギ：他人の枝に接するセルに葉を置く（行動力3）。宿主の枝が折れると一緒に消えるので、宿主の残りやすさで割り引く。
     // 行動力あたりの価値で、ふつうの葉・枝と比べる
     for (const ck of cand.mistle || []) {
       const r = E.checkMistletoe(geo, state, net, ck, pr.pendingLeaves);
