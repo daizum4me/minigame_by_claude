@@ -424,7 +424,7 @@ test('ヤドリギ：養分を吸う。宿主の枝が残っているあいだ�
   g.edges[ek] = { owner: 'b', from: v0, to, parent: null, l: 1, h: e.h, round: 0 };
   const ck = geo.edges[ek].cells[0];
   g.leaves[ck] = { owner: 'a', round: 0, host: ek };
-  const drain = E.RULES.mistletoeDrain, h = E.RULES.score.height;
+  const drain = E.drainFor(3), h = E.RULES.score.height;
   E.RULES.score.height = 0;
   try {
     P(g, 'b').score = 10;

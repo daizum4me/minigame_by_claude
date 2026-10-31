@@ -41,8 +41,9 @@
     // ヤドリギの葉は、宿主の列の一番上の葉のボーナス「下にある他人の葉の数」に、ふつうの葉と同じく数えられる（宿主を太らせる＝ヤドリギ側のリスク）。
     // 数えるヤドリギの葉の上限（人数別。数値ひとつでもよい）。初期値は上限なし
     mistletoeFeedMax: 99,
-    // 養分を吸う（ヤドリギ側のリターン）：宿主の枝が残っているあいだ、毎ターン、ヤドリギの葉1枚につき、宿主から drain 点を奪って自分に足す
-    mistletoeDrain: 0.2,
+    // 養分を吸う（ヤドリギ側のリターン）：宿主の枝が残っているあいだ、毎ターン、ヤドリギの葉1枚につき、宿主から drain 点を奪って自分に足す。
+    // 人数が多いほど宿主が増えて遠くまで届き、ヤドリギが強くなるので、人数別（数値ひとつでもよい）
+    mistletoeDrain: { 3: 0.13, 4: 0.05, 5: 0.02 },
     mistletoeCost: 2,        // ヤドリギ（相手の枝を土台に、遠くへ葉を置く）の行動力。1ターンに1回まで
     leafOnTrunk: false,      // 幹に接するだけのセルに葉を置けるか（仕様では「自分の枝に接するセル」なので false）
   };
@@ -50,6 +51,7 @@
   // 行動の行動力：枝・葉は1、ヤドリギは RULES.mistletoeCost
   const costOf = it => it.t === 'm' ? RULES.mistletoeCost : 1;
   const planCost = plan => plan.reduce((a, it) => a + costOf(it), 0);
+  const drainFor = n => { const f = RULES.mistletoeDrain; return typeof f === 'number' ? f : (f[n] !== undefined ? f[n] : f[5]); };
   const feedMaxFor = n => { const f = RULES.mistletoeFeedMax; return typeof f === 'number' ? f : (f[n] !== undefined ? f[n] : f[5]); };
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -536,12 +538,13 @@
     }
     // 養分を吸う：宿主の枝が残っているヤドリギの葉ごとに、宿主から奪う（宿主の持ち点が 0 を下回るぶんは奪えない）
     info.drained = 0;
-    if (RULES.mistletoeDrain > 0) {
+    const drain = drainFor(state.players.length);
+    if (drain > 0) {
       for (const lf of Object.values(state.leaves)) {
         if (!lf.host || !state.edges[lf.host]) continue;
         const host = playerById(state, state.edges[lf.host].owner), me = playerById(state, lf.owner);
         if (!host || !me || host === me) continue;
-        const amt = Math.max(0, Math.min(RULES.mistletoeDrain, host.score + host.gain));
+        const amt = Math.max(0, Math.min(drain, host.score + host.gain));
         host.gain -= amt; me.gain += amt; info.drained += amt;
       }
     }
@@ -571,7 +574,7 @@
   const allFinished = (state, skip) => state.players.every(p => p.finished || (skip && skip(p.id)));
 
   return {
-    RULES, geometry, breakProb, breakParts, loads, costOf, planCost, checkMistletoe, feedMaxFor, createGame, apply, project, candidates,
+    RULES, geometry, breakProb, breakParts, loads, costOf, planCost, checkMistletoe, feedMaxFor, drainFor, createGame, apply, project, candidates,
     resolveTurn, scoreColumn, scoreBoard, edgeStats, subtree, pathTo, ownNet, allFinished,
     playerById, edgeKeyOf,
   };
