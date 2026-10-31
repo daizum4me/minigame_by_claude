@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const E = require('../shared/engine');
 const CPU = require('../shared/cpu');
-const { Room } = require('../shared/room');
+const { Room, CPU_MS } = require('../shared/room');
 
 function seeded(seed) {
   let s = seed >>> 0;
@@ -65,7 +65,7 @@ test('CPU の強さ：よわいはふつうに負け越す（2人戦）', () => 
   assert.ok(w / 60 < 0.4, `よわい ${w / 60}`);
 });
 
-test('部屋に CPU を入れて遊べる（CPU は2.5秒ごとに考える。CPU には何も送らない）', () => {
+test('部屋に CPU を入れて遊べる（CPU はばらつきのある間隔で考える。CPU には何も送らない）', () => {
   const timers = [];
   const inbox = {};
   let now = 0;   // 時計を進めながら、来たタイマーから順に動かす
@@ -92,7 +92,7 @@ test('部屋に CPU を入れて遊べる（CPU は2.5秒ごとに考える。CP
     now = t.at;
     const before = g.logSeq;
     t.fn();
-    if (t.ms === 2500 && g.logSeq > before) acted++;
+    if (t.ms >= CPU_MS[0] && t.ms < CPU_MS[1] && g.logSeq > before) acted++;
   }
   assert.ok(g.over);
   assert.ok(acted > 0, 'CPU が行動した');

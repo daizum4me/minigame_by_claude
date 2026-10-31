@@ -1,7 +1,7 @@
 /*
  * ヘキサゴニア — CPU の考え方
  * 人間と同じ公開情報（盤面・全員のトークン数。相手の防御の数は見ない）で、次の1手を決める。
- * 部屋が2.5秒ごとに呼ぶ。「できる行動に点数を付けて一番高いもの」を選び、よい行動がなければ何もしない（待つ）。
+ * 部屋が CPU ごとに1.5〜3.5秒のばらつきのある間隔で呼ぶ。「できる行動に点数を付けて一番高いもの」を選び、よい行動がなければ何もしない（待つ）。
  *
  * decideRealtime(state, id, rng, level) → action（engine.apply に渡せる形）か null
  * level：'weak'（よわい）・'normal'（ふつう）・'strong'（つよい）
@@ -158,5 +158,17 @@
     return best && best.s > lv.endBelow ? best.a : null;
   }
 
-  return { decideRealtime, LEVELS, LEVEL_NAMES };
+  // 行動力が満タンだったとしても、もうやりたい行動がないか（ないなら行動完了にする）。
+  // 行動力が足りないだけなら、回復を待ってまだ動きたいので false
+  function wantsMore(g, id, level) {
+    const me = playerById(g, id);
+    if (!me || !me.alive || g.over) return false;
+    const ap = me.ap;
+    me.ap = E.apMax(g);
+    const a = decideRealtime(g, id, () => 0.5, level);   // ゆらぎなしで考える
+    me.ap = ap;
+    return !!a;
+  }
+
+  return { decideRealtime, wantsMore, LEVELS, LEVEL_NAMES };
 });
