@@ -434,13 +434,10 @@
     const geo = E.geometry(g.cols);
     const desc = it => it.t === 'b'
       ? `枝（高さ${geo.edges[it.e].h}）`
-      : `葉（${geo.cells[it.c].c + 1}列・${geo.cells[it.c].r + 1}行）`;
-    $('#plan').innerHTML = !live ? '' : Array.from({ length: R.ap }, (_, i) => {
-      const it = plan[i];
-      return it
-        ? `<li class="slot used${it.done ? ' done' : ''}"><b>${i + 1}</b><span class="grow">${desc(it)}</span><button data-confirm="${i}" title="この行動を確定／取り消し">${it.done ? '✓ 確定' : '確定'}</button><button data-remove="${i}" title="この行動を外す">✕</button></li>`
-        : `<li class="slot empty"><b>${i + 1}</b><span class="grow">空き</span></li>`;
-    }).join('');
+      : `${it.t === 'm' ? 'ヤドリギ' : '葉'}（${geo.cells[it.c].c + 1}列・${geo.cells[it.c].r + 1}行）`;
+    const used = plan.map((it, i) => `<li class="slot used${it.done ? ' done' : ''}"><b>${i + 1}</b><span class="grow">${desc(it)}${E.costOf(it) > 1 ? ` <small>行動力${E.costOf(it)}</small>` : ''}</span><button data-confirm="${i}" title="この行動を確定／取り消し">${it.done ? '✓ 確定' : '確定'}</button><button data-remove="${i}" title="この行動を外す">✕</button></li>`);
+    const emptyN = Math.max(0, R.ap - E.planCost(plan));
+    $('#plan').innerHTML = !live ? '' : used.join('') + Array.from({ length: emptyN }, () => `<li class="slot empty"><b>・</b><span class="grow">空き</span></li>`).join('');
     const btn = $('#btn-finish');
     btn.textContent = me && me.finished ? '✓ 確定ずみ（取り消す）' : '全て確定';
     btn.classList.toggle('on', !!(me && me.finished));
@@ -449,7 +446,8 @@
       : !me ? '観戦中です'
       : me.finished ? `確定ずみ。ほかの人を待っています（確定した人：${room.finishedCount}/${n}人）。時間まで、取り消して変更できます`
       : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動'
-        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '');
+        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '')
+        + (candidates && candidates.mistle && candidates.mistle.length ? '。点線のセルは「ヤドリギ」：他の人の枝に接するセルに、行動力2で葉を置けます（その枝が折れると一緒に消えます）' : '');
     $('#tickbar').hidden = g.over;
 
     renderScores(g);
@@ -516,14 +514,14 @@
     let html = '';
     if (h.edge && g.edges[h.edge]) {
       const st = E.edgeStats(g, h.edge, 10);
-      html = edgeTip('この枝が折れる確率（毎ターン）', st.parts, st.edge.h, st.edge.l, st.survive, st.lostEdges, st.lostLeaves, null);
+      html = edgeTip('この枝が折れる確率（毎ターン）', st.parts, st.edge.h, st.survive, st.lostEdges, st.lostLeaves, null);
     } else if (h.edge) {
       html = `<div class="tt-head">幹</div><div class="tt-big">壊れません</div>`;
     } else if (h.cand && h.cand.t === 'b') {
       const me = g.players.find(p => p.id === app.me), pr = E.project(g, app.me, me.plan);
-      const e = geo.edges[h.cand.key], at = pr.net.v.get(e.a) || pr.net.v.get(e.b);
-      const parts = E.breakParts(e.h, at.l + 1);
-      html = edgeTip('この枝を置くと、折れる確率（毎ターン）', parts, e.h, at.l + 1, null, null, null, 'まだ置いていません');
+      const e = geo.edges[h.cand.key];
+      const parts = E.breakParts(e.h, 1);
+      html = edgeTip('この枝を置くと、折れる確率（毎ターン）', parts, e.h, null, null, null, 'まだ置いていません');
     } else { hideTip(); return; }
     const tip = $('#tooltip');
     tip.innerHTML = html;
@@ -537,12 +535,13 @@
     tip.style.top = Math.max(8, ty) + 'px';
   }
 
-  function edgeTip(head, parts, h, l, survive, lostEdges, lostLeaves, note) {
+  function edgeTip(head, parts, h, survive, lostEdges, lostLeaves, note) {
     const rows = [
       ['基本', pct(parts.base)],
       [`高さ（${h}行目）`, '+' + pct(parts.height)],
-      [`長さ（幹から${l}辺目）`, '+' + pct(parts.length)],
+      [`重さ（支える枝${parts.w}本）`, '+' + pct(parts.load)],
     ];
+    if (survive == null) rows.push(['根本側の枝', '支える枝が1本ずつ増える']);
     if (survive != null) rows.push(['10ターン残る確率', pct(survive, 0)], ['折れると失う', `枝${lostEdges}・葉${lostLeaves}`]);
     return `<div class="tt-head">${head}</div><div class="tt-big">${pct(parts.p)}${note ? `<small>${note}</small>` : ''}</div>`
       + `<dl class="tt-rows">${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;
@@ -562,6 +561,7 @@
   function onPick(c) {
     if (!app.room || !app.room.game || app.room.game.over) return;
     if (c.t === 'b') act({ type: 'addBranch', edge: c.key });
+    else if (c.t === 'm') act({ type: 'addMistletoe', cell: c.key });
     else act({ type: 'addLeaf', cell: c.key });
   }
 

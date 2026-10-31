@@ -21,6 +21,7 @@
   const EDGE_MS = 800;         // 1本の枝が折れる時間
   const TOP_RESERVE = 46;      // 上のバー（ターン・表示切り替え）の分
   const ZOOM_MAX = 6;
+  const PAN_SLACK = 0.45;   // 縦に動かせる余白（画面の高さに対する割合）
 
   const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880' };
   const FONT = '"Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif';
@@ -53,7 +54,7 @@
       this.h = handlers || {};
       this.data = null;
       this.pan = 0;               // 横の回転（x の単位。ループ）
-      this.panY = 0;              // 縦の移動（px。拡大して盤面が縦にはみ出すときだけ）
+      this.panY = 0;              // 縦の移動（px。上下に余白ぶんまで動かせる）
       this.zoom = 1;
       this.panInit = false;
       this.k = 8;
@@ -146,13 +147,16 @@
       this.boardH = 37 * this.hu + 2 * MARGIN + LABEL_H;
       this.clipW = Math.min(this.boardW, vw);
       this.bx = Math.round((this.cw - this.clipW) / 2);
+      // 縦の移動：拡大していなくても、上下に画面の高さの PAN_SLACK ぶんまで動かせる（はみ出すときは、端からさらに同じだけ）
+      const slack = Math.round(this.availH * PAN_SLACK);
       if (this.boardH <= this.availH + 0.5) {
-        this.panY = 0;
-        this.by = this.availTop + Math.round((this.availH - this.boardH) / 2);
+        this.baseY = this.availTop + Math.round((this.availH - this.boardH) / 2);
+        this.panY = clamp(this.panY, -slack, slack);
       } else {
-        this.panY = clamp(this.panY, this.availH - this.boardH, 0);
-        this.by = this.availTop + this.panY;
+        this.baseY = this.availTop;
+        this.panY = clamp(this.panY, this.availH - this.boardH - slack, slack);
       }
+      this.by = this.baseY + this.panY;
       this.left = this.bx + MARGIN;                   // x = 0 の位置（pan を足す）
     }
 
@@ -168,10 +172,8 @@
       this.zoom = clamp(this.zoom * factor, 1, ZOOM_MAX);
       this.layout();
       this.setPan((mx - this.left) / this.k - xu);
-      if (this.boardH > this.availH + 0.5) {
-        this.panY = my - MARGIN - (36 - yu) * this.hu - this.availTop;
-        this.layout();
-      }
+      this.panY = my - MARGIN - (36 - yu) * this.hu - this.baseY;
+      this.layout();
       this.hover = null;
       this.redraw();
     }
@@ -290,6 +292,7 @@
         const inCell = r => {
           let best = r, hit = null;
           for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'l', key: ck }; } }
+          for (const ck of d.candidates.mistle || []) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'm', key: ck }; } }
           return hit;
         };
         out.cand = nearEdge(Math.max(4, this.S * 0.14)) || inCell(this.S * 0.68) || nearEdge(thr) || inCell(this.S * 0.87);
@@ -311,7 +314,7 @@
       const nearest = (type, lim) => {
         let best = -1, bestD = lim;
         me.plan.forEach((it, i) => {
-          if (it.t !== type) return;
+          if (it.t !== type && !(type === 'l' && it.t === 'm')) return;
           const dist = type === 'b' ? this.distToEdge(it.e, x, y) : this.distToCell(it.c, x, y);
           if (dist < bestD) { bestD = dist; best = i; }
         });
@@ -398,7 +401,7 @@
     }
 
     // 葉を描く（得点の輪や数字はつけない）
-    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw) {
+    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw, dashed) {
       ctx.save();
       ctx.globalAlpha = alpha;
       this.hexPath(ctx, x, y, this.S * 0.78 * scale);
@@ -406,6 +409,7 @@
       ctx.fill();
       ctx.lineWidth = lw || 2;
       ctx.strokeStyle = stroke || color;
+      if (dashed) ctx.setLineDash([Math.max(3, this.S * 0.28), Math.max(2, this.S * 0.2)]);   // ヤドリギ：枠が破線
       ctx.stroke();
       ctx.restore();
     }
@@ -483,7 +487,7 @@
         if (!inView(x)) continue;
         const w = clamp((t - 200) / 800, 0, 1);
         if (w >= 1) continue;
-        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4);
+        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4, !!lf.mist);
       }
     }
 
@@ -549,7 +553,7 @@
           if (!inView(x) || !inViewY(y)) continue;
           const color = colors[lf.owner];
           const isNew = g.round > 0 && lf.round === g.round;
-          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2);
+          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2, !!lf.host);
           if (topCells.has(ck)) {
             this.hexPath(ctx, x, y, S * 0.67);
             ctx.lineWidth = S * 0.2;
@@ -564,7 +568,7 @@
         // 折れる前（数字がこぼれているあいだ）は、これから折れる葉も残して見せる
         if (phase === 'pre') for (const lf of lt.removedLeafList || []) {
           const [x, y] = cellXY(lf.cell);
-          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2);
+          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2, !!lf.mist);
         }
 
         // 幹（根から今の長さまで）。次に伸びる1辺は点線
@@ -573,10 +577,10 @@
           const tr = geo.trunks[p.trunk], color = colors[p.id];
           ctx.setLineDash([]);
           ctx.lineWidth = 2.4;
-          ctx.strokeStyle = overlay === 'normal' ? color : COL.trunkGray;
+          ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;   // 幹は明るい方の色（枝と見分けやすく）
           for (let i = 1; i <= p.trunkLen; i++) this.line(ctx, tr.edges[i], dx);
           if (!g.over && p.trunkLen < tr.edges.length - 1) {
-            ctx.strokeStyle = overlay === 'normal' ? color : COL.trunkGray;
+            ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;
             ctx.setLineDash([1.5, 6]);
             this.line(ctx, tr.edges[p.trunkLen + 1], dx);
             ctx.setLineDash([]);
@@ -589,6 +593,25 @@
           ctx.setLineDash([]);
           ctx.strokeStyle = ov ? heat(ov.vals[ek] / ov.max) : colors[e.owner];
           this.line(ctx, ek, dx);
+        }
+
+        // 傷あと：折れた根元の頂点。持ち主はあと何ターンそこから枝を伸ばせないか（折れる演出が終わってから出す）
+        if (g.scars && !(fresh && phase === 'pre')) {
+          for (const [vk, sc] of Object.entries(g.scars)) {
+            const left = sc.until - g.round;
+            if (left <= 0) continue;
+            const v = geo.verts[vk], x = this.px(v.x, dx), y = this.py(v.y);
+            if (!inView(x) || !inViewY(y)) continue;
+            const R = Math.max(4, S * 0.32);
+            ctx.setLineDash([]); ctx.lineWidth = 1.6;
+            ctx.fillStyle = COL.page; ctx.strokeStyle = COL.broken;
+            ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            if (R >= 6) {
+              ctx.fillStyle = COL.broken; ctx.font = `700 ${Math.round(R * 1.1)}px system-ui, sans-serif`;
+              ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+              ctx.fillText(String(left), x, y + 0.5);
+            }
+          }
         }
 
         // 折れた枝
@@ -634,6 +657,15 @@
             ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill();
             ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
           }
+          // ヤドリギ：他の人の枝に接するセル（点線）
+          ctx.setLineDash([3, 4]);
+          for (const ck of d.candidates.mistle || []) {
+            const [x, y] = cellXY(ck);
+            if (!inView(x) || !inViewY(y)) continue;
+            this.hexPath(ctx, x, y, S * 0.78);
+            ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
+          }
+          ctx.setLineDash([]);
           if (hv && hv.cand) {
             if (hv.cand.t === 'b') { ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4.6; this.line(ctx, hv.cand.key, dx); }
             else {
