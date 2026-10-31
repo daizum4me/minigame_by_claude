@@ -2,7 +2,7 @@
  * ヘキサブルグ — ルール判定
  * 盤面の生成・行動の検証と実行・ターンの処理・勝敗をここで扱う。
  * 手番はなく、だれでもいつでも行動できる（行動力を使う）。30秒ごとの「ターン」で全員いっせいに資源を受け取る。
- * 行動は「拡張」「狙い」「攻撃」「反撃」。セルは体力（最初は6）を持ち、0 になると壊れて空きマスに戻る。
+ * 行動は「拡張」「発展」「狙い」「攻撃」「反撃」。セルは体力（最初は6）を持ち、0 になると壊れて空きマスに戻る。
  * 最後のターンが終わったとき、つながっている一番大きなかたまりが大きい人の勝ち。
  * 状態（state）はただのオブジェクト（JSON にそのまま変換できる）。
  * ホストのブラウザでもテスト（Node.js）でも同じものを使う。
@@ -31,13 +31,13 @@
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     startResource: 10,
     startPower: 3,                      // 戦力トークン（攻撃・反撃に使う）
-    cost: { expand: 2 },
-    income: { core: 2, power: 3 },      // ターンごとに：資源はコア +2、戦力 +3
+    cost: { expand: 1, develop: 3 },
+    income: { core: 2, power: 3, mine: 2, factory: 2 },   // ターンごとに：資源はコア +2・鉱山1つにつき +2、戦力は +3・工場1つにつき +2
     hp: 6,                              // セルの体力（0 になると壊れる）
     // 攻撃：戦力 7 − n 個で、狙った相手のセルの体力を n 減らす（n はそのセルを狙っている自分のセルの数。1〜6）
     attack: { base: 7, maxAimers: 6 },
-    // 反撃：戦力 5 個で、自分のセルを狙っている相手のセルすべての体力を 3 減らす
-    counter: { cost: 5, damage: 3 },
+    // 反撃：自分のセルを狙っている相手のセルが k マスなら、戦力 2k 個で、その全部の体力を k 減らす
+    counter: { perAimer: 2 },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -46,8 +46,9 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const ACTION_NAMES = { expand: '拡張', aim: '狙い', unaim: '狙いを外す', attack: '攻撃', counter: '反撃', ready: '行動完了' };
-  const AP_ACTIONS = ['expand', 'attack', 'counter'];   // 行動力を1使う行動（狙いは使わない）
+  const ACTION_NAMES = { expand: '拡張', develop: '発展', aim: '狙い', unaim: '狙いを外す', attack: '攻撃', counter: '反撃', ready: '行動完了' };
+  const DEVELOP_KINDS = { mine: '鉱山', factory: '工場' };   // 発展で作れるもの
+  const AP_ACTIONS = ['expand', 'develop', 'attack', 'counter'];   // 行動力を1使う行動（狙いは使わない）
 
   function shuffle(arr, rng) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -137,7 +138,7 @@
     const board = {};
     for (let q = -radius; q <= radius; q++) {
       for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
-        board[key(q, r)] = { q, r, owner: null, core: false, hp: 0, aim: null, aimRound: -1 };
+        board[key(q, r)] = { q, r, owner: null, core: false, kind: null, hp: 0, aim: null, aimRound: -1 };
       }
     }
     return { radius, board, cores };
@@ -205,9 +206,10 @@
     for (const p of state.players) {
       if (!p.alive) continue;
       const n = income(state, p.id);
-      state.tickInfo[p.id] = { seq, player: p.id, resBefore: p.resource, resource: n, powBefore: p.power, power: RULES.income.power };
+      const pw = powerIncome(state, p.id);
+      state.tickInfo[p.id] = { seq, player: p.id, resBefore: p.resource, resource: n, powBefore: p.power, power: pw };
       p.resource += n;
-      p.power += RULES.income.power;
+      p.power += pw;
     }
     if (state.round >= state.rounds) finishByGroup(state);
   }
@@ -225,9 +227,21 @@
     return neighbors(q, r).some(([nq, nr]) => { const c = state.board[key(nq, nr)]; return c && c.owner === id; });
   }
 
-  // ターンごとに受け取る資源
+  // ターンごとに受け取る資源（コア +2・鉱山1つにつき +2）
   function income(state, id) {
-    return cellsOf(state, id).filter(c => c.core).length * RULES.income.core;
+    const mine = cellsOf(state, id);
+    return mine.filter(c => c.core).length * RULES.income.core + mine.filter(c => c.kind === 'mine').length * RULES.income.mine;
+  }
+
+  // ターンごとに受け取る戦力（+3・工場1つにつき +2）
+  function powerIncome(state, id) {
+    return RULES.income.power + cellsOf(state, id).filter(c => c.kind === 'factory').length * RULES.income.factory;
+  }
+
+  // 反撃：そのセルを狙っている相手のセル（k マス）と、かかる戦力（2k）。減らす体力は k
+  function counterInfo(state, id, k) {
+    const list = aimersOf(state, k).filter(c => c.owner !== id);
+    return { list, k: list.length, cost: list.length * RULES.counter.perAimer };
   }
 
   // 今その行動ができるか（マスの指定がいらない判定）。できなければ理由を返す
@@ -238,7 +252,7 @@
     if (!(type in ACTION_NAMES)) return '不明な行動です';
     if (AP_ACTIONS.includes(type) && (p.ap || 0) < 1) return `行動力が足りません（${RULES.rt.apSeconds}秒に1回復）`;
     if (type === 'expand' && p.resource < RULES.cost.expand) return '資源トークンが足りません';
-    if (type === 'counter' && p.power < RULES.counter.cost) return `戦力トークンが足りません（${RULES.counter.cost}個いる）`;
+    if (type === 'develop' && p.resource < RULES.cost.develop) return '資源トークンが足りません';
     return '';
   }
 
@@ -267,7 +281,8 @@
     for (const [k, c] of Object.entries(state.board)) {
       if (type === 'expand') { if (!c.owner && adjacentToOwn(state, id, c.q, c.r)) out.push(k); }
       else if (type === 'attack') { if (c.owner && c.owner !== id) { const a = attackInfo(state, id, k); if (a.n > 0 && p.power >= a.cost) out.push(k); } }
-      else if (type === 'counter') { if (c.owner === id && aimersOf(state, k).some(x => x.owner !== id)) out.push(k); }
+      else if (type === 'counter') { if (c.owner === id) { const ci = counterInfo(state, id, k); if (ci.k > 0 && p.power >= ci.cost) out.push(k); } }
+      else if (type === 'develop') { if (c.owner === id && !c.core && !c.kind) out.push(k); }
       else if (type === 'aim') { if (c.owner === id && canReaim(state, c) && foeNeighbors(state, c).length) out.push(k); }
     }
     return out;
@@ -277,7 +292,7 @@
 
   /*
    * 行動を実行する。state は書き換わる。
-   * action: { type: 'expand' | 'attack' | 'counter', q, r }
+   * action: { type: 'expand' | 'attack' | 'counter', q, r } / { type: 'develop', q, r, to: 'mine' | 'factory' }
    *         { type: 'aim', q, r, to }（自分のセル (q,r) から、隣の相手のセル to（キー）を狙う） / { type: 'unaim', q, r }
    *         { type: 'ready', on }（行動完了。全員がそろうと部屋が次のターンへ進める）
    */
@@ -313,14 +328,21 @@
     }
     if (!targets(state, id, action.type).includes(k)) {
       if (action.type === 'attack') return fail(attackInfo(state, id, k).n ? '戦力トークンが足りません' : 'このセルを狙っている自分のセルがありません');
-      if (action.type === 'counter') return fail('このセルを狙っている相手のセルがありません');
+      if (action.type === 'counter') return fail(counterInfo(state, id, k).k ? '戦力トークンが足りません' : 'このセルを狙っている相手のセルがありません');
+      if (action.type === 'develop') return fail('コア以外の、まだ発展していない自分のセルを選んでください');
       return fail('そのマスには拡張できません');
     }
+    if (action.type === 'develop' && !(action.to in DEVELOP_KINDS)) return fail('鉱山か工場を選んでください');
     p.ap--;
     if (action.type === 'expand') {
       p.resource -= RULES.cost.expand;
-      Object.assign(cell, { owner: id, hp: RULES.hp, aim: null, aimRound: -1 });
+      Object.assign(cell, { owner: id, kind: null, hp: RULES.hp, aim: null, aimRound: -1 });
       addLog(state, `${p.name} がマス${cellLabel(cell)}に拡張`, 'expand');
+    } else if (action.type === 'develop') {
+      // 発展：鉱山（ターンごとに資源 +2）か工場（ターンごとに戦力 +2）にする
+      p.resource -= RULES.cost.develop;
+      cell.kind = action.to;
+      addLog(state, `${p.name} がセル${cellLabel(cell)}を${DEVELOP_KINDS[action.to]}にした`, 'develop');
     } else if (action.type === 'attack') {
       // 攻撃：戦力 7 − n で、体力を n 減らす（n は狙っている自分のセルの数）
       const { n, cost } = attackInfo(state, id, k);
@@ -330,12 +352,12 @@
       recordHit(state, id, [cell]);
       damage(state, p, cell, n);
     } else if (action.type === 'counter') {
-      // 反撃：戦力 5 で、このセルを狙っている相手のセルすべての体力を 3 減らす
-      const list = aimersOf(state, k).filter(c => c.owner !== id);
-      p.power -= RULES.counter.cost;
-      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${list.length}マスの体力 −${RULES.counter.damage}）`, 'counter');
+      // 反撃：狙ってきている相手のセル k マスに、戦力 2k で、それぞれ体力 −k
+      const { list, k: n, cost } = counterInfo(state, id, k);
+      p.power -= cost;
+      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${n}マスの体力 −${n}）`, 'counter');
       recordHit(state, id, list);
-      for (const c of list) damage(state, p, c, RULES.counter.damage);
+      for (const c of list) damage(state, p, c, n);
     }
     return { ok: true };
   }
@@ -360,7 +382,7 @@
   // セルを空きマスに戻す。そのセルの狙いも、そのセルへの狙いも消える
   function breakCell(state, cell) {
     const k = key(cell.q, cell.r);
-    Object.assign(cell, { owner: null, core: false, hp: 0, aim: null, aimRound: -1 });
+    Object.assign(cell, { owner: null, core: false, kind: null, hp: 0, aim: null, aimRound: -1 });
     for (const c of Object.values(state.board)) if (c.aim === k) c.aim = null;
   }
 
@@ -414,14 +436,14 @@
     return best;
   }
 
-  // 行動力が満タンだったとして、何か行動（拡張・攻撃・反撃）できるか。できなければ自動で行動完了にする
+  // 行動力が満タンだったとして、何か行動（拡張・発展・攻撃・反撃）できるか。できなければ自動で行動完了にする
   // （狙いは行動力も戦力も使わないので数えない）
   function hasMoves(state, id) {
     const p = playerById(state, id);
     if (!p || !p.alive || state.over) return false;
     const ap = p.ap;
     p.ap = RULES.rt.apMax;
-    const ok = ['expand', 'attack', 'counter'].some(t => targets(state, id, t).length > 0);
+    const ok = ['expand', 'develop', 'attack', 'counter'].some(t => targets(state, id, t).length > 0);
     p.ap = ap;
     return ok;
   }
@@ -434,9 +456,9 @@
   }
 
   return {
-    RULES, DIRS, ACTION_NAMES,
+    RULES, DIRS, ACTION_NAMES, DEVELOP_KINDS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
-    createGame, apply, targets, actionBlocked, income, cellsOf, forfeit, aimersOf, attackInfo, foeNeighbors, canReaim,
+    createGame, apply, targets, actionBlocked, income, cellsOf, forfeit, aimersOf, attackInfo, counterInfo, powerIncome, foeNeighbors, canReaim,
     autoTicks, rtTick, rtRegen, apMax, hasMoves, largestGroup,
   };
 });

@@ -66,14 +66,25 @@
       if (me.power - cost < 5 && mostThreat(g, id) >= 2) s -= 2;   // 反撃する分の戦力は残したい
       out.push({ s: s + noise(), a: { type: 'attack', q: t.q, r: t.r } });
     }
-    // 反撃：狙っている相手のセルが多いほどお得（戦力5で全部に −3）。壊せるセル・コアを守るときは大きく
+    // 反撃：狙ってきている相手のセルが k マスなら、戦力 2k で全部に −k。多く狙われるほど一度に大きく削れる。
+    // 壊せるセルがあるとき・コアを守るときは大きく
     for (const k of E.targets(g, id, 'counter')) {
       const c = g.board[k];
-      const list = E.aimersOf(g, k).filter(x => x.owner !== id);
-      const kills = list.filter(x => x.hp <= 3).length;
-      let s = list.length * 2 + kills * 2 + (c.core ? 3 : 0) - 3;
-      if (list.length === 1 && !kills && !c.core) s -= 3;
+      const { list, k: n } = E.counterInfo(g, id, k);
+      const kills = list.filter(x => x.hp <= n).length;
+      let s = n * 1.6 + kills * 2.5 + (c.core ? 3 : 0) - 3;
+      if (n === 1 && !kills && !c.core) s -= 2;
       out.push({ s: s + noise(), a: { type: 'counter', q: c.q, r: c.r } });
+    }
+    // 発展：前線から遠い（壊されにくい）セルを、鉱山（資源 +2）か工場（戦力 +2）にする。終盤は元が取れない
+    const left = g.rounds - g.round;
+    const dev = E.targets(g, id, 'develop').map(k => g.board[k]).filter(c => !E.foeNeighbors(g, c).length);
+    if (dev.length && left >= 3) {
+      const c = dev[Math.floor(rng() * dev.length)];
+      const kinds = E.cellsOf(g, id).filter(x => x.kind);
+      const mines = kinds.filter(x => x.kind === 'mine').length, facts = kinds.length - mines;
+      out.push({ s: 3.6 - mines * 0.4 + Math.min(2, left / 6) + noise(), a: { type: 'develop', q: c.q, r: c.r, to: 'mine' } });
+      out.push({ s: 3.2 - facts * 0.4 + (mostThreat(g, id) >= 2 ? 1.2 : 0) + Math.min(2, left / 6) + noise(), a: { type: 'develop', q: c.q, r: c.r, to: 'factory' } });
     }
     return out;
   }

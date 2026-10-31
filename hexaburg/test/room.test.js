@@ -145,9 +145,9 @@ test('行動はホストが検証して全員に配信。だれでもいつで�
   const { room, inbox, last, h, g } = startTwo();
   const exp = id => { const [q, r] = freeNext(room, id); room.handle(id, { type: 'act', action: { type: 'expand', q, r } }); };
   exp(g);
-  assert.strictEqual(room.game.players.find(p => p.id === g).resource, 8);
+  assert.strictEqual(room.game.players.find(p => p.id === g).resource, 9);
   exp(h);
-  assert.strictEqual(last(g).room.game.players.find(p => p.id === h).resource, 8);
+  assert.strictEqual(last(g).room.game.players.find(p => p.id === h).resource, 9);
   room.handle(h, { type: 'act', action: { type: 'endTurn' } });
   assert.strictEqual(inbox[h].at(-1).type, 'error');
   assert.ok(!('turnLeftMs' in last(h).room));

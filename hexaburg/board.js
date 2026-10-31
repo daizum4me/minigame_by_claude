@@ -311,6 +311,7 @@
       if (k === this.hoverKey && !byLongPress) return;
       this.hoverKey = k;
       this.draw();
+      this.animate();   // 狙われているセルなら、矢印を動かす
       if (this.h.onHover) {
         if (!k) this.h.onHover(null);
         else { const [x, y] = this.screenOf(k); this.h.onHover(k, x, y, this.scale, byLongPress); }
@@ -322,7 +323,7 @@
       if (this.anim) return;
       const loop = () => {
         const d = this.data;
-        const need = d && (d.targets.length || this.flashes.size || this.aimDrag);
+        const need = d && (d.targets.length || this.flashes.size || this.aimDrag || (this.hoverKey && Object.values(d.game.board).some(c => c.aim === this.hoverKey)));
         if (!need) { this.anim = 0; this.draw(); return; }
         this.draw();
         this.anim = requestAnimationFrame(loop);
@@ -379,6 +380,14 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
+        // 発展：鉱山は ◆（正方形を45°回したひし形）、工場は □（中空の正方形）
+        if (c.kind === 'mine' || c.kind === 'factory') {
+          ctx.save();
+          ctx.translate(x, y);
+          if (c.kind === 'mine') { ctx.rotate(Math.PI / 4); ctx.fillStyle = col.light; ctx.fillRect(-s * 0.17, -s * 0.17, s * 0.34, s * 0.34); }
+          else { ctx.strokeStyle = col.light; ctx.lineWidth = Math.max(1.5, s * 0.07); ctx.strokeRect(-s * 0.2, -s * 0.2, s * 0.4, s * 0.4); }
+          ctx.restore();
+        }
         // 体力：縁の内側を、体力1つにつき辺1本ぶんずつ、明るい色で塗る（6で一周）
         if (c.hp > 0) this.hpRing(ctx, x, y, s, Math.min(6, c.hp), col);
         ctx.save();
@@ -402,7 +411,9 @@
         if (!col) continue;
         if (this.aimDrag && this.aimDrag.from === E.key(c.q, c.r)) continue;   // ドラッグで狙い直しているあいだは、前の矢印を出さない
         const [x1, y1] = this.screenOf(E.key(c.q, c.r)), [x2, y2] = this.screenOf(c.aim);
-        this.arcArrow(ctx, x1, y1, x2, y2, col.light, s, 0.42);
+        // カーソルを乗せたセルに向いている矢印は、光る点線が流れるように動かして目立たせる
+        const hot = this.hoverKey && c.aim === this.hoverKey;
+        this.arcArrow(ctx, x1, y1, x2, y2, col.light, s, 0.42, hot ? t : null);
       }
       // ドラッグで狙っているところ：狙えるセルを光らせ、指の先まで矢印を伸ばす（狙えるセルの上ならそのセルへ）
       if (this.aimDrag) {
@@ -479,7 +490,8 @@
     }
 
     // 弧を描く矢印（⤵ のように、進む向きの右側へふくらむ）。endGap：終わりを相手のマスの中心から手前に止める割合
-    arcArrow(ctx, x1, y1, x2, y2, color, s, endGap) {
+    // hotT：時刻（ms）を渡すと、太く光らせ、点線を矢印の向きへ流す
+    arcArrow(ctx, x1, y1, x2, y2, color, s, endGap, hotT) {
       const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const sx = x1 + ux * s * 0.22, sy = y1 + uy * s * 0.22;
       const ex = x2 - ux * s * endGap, ey = y2 - uy * s * endGap;
@@ -493,10 +505,18 @@
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.lineWidth = Math.max(2, s * 0.09);
+      if (hotT != null) {
+        ctx.lineWidth = Math.max(3, s * 0.14);
+        ctx.shadowColor = color;
+        ctx.shadowBlur = s * 0.5;
+        ctx.setLineDash([s * 0.18, s * 0.12]);
+        ctx.lineDashOffset = -(hotT / 25) % (s * 0.3);
+      }
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.quadraticCurveTo(cx, cy, ex - vx * head * 0.6, ey - vy * head * 0.6);
       ctx.stroke();
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(ex, ey);
       ctx.lineTo(ex - vx * head - vy * head * 0.6, ey - vy * head + vx * head * 0.6);
@@ -510,7 +530,7 @@
     hpRing(ctx, x, y, s, n, col) {
       const ro = s * 0.86, ri = s * 0.71;
       const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
-      ctx.fillStyle = col.light;
+      ctx.fillStyle = rgba(col.light, 0.55);   // 少し透かす
       for (let i = 0; i < n; i++) {
         ctx.beginPath();
         ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));

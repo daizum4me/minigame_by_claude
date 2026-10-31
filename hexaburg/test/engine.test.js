@@ -60,18 +60,18 @@ test('初期状態：資源10・行動力3・コアだけ。ターン数は人�
   assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { rounds: 7 }));
 });
 
-test('行動は拡張だけ：隣接する空きマスに、資源2・行動力1。ほかの行動はない', () => {
+test('拡張：隣接する空きマスに、資源1・行動力1。ない行動はできない', () => {
   const { g, a, b } = rtGame();
   const [q, r] = freeNext(g, a);
   assert.ok(E.targets(g, a, 'expand').includes(E.key(q, r)));
   assert.strictEqual(E.apply(g, a, { type: 'expand', q: 0, r: 0 }).ok, false);   // 離れたマス
   assert.ok(E.apply(g, a, { type: 'expand', q, r }).ok);
-  assert.deepStrictEqual([P(g, a).resource, P(g, a).ap, g.board[E.key(q, r)].owner], [8, 2, a]);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).ap, g.board[E.key(q, r)].owner], [9, 2, a]);
   assert.strictEqual(E.apply(g, b, { type: 'expand', q, r }).ok, false);         // 相手のマスには置けない
-  for (const t of ['strengthen', 'destroy', 'fortify', 'develop', 'produce']) assert.strictEqual(E.apply(g, a, { type: t, q, r }).ok, false);
+  for (const t of ['strengthen', 'destroy', 'fortify', 'produce']) assert.strictEqual(E.apply(g, a, { type: t, q, r }).ok, false);
   P(g, a).ap = 0;
   assert.match(E.actionBlocked(g, a, 'expand'), /行動力/);
-  P(g, a).ap = 3; P(g, a).resource = 1;
+  P(g, a).ap = 3; P(g, a).resource = 0;
   assert.match(E.actionBlocked(g, a, 'expand'), /資源/);
 });
 
@@ -112,7 +112,7 @@ test('行動完了：押すと印がつき、もう一度押すと外れる。�
   E.rtTick(g);
   assert.deepStrictEqual(g.players.map(p => !!p.ready), [false, false]);
   assert.strictEqual(E.hasMoves(g, a), true);                        // 行動力がなくても、回復すれば拡張できる
-  P(g, a).resource = 1;
+  P(g, a).resource = 0;
   assert.strictEqual(E.hasMoves(g, a), false);                       // 資源が足りない
 });
 
@@ -187,22 +187,45 @@ test('攻撃は狙っているセルが多いほど安く強い（1つなら戦�
   assert.ok(E.targets(g, a, 'attack').includes(tk));
 });
 
-test('反撃：自分のセルを選び、戦力5で、そのセルを狙っている相手のセルすべての体力を3減らす（行動力1）', () => {
+test('反撃：狙ってきている相手のセルが k マスなら、戦力 2k で、その全部の体力を k 減らす（行動力1）', () => {
   const { g, a, b, tk, mine } = battle();
   for (const k of mine) { const [q, r] = E.parseKey(k); E.apply(g, a, { type: 'aim', q, r, to: tk }); }
+  const k = mine.length;
   const [tq, tr] = E.parseKey(tk);
-  P(g, b).power = 4;
+  assert.deepStrictEqual([E.counterInfo(g, b, tk).k, E.counterInfo(g, b, tk).cost], [k, 2 * k]);
+  P(g, b).power = 2 * k - 1;
   assert.match(E.apply(g, b, { type: 'counter', q: tq, r: tr }).error, /戦力/);
-  P(g, b).power = 10;
+  P(g, b).power = 20;
   assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);
-  assert.deepStrictEqual(mine.map(k => g.board[k].hp), mine.map(() => 3));
-  assert.deepStrictEqual([P(g, b).power, P(g, b).ap], [5, 2]);
+  assert.deepStrictEqual(mine.map(x => g.board[x].hp), mine.map(() => 6 - k));
+  assert.deepStrictEqual([P(g, b).power, P(g, b).ap], [20 - 2 * k, 2]);
   assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);                     // もう一度で全部壊れる（コアも）
   assert.strictEqual(P(g, a).alive, false);                                           // コアが壊れたので a は脱落
   assert.ok(g.over);
   assert.deepStrictEqual(g.winners, [b]);
   const [cq, cr] = E.parseKey(P(g, b).core);
   assert.strictEqual(E.apply(g, b, { type: 'counter', q: cq, r: cr }).ok, false);     // 狙われていないセルからは反撃できない
+});
+
+test('発展：コア以外の自分のセルを、資源3・行動力1で鉱山（ターンごとに資源 +2）か工場（戦力 +2）にする。壊れたら元に戻る', () => {
+  const { g, a } = rtGame();
+  const [q, r] = freeNext(g, a);
+  assert.ok(E.apply(g, a, { type: 'expand', q, r }).ok);
+  const [cq, cr] = E.parseKey(P(g, a).core);
+  assert.strictEqual(E.apply(g, a, { type: 'develop', q: cq, r: cr, to: 'mine' }).ok, false);   // コアは不可
+  assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'farm' }).ok, false);           // 鉱山か工場だけ
+  assert.ok(E.apply(g, a, { type: 'develop', q, r, to: 'mine' }).ok);
+  assert.deepStrictEqual([g.board[E.key(q, r)].kind, P(g, a).resource, P(g, a).ap], ['mine', 6, 1]);
+  assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'factory' }).ok, false);         // 発展ずみは不可
+  assert.deepStrictEqual([E.income(g, a), E.powerIncome(g, a)], [4, 3]);
+  const [q2, r2] = freeNext(g, a);
+  E.apply(g, a, { type: 'expand', q: q2, r: r2 });
+  P(g, a).ap = 3;
+  assert.ok(E.apply(g, a, { type: 'develop', q: q2, r: r2, to: 'factory' }).ok);
+  assert.strictEqual(E.powerIncome(g, a), 5);
+  const before = [P(g, a).resource, P(g, a).power];
+  E.rtTick(g);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [before[0] + 4, before[1] + 5]);
 });
 
 test('コアが壊れたら脱落し、残りのセルは空きマスに。資源と戦力は壊した人が受け継ぐ。戦力はターンごとに +3', () => {
