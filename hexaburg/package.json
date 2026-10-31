@@ -1,0 +1,12 @@
+{
+  "name": "hexaburg",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ヘキサブルグ — 六角形のマスを広げて、つながった一番大きなかたまりを競う2〜12人のリアルタイム陣取りゲーム（PeerJS による P2P 対戦・CPU 対戦あり）",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

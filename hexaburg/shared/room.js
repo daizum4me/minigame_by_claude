@@ -1,0 +1,363 @@
+/*
+ * ヘキサブルグ — 部屋（ロビー・ゲーム進行・切断の扱い）
+ * ホスト権威型：ホストのブラウザでこの Room を動かし、参加者からの要求を handle() で受けて
+ * ルール上可能かを確かめてから状態を更新し、全員に最新の状態を配信する。
+ * CPU もここで動かす（ホストのブラウザの中で考えて行動する）。
+ *
+ * new Room({ code, send(playerId, msg), rng, now, setTimer, clearTimer })
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine'), require('./cpu'));
+  else root.HexRoom = factory(root.HexEngine, root.HexCpu);
+})(typeof self !== 'undefined' ? self : this, function (E, CPU) {
+  'use strict';
+
+  const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
+  const LOG_SEND = 80;      // 配信するログの件数
+  const CPU_MS = [1500, 3500]; // CPU が考える間隔（この範囲でばらつかせる。平均2.5秒）
+  const COUNTDOWN_MS = 3000; // ゲーム開始前のカウントダウン（このあいだは行動できず、時間も進まない）
+  const CHAT_KEEP = 30;         // 残して配信するチャットの件数
+  const CHAT_LEN = 80;          // チャット1件の文字数の上限
+  const CHAT_GAP_MS = 800;      // 続けて送れる間隔（連投よけ）
+
+  function cleanName(s) {
+    const t = Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, 12).join('').trim();
+    return t || 'ゲスト';
+  }
+
+  function cleanChat(s) {
+    return Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, CHAT_LEN).join('').trim();
+  }
+
+  class Room {
+    constructor(opts) {
+      this.code = opts.code || '';
+      this.sendFn = opts.send;
+      this.rng = opts.rng || Math.random;
+      this.setTimer = opts.setTimer || ((fn, ms) => setTimeout(fn, ms));
+      this.clearTimer = opts.clearTimer || (id => clearTimeout(id));
+      this.now = opts.now || (() => Date.now());
+      this.players = [];        // { id, token, name, color, connected, cpu }
+      this.hostId = null;
+      this.phase = 'lobby';
+      // 盤面の直径（マス）・ターン数。0 は人数に合わせる
+      this.settings = { diameter: 0, ticks: 0 };
+      this.chat = [];           // { seq, from, name, color, text }（ロビーとゲームで続けて使う）
+      this.chatSeq = 0;
+      this.game = null;
+      this.seq = 0;
+      this.timers = {};         // rtTick / rtRegen / cpu
+      this.tickDeadline = 0;
+      this.regenDeadline = 0;
+      this.countdownUntil = 0;  // ゲーム開始前のカウントダウンが終わる時刻
+      this.closed = false;
+    }
+
+    // 戻り値 { id } または { error }
+    join(token, name) {
+      if (this.closed) return { error: '部屋が見つかりません' };
+      const back = this.players.find(p => !p.cpu && p.token === token);
+      if (back) {
+        back.connected = true;
+        if (this.game) this.note(`🔌 ${back.name} が戻ってきました`);
+        this.changed();
+        return { id: back.id };
+      }
+      if (this.phase !== 'lobby') return { error: 'ゲーム中のため参加できません' };
+      if (this.players.length >= E.RULES.maxPlayers) return { error: `満員です（最大${E.RULES.maxPlayers}人）` };
+      const p = this.addPlayer({ token, name: cleanName(name), cpu: false });
+      if (!this.hostId) this.hostId = p.id;
+      this.changed();
+      return { id: p.id };
+    }
+
+    addPlayer({ token, name, cpu }) {
+      let n = name, i = 2;
+      while (this.players.some(p => p.name === n)) n = name + (i++);
+      const p = { id: 'p' + (++this.seq), token, name: n, color: COLORS.find(c => !this.players.some(x => x.color === c)), connected: true, cpu };
+      if (cpu) p.level = 'normal';   // CPU の強さ（よわい・ふつう・つよい）
+      this.players.push(p);
+      return p;
+    }
+
+    disconnect(id) {
+      const p = this.players.find(x => x.id === id);
+      if (!p || !p.connected) return;
+      p.connected = false;
+      if (this.phase === 'lobby') {
+        // ロビーでは抜けた扱い
+        this.players = this.players.filter(x => x !== p);
+      } else if (this.game) {
+        this.note(`🔌 ${p.name} の接続が切れました`);
+      }
+      this.changed();
+    }
+
+    note(text) {
+      if (this.game) { this.game.log.push({ seq: ++this.game.logSeq, text, tone: 'info' }); }
+    }
+
+    handle(id, msg) {
+      if (this.closed || !msg || typeof msg !== 'object') return;
+      const p = this.players.find(x => x.id === id);
+      if (!p) return;
+      const err = text => this.sendFn(id, { type: 'error', text });
+      switch (msg.type) {
+        case 'color': {
+          if (this.phase !== 'lobby') return;
+          if (!COLORS.includes(msg.color)) return;
+          if (this.players.some(x => x !== p && x.color === msg.color)) return err('その色はほかの人が使っています');
+          p.color = msg.color;
+          this.changed();
+          return;
+        }
+        case 'chat': {
+          const text = cleanChat(msg.text);
+          if (!text) return;
+          const now = this.now();
+          if (p.lastChat && now - p.lastChat < CHAT_GAP_MS) return err('少し待ってから送ってください');
+          p.lastChat = now;
+          this.chat.push({ seq: ++this.chatSeq, from: p.id, name: p.name, color: p.color, text });
+          if (this.chat.length > CHAT_KEEP) this.chat.splice(0, this.chat.length - CHAT_KEEP);
+          this.broadcast();
+          return;
+        }
+        case 'addCpu': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          if (this.players.length >= E.RULES.maxPlayers) return err(`満員です（最大${E.RULES.maxPlayers}人）`);
+          let k = 1;
+          while (this.players.some(x => x.name === 'CPU ' + k)) k++;
+          this.addPlayer({ token: null, name: 'CPU ' + k, cpu: true });
+          this.changed();
+          return;
+        }
+        case 'cpuLevel': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          const t = this.players.find(x => x.id === msg.target && x.cpu);
+          if (!t || !CPU.LEVELS[msg.level]) return;
+          t.level = msg.level;
+          this.changed();
+          return;
+        }
+        case 'removeCpu': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          const t = this.players.find(x => x.id === msg.target && x.cpu);
+          if (!t) return;
+          this.players = this.players.filter(x => x !== t);
+          this.changed();
+          return;
+        }
+        case 'settings': {
+          if (id !== this.hostId || this.phase !== 'lobby') return;
+          const next = Object.assign({}, this.settings);
+          if ('diameter' in msg) {
+            const d = Number(msg.diameter);
+            const [lo, hi] = E.RULES.radiusRange;
+            if (d !== 0 && !(Number.isInteger(d) && d % 2 === 1 && d >= lo * 2 + 1 && d <= hi * 2 + 1)) return err('盤面の大きさが正しくありません');
+            next.diameter = d;
+          }
+          if ('ticks' in msg) {
+            const t = Number(msg.ticks);
+            const [lo, hi] = E.RULES.rt.ticksRange;
+            if (t !== 0 && !(Number.isInteger(t) && t >= lo && t <= hi)) return err('ターン数が正しくありません');
+            next.ticks = t;
+          }
+          this.settings = next;
+          this.changed();
+          return;
+        }
+        case 'start': {
+          if (id !== this.hostId) return err('ゲームを始められるのはホストだけです');
+          if (this.phase !== 'lobby') return;
+          if (this.players.length < E.RULES.minPlayers) return err(`${E.RULES.minPlayers}人以上でないと始められません`);
+          const radius = this.settings.diameter ? (this.settings.diameter - 1) / 2 : 0;
+          try {
+            this.game = E.createGame(this.players.map(x => ({ id: x.id, name: x.name, color: x.color })), this.rng, { radius, rounds: this.settings.ticks });
+          } catch (e) {
+            return err(e.message);
+          }
+          this.phase = 'game';
+          this.countdownUntil = this.now() + COUNTDOWN_MS;
+          this.timer('countdown', () => { this.countdownUntil = 0; this.changed(); }, COUNTDOWN_MS);
+          this.changed();
+          return;
+        }
+        case 'act': {
+          if (this.phase !== 'game' || !this.game) return;
+          if (this.countdownUntil) return err('まだ始まっていません');
+          const r = E.apply(this.game, id, msg.action);
+          if (!r.ok) return err(r.error);
+          this.changed();
+          return;
+        }
+        case 'forfeit': {
+          // 切断したまま戻らない人をホストが脱落させる
+          if (id !== this.hostId || this.phase !== 'game' || !this.game) return;
+          const t = this.players.find(x => x.id === msg.target);
+          if (!t || t.connected) return err('接続中の人は脱落させられません');
+          this.note(`ホストが ${t.name} を脱落させました`);
+          E.forfeit(this.game, t.id);
+          this.changed();
+          return;
+        }
+        case 'lobby': {
+          if (id !== this.hostId || this.phase !== 'game' || !this.game || !this.game.over) return;
+          this.phase = 'lobby';
+          this.game = null;
+          this.players = this.players.filter(x => x.connected);
+          this.changed();
+          return;
+        }
+        default:
+      }
+    }
+
+    // 状態が変わったら：時間切れ・CPU の予約を見直してから全員に配信
+    changed() {
+      this.autoReady();
+      this.checkReady();
+      this.checkTimers();
+      this.checkCpu();
+      this.broadcast();
+    }
+
+    timer(name, fn, ms) {
+      this.stop(name);
+      this.timers[name] = this.setTimer(() => { this.timers[name] = null; fn(); }, ms);
+    }
+
+    stop(name) {
+      if (this.timers[name]) this.clearTimer(this.timers[name]);
+      this.timers[name] = null;
+    }
+
+    player(id) { return this.players.find(x => x.id === id); }
+
+    // 15秒ごとのターンと、5秒ごとの行動力の回復
+    checkTimers() {
+      const g = this.game;
+      const now = this.now();
+      if (!g || this.phase !== 'game' || g.over) {
+        ['rtTick', 'rtRegen', 'countdown'].forEach(n => this.stop(n));
+        this.countdownUntil = 0;
+        return;
+      }
+      if (this.countdownUntil) return;   // カウントダウンが終わってから時間を進める
+      const rt = E.RULES.rt;
+      if (!this.timers.rtTick) {
+        this.tickDeadline = now + rt.tickSeconds * 1000;
+        this.timer('rtTick', () => { E.rtTick(this.game, this.rng); this.changed(); }, rt.tickSeconds * 1000);
+      }
+      if (!this.timers.rtRegen) {
+        this.regenDeadline = now + rt.apSeconds * 1000;
+        this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, rt.apSeconds * 1000);
+      }
+    }
+
+    // 行動完了の人（切断中の人は、押したものとみなす。CPU は、もうやりたい行動がないと判断したときに行動完了になる）
+    readyIds() {
+      const g = this.game;
+      return g ? g.players.filter(p => p.alive && (p.ready || !this.isPlaying(p.id))).map(p => p.id) : [];
+    }
+
+    // 行動完了を待つ相手か（CPU と、接続中の人）
+    isPlaying(id) {
+      const info = this.player(id);
+      return !!info && (info.cpu || info.connected);
+    }
+
+    // もうできる行動がない人は、自動で行動完了にする（自分で外したターンは除く）
+    autoReady() {
+      const g = this.game;
+      if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
+      for (const p of g.players) {
+        const info = this.player(p.id);
+        if (!p.alive || p.ready || p.readyOff || !info || info.cpu || !info.connected) continue;
+        if (!E.hasMoves(g, p.id)) p.ready = true;
+      }
+    }
+
+    // 待つ相手の全員が行動完了なら、待たずに次のターンへ
+    checkReady() {
+      const g = this.game;
+      if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
+      const playing = g.players.filter(p => p.alive && this.isPlaying(p.id));
+      if (!playing.length || !playing.every(p => p.ready)) return;
+      this.note('全員が行動完了したので、次のターンへ');
+      // 飛ばした時間のぶん、行動力の回復も進める（秒単位）。回復の時刻を飛ばした時間だけ前に寄せ、
+      // 途中で来るはずだった回復はまとめて行い、5秒に満たない端数は次の回復までの残り時間を縮める
+      const now = this.now(), step = E.RULES.rt.apSeconds * 1000;
+      let skip = Math.max(0, this.tickDeadline - now);
+      let left = Math.max(0, this.regenDeadline - now);   // 次の回復までの残り
+      while (skip >= left) { E.rtRegen(g); skip -= left; left = step; }
+      left -= skip;
+      this.stop('rtRegen');
+      this.regenDeadline = now + left;
+      this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, left);
+      this.stop('rtTick');
+      E.rtTick(g, this.rng);
+      // checkTimers が次のターンのタイマーをかけ直す
+    }
+
+    // CPU はそれぞれ、ばらつきのある間隔（1.5〜3.5秒）で考えて、行動力があれば1つずつ動く
+    checkCpu() {
+      const g = this.game;
+      const live = g && this.phase === 'game' && !g.over && !this.countdownUntil;
+      for (const p of this.players) {
+        if (!p.cpu) continue;
+        const name = 'cpu:' + p.id;
+        const alive = live && g.players.some(x => x.id === p.id && x.alive);
+        if (!alive) { this.stop(name); continue; }
+        if (!this.timers[name]) this.timer(name, () => this.cpuAct(p.id), CPU_MS[0] + Math.floor(this.rng() * (CPU_MS[1] - CPU_MS[0])));
+      }
+    }
+
+    // CPU が1回考える。動いたら行動完了を外し、もうやりたい行動がなければ行動完了にする
+    cpuAct(id) {
+      const g = this.game;
+      if (this.closed || !g || g.over) return;
+      const p = g.players.find(x => x.id === id), info = this.player(id);
+      if (!p || !p.alive || !info) return;
+      const action = CPU.decideRealtime(g, id, this.rng, info.level);
+      if (action && E.apply(g, id, action).ok) p.ready = false;
+      else if (!CPU.wantsMore(g, id, info.level)) p.ready = true;
+      this.changed();
+    }
+
+    // その人に送る状態（ログは新しいものだけ）
+    view(forId) {
+      const g = this.game;
+      const now = this.now();
+      let game = null;
+      if (g) {
+        game = Object.assign({}, g, { log: g.log.slice(-LOG_SEND) });
+      }
+      const live = g && !g.over && this.phase === 'game';
+      return {
+        code: this.code,
+        phase: this.phase,
+        hostId: this.hostId,
+        settings: this.settings,
+        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu, level: p.cpu ? p.level : undefined })),
+        readyIds: live ? this.readyIds() : [],
+        countdownMs: live && this.countdownUntil ? Math.max(0, this.countdownUntil - now) : 0,
+        tickLeftMs: live && !this.countdownUntil ? Math.max(0, this.tickDeadline - now) : 0,
+        regenLeftMs: live ? Math.max(0, this.regenDeadline - now) : 0,
+        chat: this.chat,
+        game,
+      };
+    }
+
+    broadcast() {
+      if (this.closed) return;
+      for (const p of this.players) if (p.connected && !p.cpu) this.sendFn(p.id, { type: 'state', you: p.id, room: this.view(p.id) });
+    }
+
+    close() {
+      this.closed = true;
+      Object.keys(this.timers).forEach(n => this.stop(n));
+    }
+  }
+
+  return { Room, COLORS, CHAT_KEEP, CHAT_LEN, COUNTDOWN_MS, CPU_MS };
+});
