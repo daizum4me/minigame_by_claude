@@ -238,8 +238,17 @@ test('折れる：その辺とその先の枝・葉がすべて消え、あと�
   assert.strictEqual(g.leaves[cell], undefined);
   assert.deepStrictEqual(info.removed.map(r => [r.key, r.primary]).sort(), [[path[1], true], [path[2], false]].sort());
   assert.strictEqual(info.removedLeaves, 1);
-  // 作り直せる
+  // 傷あと：折れた根元の頂点からは、3ターンのあいだ枝を伸ばせない（ほかの人は置ける）
+  assert.deepStrictEqual(info.scars, [{ vert: g.edges[path[0]].to, owner: 'a' }]);
+  const r = E.apply(g, 'a', { type: 'addBranch', edge: path[1] });
+  assert.ok(!r.ok && /傷あと/.test(r.error), r.error);
+  assert.ok(!E.candidates(g, 'a').edges.includes(path[1]));
+  E.resolveTurn(g, NEVER); E.resolveTurn(g, NEVER);
+  assert.ok(!E.apply(g, 'a', { type: 'addBranch', edge: path[1] }).ok);   // 3ターン目もまだ
+  E.resolveTurn(g, NEVER);
+  // 3ターンたったら作り直せる
   act(g, 'a', { type: 'addBranch', edge: path[1] });
+  assert.deepStrictEqual(g.scars, {});
 });
 
 test('葉は、ほかの枝にも支えられていれば残る（支えがすべてなくなると消える）', () => {
@@ -258,7 +267,14 @@ test('葉は、ほかの枝にも支えられていれば残る（支えがす�
   assert.strictEqual(g.leaves[cell], undefined);
 });
 
-test('得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。ほかは、その人の一番上の葉（上に他人の葉がある）だけが 0.3、同じ人の2枚目以降は 0', () => {
+// 高さボーナスを0にして、基本の得点だけを確かめる
+function noHeight(fn) {
+  const h = E.RULES.score.height;
+  E.RULES.score.height = 0;
+  try { fn(); } finally { E.RULES.score.height = h; }
+}
+
+test('得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。ほかは、その人の一番上の葉（上に他人の葉がある）だけが 0.3、同じ人の2枚目以降は 0', () => noHeight(() => {
   const s = list => E.scoreColumn(list.map(([r, owner]) => ({ r, owner })));
   assert.deepStrictEqual(s([[5, 'a']]), [1]);                                     // 自分だけでも 1 点
   assert.deepStrictEqual(s([[5, 'a'], [2, 'b']]), [2, 0.3]);                      // 上が a：1+1。下の b は覆われている
@@ -268,9 +284,15 @@ test('得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。�
   assert.deepStrictEqual(s([[9, 'a'], [8, 'b'], [7, 'b'], [6, 'b']]), [4, 0.3, 0, 0]);                       // b の2枚目以降も 0
   assert.deepStrictEqual(s([[9, 'a'], [8, 'a'], [7, 'b']]), [2, 0, 0.3]);         // 上が自分の葉と他人の葉
   assert.deepStrictEqual(s([[3, 'b'], [8, 'a'], [5, 'c']]), [0.3, 3, 0.3]);       // 並びは順不同でよい
+}));
+
+test('高さボーナス：一番上の葉にだけ 0.1 × 行番号（下から1〜18）を足す', () => {
+  const s = list => E.scoreColumn(list.map(([r, owner]) => ({ r, owner }))).map(v => Math.round(v * 1000) / 1000);
+  assert.deepStrictEqual(s([[0, 'a']]), [1.1]);                     // 1行目
+  assert.deepStrictEqual(s([[17, 'a'], [2, 'b']]), [3.8, 0.3]);     // 18行目：1+1+1.8。覆われた葉には付かない
 });
 
-test('光合成：ターンの終わりに列ごとに得点が入り、合計・加点・推移が記録される。一番上の入れ替わりを数える', () => {
+test('光合成：ターンの終わりに列ごとに得点が入り、合計・加点・推移が記録される。一番上の入れ替わりを数える', () => noHeight(() => {
   const g = newGame(2), geo = E.geometry(g.cols);
   const colCells = Object.keys(geo.cells).filter(k => k.startsWith('4,')).sort((x, y) => +x.split(',')[1] - +y.split(',')[1]);
   const mk = (cell, owner) => {
@@ -291,7 +313,7 @@ test('光合成：ターンの終わりに列ごとに得点が入り、合計�
   assert.deepStrictEqual([P(g, 'a').gain, P(g, 'b').gain], [0.3, 2]);     // b：一番上（下の他人は a の1枚）→ 2、b の下の葉は 2枚目なので 0。a は 0.3
   assert.deepStrictEqual(P(g, 'a').history, [0, 2, 2.3]);
   assert.deepStrictEqual(P(g, 'b').history, [0, 0.3, 2.3]);
-});
+}));
 
 test('ターンの解決で計画と確定はクリアされる。勝者は合計点が最高の人（同点は全員）', () => {
   const g = newGame(2), geo = E.geometry(g.cols);

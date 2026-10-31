@@ -593,6 +593,25 @@
           this.line(ctx, ek, dx);
         }
 
+        // 傷あと：折れた根元の頂点。持ち主はあと何ターンそこから枝を伸ばせないか（折れる演出が終わってから出す）
+        if (g.scars && !(fresh && phase === 'pre')) {
+          for (const [vk, sc] of Object.entries(g.scars)) {
+            const left = sc.until - g.round;
+            if (left <= 0) continue;
+            const v = geo.verts[vk], x = this.px(v.x, dx), y = this.py(v.y);
+            if (!inView(x) || !inViewY(y)) continue;
+            const R = Math.max(4, S * 0.32);
+            ctx.setLineDash([]); ctx.lineWidth = 1.6;
+            ctx.fillStyle = COL.page; ctx.strokeStyle = COL.broken;
+            ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            if (R >= 6) {
+              ctx.fillStyle = COL.broken; ctx.font = `700 ${Math.round(R * 1.1)}px system-ui, sans-serif`;
+              ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+              ctx.fillText(String(left), x, y + 0.5);
+            }
+          }
+        }
+
         // 折れた枝
         if (fresh) {
           if (phase === 'pre') {

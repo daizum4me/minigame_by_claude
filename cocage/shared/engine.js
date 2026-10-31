@@ -33,8 +33,9 @@
     // 枝の折れる確率（毎ターン・辺ごと）p = base + height×h + load×w
     //   w：その辺が支えている枝の数（その辺と、その先の枝すべて）。根本ほど重さがかかって折れやすい
     break: { base: 0.0005, height: 0.0003, load: 0.0005 },
-    // 得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。一番上でない葉は、上に他人の葉があれば 0.3
-    score: { top: 1, bonusMax: 3, covered: 0.3 },
+    // 得点：一番上の葉は 1 + min(3, 下にある他人の葉の数) + 0.1 × 行番号。一番上でない葉は、上に他人の葉があれば 0.3
+    score: { top: 1, bonusMax: 3, covered: 0.3, height: 0.1 },   // height：一番上の葉に 0.1 × 行番号（1〜18）を足す
+    scarTurns: 3,            // 傷あと：枝が折れた根元の頂点からは、その持ち主は次の3ターン枝を伸ばせない
     trunkStart: 1,           // 最初から伸びている幹の辺の数（そこから毎ターン1辺ずつ伸びる）
     leafOnTrunk: false,      // 幹に接するだけのセルに葉を置けるか（仕様では「自分の枝に接するセル」なので false）
   };
@@ -150,6 +151,7 @@
       edges: {},              // 辺キー → { owner, from, to, parent, l, h, round }（幹は含まない）
       leaves: {},             // セルキー → { owner, round }
       top: {},                // 列 → 一番上の葉の持ち主（入れ替わりを数えるため）
+      scars: {},              // 頂点キー → { owner, until }：傷あと。state.round < until のあいだ、持ち主はそこから枝を伸ばせない
       lastTurn: null,         // 直前のターンに起きたこと
     };
   }
@@ -160,7 +162,7 @@
 
   // v：頂点 → { l: そこまでの長さ, edge: そこに至る枝（幹なら null） }、edges：自分の枝の辺キー
   function ownNet(state, geo, p) {
-    const v = new Map(), edges = new Set();
+    const v = new Map(), edges = new Set(), owner = p.id;
     const tr = geo.trunks[p.trunk];
     for (let k = 0; k <= p.trunkLen; k++) v.set(tr.verts[k], { l: 0, edge: null });
     for (const [ek, e] of Object.entries(state.edges)) {
@@ -168,7 +170,13 @@
       edges.add(ek);
       if (!v.has(e.to)) v.set(e.to, { l: e.l, edge: ek });
     }
-    return { v, edges };
+    return { v, edges, owner };
+  }
+
+  // 傷あとで、あと何ターン枝を伸ばせないか（0 なら伸ばせる）
+  function scarLeft(state, vk, owner) {
+    const sc = state.scars && state.scars[vk];
+    return sc && sc.owner === owner && state.round < sc.until ? sc.until - state.round : 0;
   }
 
   // 枝を置けるか。置けるなら { from, to, l, parent, h }、だめなら理由の文字列
@@ -181,6 +189,8 @@
     if (!ia && !ib) return '自分の幹か枝の頂点につながる辺を選んでください';
     if (ia && ib) return '両端がもう自分の幹か枝につながっています';
     const from = ia ? e.a : e.b, to = ia ? e.b : e.a, at = net.v.get(from);
+    const scar = scarLeft(state, from, net.owner);
+    if (scar) return `折れたあと（傷あと）なので、ここからはあと${scar}ターン枝を伸ばせません`;
     return { from, to, l: at.l + 1, parent: at.edge, h: e.h };
   }
 
@@ -318,7 +328,7 @@
       const owner = list[idx].owner;
       if (n === 0) {
         const below = order.slice(1).filter(j => list[j].owner !== owner).length;
-        pts[idx] = RULES.score.top + Math.min(RULES.score.bonusMax, below);
+        pts[idx] = RULES.score.top + Math.min(RULES.score.bonusMax, below) + RULES.score.height * (list[idx].r + 1);
       } else if (!seen.has(owner)) {
         pts[idx] = RULES.score.covered;
       }
@@ -437,12 +447,24 @@
     for (const [ek, e] of Object.entries(state.edges)) if (rng() < breakProb(e.h, w[ek])) brokenNow.push(ek);
     const goneEdges = new Set();
     for (const ek of brokenNow) for (const k of subtree(state, ek)) goneEdges.add(k);
+    const brokenMeta = brokenNow.map(ek => ({ owner: state.edges[ek].owner, from: state.edges[ek].from, parent: state.edges[ek].parent }));
     for (const k of goneEdges) {
       const e = state.edges[k];
       info.removed.push({ key: k, owner: e.owner, l: e.l, primary: brokenNow.includes(k) });
       delete state.edges[k];
     }
     info.broken = brokenNow;
+    // 傷あと：折れた辺の根元の頂点（まだ自分の幹・枝につながっている側）。次の scarTurns ターン、持ち主はそこから枝を伸ばせない
+    if (!state.scars) state.scars = {};
+    for (const vk of Object.keys(state.scars)) if (state.scars[vk].until <= turn) delete state.scars[vk];
+    info.scars = [];
+    if (RULES.scarTurns > 0) {
+      for (const e of brokenMeta) {
+        if (e.parent && goneEdges.has(e.parent)) continue;   // もっと根本で折れた枝の先は数えない
+        state.scars[e.from] = { owner: e.owner, until: turn + RULES.scarTurns };
+        info.scars.push({ vert: e.from, owner: e.owner });
+      }
+    }
     for (const [ck, lf] of Object.entries(state.leaves)) {
       if (!leafAnchored(state, geo, ck, lf.owner)) { info.removedLeafList.push({ cell: ck, owner: lf.owner }); delete state.leaves[ck]; info.removedLeaves++; }
     }
