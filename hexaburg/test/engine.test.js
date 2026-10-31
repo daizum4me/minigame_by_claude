@@ -53,7 +53,7 @@ test('コアは一番外側に等間隔、全員同じ条件（隣のマスの�
 test('初期状態：資源3・戦力3・コアだけ（行動力はない）。ターン数は人数に合わせる（4人まで18・8人まで16・12人まで14）', () => {
   const g = newGame(3);
   for (const p of g.players) {
-    assert.deepStrictEqual([p.resource, p.power, 'ap' in p, p.alive, E.cellsOf(g, p.id).length], [3, 3, false, true, 1]);
+    assert.deepStrictEqual([p.resource, p.power, 'ap' in p, p.alive, E.cellsOf(g, p.id).length], [10, 3, false, true, 1]);
     assert.ok(g.board[p.core].core);
   }
   assert.deepStrictEqual([E.autoTicks(2), E.autoTicks(8), E.autoTicks(12)], [18, 16, 14]);
@@ -61,13 +61,14 @@ test('初期状態：資源3・戦力3・コアだけ（行動力はない）。
   assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { rounds: 7 }));
 });
 
-test('拡張：隣接する空きマスに、資源1。ない行動（生産なども）はできない', () => {
+test('拡張：隣接する空きマスに、資源3。拡張したばかりのセルの体力は3。ない行動（生産なども）はできない', () => {
   const { g, a, b } = rtGame();
   const [q, r] = freeNext(g, a);
   assert.ok(E.targets(g, a, 'expand').includes(E.key(q, r)));
   assert.strictEqual(E.apply(g, a, { type: 'expand', q: 0, r: 0 }).ok, false);   // 離れたマス
   assert.ok(E.apply(g, a, { type: 'expand', q, r }).ok);
-  assert.deepStrictEqual([P(g, a).resource, g.board[E.key(q, r)].owner], [2, a]);
+  assert.deepStrictEqual([P(g, a).resource, g.board[E.key(q, r)].owner, g.board[E.key(q, r)].hp], [7, a, 3]);
+  assert.strictEqual(g.board[P(g, a).core].hp, 6);                     // コアは6
   assert.strictEqual(E.apply(g, b, { type: 'expand', q, r }).ok, false);         // 相手のマスには置けない
   for (const t of ['strengthen', 'destroy', 'fortify', 'develop', 'produce']) assert.strictEqual(E.apply(g, a, { type: t, q, r }).ok, false);
   assert.ok(E.apply(g, a, { type: 'expand', ...Object.fromEntries(['q', 'r'].map((x, i) => [x, freeNext(g, a)[i]])) }).ok);   // 行動力はないので続けてできる
@@ -78,7 +79,7 @@ test('拡張：隣接する空きマスに、資源1。ない行動（生産な�
 test('ターンの終わりに全員いっせいに資源（コア +3）と戦力（+1）。決まった回数で終わる', () => {
   const { g, a } = rtGame();
   E.rtTick(g, NOB);
-  assert.deepStrictEqual([g.round, P(g, a).resource, g.tickInfo[a].resource, P(g, a).power, g.tickInfo[a].power], [1, 6, 3, 4, 1]);
+  assert.deepStrictEqual([g.round, P(g, a).resource, g.tickInfo[a].resource, P(g, a).power, g.tickInfo[a].power], [1, 13, 3, 4, 1]);
   for (let i = 1; i < g.rounds; i++) E.rtTick(g, NOB);
   assert.ok(g.over);
   assert.match(g.endReason, /ターン終了/);
@@ -198,14 +199,29 @@ test('反撃：狙ってきている相手のセルが k マスなら、戦力5�
   assert.match(E.apply(g, b, { type: 'counter', q: tq, r: tr }).error, /戦力/);
   P(g, b).power = 20;
   assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);
-  assert.deepStrictEqual(mine.map(x => g.board[x].hp), mine.map(() => 6 - k));
+  assert.deepStrictEqual(mine.map(x => g.board[x].hp), mine.map(() => 6 - Math.min(2, k)));   // 減らせるのは上限2
   assert.strictEqual(P(g, b).power, 15);
-  assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);                     // もう一度で全部壊れる（コアも）
+  assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);
+  assert.deepStrictEqual(mine.map(x => g.board[x].hp), mine.map(() => 2));
+  assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);                     // 3回目で全部壊れる（コアも）
   assert.strictEqual(P(g, a).alive, false);                                           // コアが壊れたので a は脱落
   assert.ok(g.over);
   assert.deepStrictEqual(g.winners, [b]);
   const [cq, cr] = E.parseKey(P(g, b).core);
   assert.strictEqual(E.apply(g, b, { type: 'counter', q: cq, r: cr }).ok, false);     // 狙われていないセルからは反撃できない
+});
+
+test('反撃で減らせる体力は、狙ってきているセルの数（上限2）。5マスに狙われていても、それぞれ −2', () => {
+  const { g, a, b } = rtGame();
+  const t = Object.assign(g.board['0,0'], { owner: b, hp: 6 });     // 盤面の中心に b のセル
+  const around = nb(g, 0, 0).map(([q, r]) => E.key(q, r)).slice(0, 5);
+  around.forEach(k => Object.assign(g.board[k], { owner: a, hp: 6, aim: '0,0', aimRound: 0 }));
+  const ci = E.counterInfo(g, b, '0,0');
+  assert.deepStrictEqual([ci.k, ci.dmg, ci.cost], [5, 2, 5]);
+  P(g, b).power = 5;
+  assert.ok(E.apply(g, b, { type: 'counter', q: t.q, r: t.r }).ok);
+  assert.deepStrictEqual(around.map(k => g.board[k].hp), [4, 4, 4, 4, 4]);
+  assert.strictEqual(P(g, b).power, 0);
 });
 
 test('おまけ：ターンの終わりに、セル1つにつき 25% で資源 +1、別に 25% で戦力 +1（両方のこともある）', () => {
@@ -232,7 +248,7 @@ test('回復：資源3で、体力の減った自分のセル（コアも）の�
   assert.strictEqual(E.apply(g, a, { type: 'heal', q: cq, r: cr }).ok, false);       // 体力が満タンなら不可
   core.hp = 4;
   assert.ok(E.apply(g, a, { type: 'heal', q: cq, r: cr }).ok);
-  assert.deepStrictEqual([core.hp, P(g, a).resource], [5, 0]);
+  assert.deepStrictEqual([core.hp, P(g, a).resource], [5, 7]);
   const bc = g.board[P(g, b).core]; bc.hp = 3;
   assert.strictEqual(E.apply(g, a, { type: 'heal', q: bc.q, r: bc.r }).ok, false);   // 相手のセルは不可
   P(g, a).resource = 2;
@@ -254,7 +270,7 @@ test('コアが壊れたら脱落し、残りのセルは空きマスに。資�
   assert.ok(E.apply(g, a, { type: 'attack', q: bc.q, r: bc.r }).ok);
   assert.strictEqual(P(g, b).alive, false);
   assert.deepStrictEqual(E.cellsOf(g, b), []);
-  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [3 + 3 + 7, 50 + 1 - 12 + 4]);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [10 + 3 + 7, 50 + 1 - 12 + 4]);
   const before = P(g, a).power;
   E.rtTick(g, NOB);
   assert.strictEqual(P(g, a).power, before + 1);

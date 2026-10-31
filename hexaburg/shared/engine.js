@@ -2,7 +2,7 @@
  * ヘキサブルグ — ルール判定
  * 盤面の生成・行動の検証と実行・ターンの処理・勝敗をここで扱う。
  * 手番はなく、だれでもいつでも行動できる（トークンがあるかぎり）。30秒ごとの「ターン」で全員いっせいに資源と戦力を受け取る。
- * 行動は「拡張」「回復」「狙い」「攻撃」「反撃」。狙いは次のターンから攻撃に使える。セルは体力（最初は6）を持ち、0 になると壊れて空きマスに戻る。
+ * 行動は「拡張」「回復」「狙い」「攻撃」「反撃」。狙いは次のターンから攻撃に使える。セルは体力（最大6。拡張したばかりは3）を持ち、0 になると壊れて空きマスに戻る。
  * 最後のターンが終わったとき、つながっている一番大きなかたまりが大きい人の勝ち。
  * 状態（state）はただのオブジェクト（JSON にそのまま変換できる）。
  * ホストのブラウザでもテスト（Node.js）でも同じものを使う。
@@ -28,16 +28,17 @@
     radius: { 2: 4, 3: 4, 4: 5, 5: 6, 6: 6, 7: 7, 8: 7, 9: 8, 10: 8, 11: 8, 12: 8 },
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
-    startResource: 3,
+    startResource: 10,
     startPower: 3,                      // 戦力トークン（攻撃・反撃に使う）
-    cost: { expand: 1, heal: 3 },
+    cost: { expand: 3, heal: 3 },
     income: { core: 3, power: 1 },   // ターンごとに：資源はコア +3、戦力は +1
     bonus: { chance: 0.25 },         // ターンごとに、セル1つにつき 25% で資源 +1、別に 25% で戦力 +1
     heal: 1,                         // 回復で戻る体力
-    hp: 6,                              // セルの体力（0 になると壊れる）
+    hp: 6,                              // セルの体力の上限（0 になると壊れる）。コアは最初から6
+    expandHp: 3,                        // 拡張したばかりのセルの体力（回復で6まで戻せる）
     attack: { cost: 2, maxAimers: 6 },   // 攻撃：戦力2で、前のターンまでに狙っていた自分のセルの数 n（最大6）だけ体力を減らす
-    // 反撃：自分のセルを狙っている相手のセルが k マスなら、戦力5で、その全部の体力を k 減らす
-    counter: { cost: 5 },
+    // 反撃：自分のセルを狙っている相手のセルが k マスなら、戦力5で、その全部の体力を k（上限2）減らす
+    counter: { cost: 5, maxDamage: 2 },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -239,10 +240,10 @@
     return cellsOf(state, id).length * RULES.bonus.chance;
   }
 
-  // 反撃：そのセルを狙っている相手のセル（k マス）と、かかる戦力（いつも5）。減らす体力は k
+  // 反撃：そのセルを狙っている相手のセル（k マス）と、かかる戦力（いつも5）。減らす体力 dmg は k（上限2）
   function counterInfo(state, id, k) {
     const list = aimersOf(state, k).filter(c => c.owner !== id);
-    return { list, k: list.length, cost: RULES.counter.cost };
+    return { list, k: list.length, cost: RULES.counter.cost, dmg: Math.min(RULES.counter.maxDamage, list.length) };
   }
 
   // 今その行動ができるか（マスの指定がいらない判定）。できなければ理由を返す
@@ -338,7 +339,7 @@
     }
     if (action.type === 'expand') {
       p.resource -= RULES.cost.expand;
-      Object.assign(cell, { owner: id, hp: RULES.hp, aim: null, aimRound: -1 });
+      Object.assign(cell, { owner: id, hp: RULES.expandHp, aim: null, aimRound: -1 });
       addLog(state, `${p.name} がマス${cellLabel(cell)}に拡張`, 'expand');
     } else if (action.type === 'heal') {
       // 回復：資源 3 で体力 +1
@@ -355,11 +356,11 @@
       damage(state, p, cell, n);
     } else if (action.type === 'counter') {
       // 反撃：狙ってきている相手のセル k マスに、戦力 2k で、それぞれ体力 −k
-      const { list, k: n, cost } = counterInfo(state, id, k);
+      const { list, k: n, cost, dmg } = counterInfo(state, id, k);
       p.power -= cost;
-      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${n}マスの体力 −${n}）`, 'counter');
+      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${n}マスの体力 −${dmg}）`, 'counter');
       recordHit(state, id, list);
-      for (const c of list) damage(state, p, c, n);
+      for (const c of list) damage(state, p, c, dmg);
     }
     return { ok: true };
   }
