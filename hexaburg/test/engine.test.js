@@ -198,7 +198,7 @@ test('反撃：狙ってきている相手のセルが k マスなら、戦力5�
   assert.match(E.apply(g, b, { type: 'counter', q: tq, r: tr }).error, /戦力/);
   P(g, b).power = 20;
   assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);
-  assert.deepStrictEqual(mine.map(x => g.board[x].hp), mine.map(() => 6 - Math.min(3, k)));
+  assert.deepStrictEqual(mine.map(x => g.board[x].hp), mine.map(() => 6 - k));
   assert.strictEqual(P(g, b).power, 15);
   assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);                     // もう一度で全部壊れる（コアも）
   assert.strictEqual(P(g, a).alive, false);                                           // コアが壊れたので a は脱落
@@ -206,19 +206,6 @@ test('反撃：狙ってきている相手のセルが k マスなら、戦力5�
   assert.deepStrictEqual(g.winners, [b]);
   const [cq, cr] = E.parseKey(P(g, b).core);
   assert.strictEqual(E.apply(g, b, { type: 'counter', q: cq, r: cr }).ok, false);     // 狙われていないセルからは反撃できない
-});
-
-test('反撃で減らせる体力は、狙ってきているセルの数（上限3）。5マスに狙われていても、それぞれ −3', () => {
-  const { g, a, b } = rtGame();
-  const t = Object.assign(g.board['0,0'], { owner: b, hp: 6 });     // 盤面の中心に b のセル
-  const around = nb(g, 0, 0).map(([q, r]) => E.key(q, r)).slice(0, 5);
-  around.forEach(k => Object.assign(g.board[k], { owner: a, hp: 6, aim: '0,0', aimRound: 0 }));
-  const ci = E.counterInfo(g, b, '0,0');
-  assert.deepStrictEqual([ci.k, ci.dmg, ci.cost], [5, 3, 5]);
-  P(g, b).power = 5;
-  assert.ok(E.apply(g, b, { type: 'counter', q: t.q, r: t.r }).ok);
-  assert.deepStrictEqual(around.map(k => g.board[k].hp), [3, 3, 3, 3, 3]);
-  assert.strictEqual(P(g, b).power, 0);
 });
 
 test('おまけ：ターンの終わりに、セル1つにつき 25% で資源 +1、別に 25% で戦力 +1（両方のこともある）', () => {

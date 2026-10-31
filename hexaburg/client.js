@@ -879,7 +879,7 @@
       if (c.aim) list.push({ type: 'unaim', name: '狙いを外す', gain: '1ターンに1回', why: locked });
       if (c.hp < R.hp) list.push({ type: 'heal', cost: R.cost.heal, kind: 'resource', gain: `体力 +${R.heal}`, why: why('heal', '') });
       const ci = E.counterInfo(g, app.me, key);
-      if (ci.k) list.push({ type: 'counter', cost: ci.cost, kind: 'power', gain: `狙ってきている相手のセル ${ci.k} マスの体力をそれぞれ −${ci.dmg}${ci.k > ci.dmg ? `（上限${R.counter.maxDamage}）` : ''}`, why: why('counter', `戦力トークンが足りません（あと ${ci.cost - me.power}）`) });
+      if (ci.k) list.push({ type: 'counter', cost: ci.cost, kind: 'power', gain: `狙ってきている相手のセル ${ci.k} マスの体力をそれぞれ −${ci.k}`, why: why('counter', `戦力トークンが足りません（あと ${ci.cost - me.power}）`) });
     } else {
       const { n, cost, pending } = E.attackInfo(g, app.me, key);
       const wait = pending ? `・準備中の狙い ${pending}（次のターンから）` : '';

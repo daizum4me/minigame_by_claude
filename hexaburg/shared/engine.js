@@ -36,8 +36,8 @@
     heal: 1,                         // 回復で戻る体力
     hp: 6,                              // セルの体力（0 になると壊れる）
     attack: { cost: 2, maxAimers: 6 },   // 攻撃：戦力2で、前のターンまでに狙っていた自分のセルの数 n（最大6）だけ体力を減らす
-    // 反撃：自分のセルを狙っている相手のセルが k マスなら、戦力5で、その全部の体力を k（上限3）減らす
-    counter: { cost: 5, maxDamage: 3 },
+    // 反撃：自分のセルを狙っている相手のセルが k マスなら、戦力5で、その全部の体力を k 減らす
+    counter: { cost: 5 },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -239,10 +239,10 @@
     return cellsOf(state, id).length * RULES.bonus.chance;
   }
 
-  // 反撃：そのセルを狙っている相手のセル（k マス）と、かかる戦力（いつも5）。減らす体力 dmg は k（上限3）
+  // 反撃：そのセルを狙っている相手のセル（k マス）と、かかる戦力（いつも5）。減らす体力は k
   function counterInfo(state, id, k) {
     const list = aimersOf(state, k).filter(c => c.owner !== id);
-    return { list, k: list.length, cost: RULES.counter.cost, dmg: Math.min(RULES.counter.maxDamage, list.length) };
+    return { list, k: list.length, cost: RULES.counter.cost };
   }
 
   // 今その行動ができるか（マスの指定がいらない判定）。できなければ理由を返す
@@ -355,11 +355,11 @@
       damage(state, p, cell, n);
     } else if (action.type === 'counter') {
       // 反撃：狙ってきている相手のセル k マスに、戦力 2k で、それぞれ体力 −k
-      const { list, k: n, cost, dmg } = counterInfo(state, id, k);
+      const { list, k: n, cost } = counterInfo(state, id, k);
       p.power -= cost;
-      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${n}マスの体力 −${dmg}）`, 'counter');
+      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${n}マスの体力 −${n}）`, 'counter');
       recordHit(state, id, list);
-      for (const c of list) damage(state, p, c, dmg);
+      for (const c of list) damage(state, p, c, n);
     }
     return { ok: true };
   }

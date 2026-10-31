@@ -70,9 +70,9 @@
     // 壊せるセルがあるとき・コアを守るときは大きく。1マスだけなら割高なので控える
     for (const k of E.targets(g, id, 'counter')) {
       const c = g.board[k];
-      const { list, k: n, dmg } = E.counterInfo(g, id, k);
-      const kills = list.filter(x => x.hp <= dmg).length;
-      let s = n * dmg * 0.9 + kills * 2.5 + (c.core ? 3 : 0) - 3;
+      const { list, k: n } = E.counterInfo(g, id, k);
+      const kills = list.filter(x => x.hp <= n).length;
+      let s = n * n * 0.9 + kills * 2.5 + (c.core ? 3 : 0) - 3;
       if (n === 1 && !kills && !c.core) s -= 3;
       out.push({ s: s + noise(), a: { type: 'counter', q: c.q, r: c.r } });
     }
