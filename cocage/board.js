@@ -224,16 +224,12 @@
       ctx.closePath();
     }
 
-    // 数字（明るい色・暗い縁つき）
+    // 数字（自分の明るい色）
     scoreText(ctx, text, x, y, color, size, alpha) {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.font = `800 ${Math.max(7, size)}px ${FONT}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(2, size * 0.28);
-      ctx.strokeStyle = 'rgba(17,17,16,0.85)';
-      ctx.strokeText(text, x, y);
       ctx.fillStyle = lighten(color, 0.55);
       ctx.fillText(text, x, y);
       ctx.restore();
@@ -344,7 +340,7 @@
             ctx.stroke();
             ctx.globalAlpha = 1;
           }
-          // 点数を稼いでいる葉すべてに、点数（自分の明るい色。輪の上でも読めるように縁をつける）
+          // 点数を稼いでいる葉すべてに、点数（自分の明るい色）
           if (points[ck] > 0) this.scoreText(ctx, String(Math.round(points[ck] * 10) / 10), x, y + S * 0.03, color, S * 0.4, 1);
         }
 

@@ -2,7 +2,7 @@
   "name": "cocage",
   "version": "1.0.0",
   "private": true,
-  "description": "Cocage（木陰）— 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム（PeerJS による P2P 対戦・CPU 対戦あり）",
+  "description": "Cocage— 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム（PeerJS による P2P 対戦・CPU 対戦あり）",
   "scripts": {
     "test": "node --test test/*.test.js"
   },
