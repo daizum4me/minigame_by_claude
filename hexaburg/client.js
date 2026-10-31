@@ -571,7 +571,7 @@
 
   let view = null;
   function boardView() {
-    if (!view) view = new window.HexBoardView($('#board'), { onSelect: onCellSelect, onHover: onCellHover, onView: positionTip });
+    if (!view) view = new window.HexBoardView($('#board'), { onSelect: onCellSelect, onAim, onHover: onCellHover, onView: positionTip });
     return view;
   }
 
@@ -586,13 +586,15 @@
     const cpuOf = id => { const p = room.players.find(x => x.id === id); return p && p.cpu ? p : null; };   // CPU ならその人
 
     // 何か行動できるマスを薄く光らせる
-    // 狙うセルを選んでいるところなら、狙える相手のセルを光らせる。ふだんは拡張できるマス
-    if (app.aimFrom && !(g.board[app.aimFrom] && g.board[app.aimFrom].owner === app.me && E.canReaim(g, g.board[app.aimFrom]))) app.aimFrom = null;
-    const targets = !canPlay(g) ? [] : app.aimFrom ? E.foeNeighbors(g, g.board[app.aimFrom]).map(c => E.key(c.q, c.r)) : E.targets(g, app.me, 'expand');
+    // 拡張できるマスを薄く光らせる
+    const targets = canPlay(g) ? E.targets(g, app.me, 'expand') : [];
+    // 狙い：このターンにまだ狙いを決めていない自分のセルの中心から、隣の相手のセルへドラッグする
+    const canAim = k => canPlay(g) && !app.finale && E.targets(g, app.me, 'aim').includes(k);
+    const aimTargets = k => E.foeNeighbors(g, g.board[k]).map(c => E.key(c.q, c.r)).filter(t => t !== g.board[k].aim);
 
     const colors = {};
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
-    boardView().setData({ game: g, colors, patterns: patternsOn(), targets: app.finale ? [] : targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, me: app.me, aimFrom: app.aimFrom });
+    boardView().setData({ game: g, colors, patterns: patternsOn(), targets: app.finale ? [] : targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, me: app.me, canAim, aimTargets });
 
     // 変化したマス（拡張・脱落）を一瞬光らせる
     const cells = {};
@@ -632,8 +634,7 @@
 
 
     $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : app.aimFrom ? '狙う相手のセル（光っているマス）を選んでください。Esc でやめる'
-      : 'マスを選ぶと行動のボタンが出ます。自分のセル→「狙う」→相手のセル、で狙えます';
+      : 'マスを選ぶと行動のボタンが出ます。自分のセルの中心から、隣の相手のセルへドラッグすると狙えます';
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
@@ -834,22 +835,14 @@
 
   // マスを選ぶ：そのマスの情報と、できる行動のボタンをツールチップに出す
   function onCellSelect(key) {
-    // 狙うセルを選んでいるところ：狙える相手のセルなら狙う。ほかを選んだら取りやめ
-    if (app.aimFrom) {
-      const g = app.room && app.room.game, from = app.aimFrom;
-      app.aimFrom = null;
-      if (g && key && E.foeNeighbors(g, g.board[from]).some(c => E.key(c.q, c.r) === key)) {
-        const [q, r] = E.parseKey(from);
-        send({ type: 'act', action: { type: 'aim', q, r, to: key } });
-        showTip({ key: from, pinned: true });
-      } else {
-        toast('狙うのをやめました', 'info');
-        render();
-      }
-      return;
-    }
     if (!key || (app.tip && app.tip.pinned && app.tip.key === key)) { hideTip(); return; }
     showTip({ key, pinned: true });
+  }
+
+  // ドラッグで狙った：狙いを送る
+  function onAim(from, to) {
+    const [q, r] = E.parseKey(from);
+    send({ type: 'act', action: { type: 'aim', q, r, to } });
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
@@ -871,7 +864,6 @@
     } else if (c.owner === app.me) {
       const foes = E.foeNeighbors(g, c);
       const locked = !E.canReaim(g, c) ? 'このセルの狙いは、このターンはもう変えられません' : '';
-      if (foes.length || c.aim) list.push({ type: 'aim', name: c.aim ? '狙いを変える' : '狙う', gain: '隣の相手のセルを選ぶ（行動力なし・1ターンに1回）', why: locked || (foes.length ? '' : '隣に相手のセルがありません') });
       if (c.aim) list.push({ type: 'unaim', name: '狙いを外す', gain: '1ターンに1回', why: locked });
       const aimers = E.aimersOf(g, key).filter(x => x.owner !== app.me);
       if (aimers.length) list.push({ type: 'counter', cost: R.counter.cost, kind: 'power', gain: `狙っている相手のセル ${aimers.length} マスの体力 −${R.counter.damage}（行動力1）`, why: why('counter', '') });
@@ -906,8 +898,11 @@
       }
     }
     const el = $('#tooltip');
+    // 自分のセルなら、狙い方の案内（中心からドラッグ）
+    const aimNote = c.owner === app.me && g.players.some(p => p.id === app.me && p.alive) && E.foeNeighbors(g, c).length
+      ? `<div class="tt-eff">${E.canReaim(g, c) ? `中心から隣の相手のセルへドラッグして${c.aim ? '狙いを変える' : '狙う'}（1ターンに1回・行動力なし）` : 'このセルの狙いは、このターンはもう変えられません'}</div>` : '';
     const html = `<div class="tt-head">${state}<span class="muted">(${c.q},${c.r})</span></div>
-      <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>${app.aimFrom === tip.key ? '<p class="tt-why">狙う相手のセル（光っているマス）を選んでください</p>' : ''}${acts}`;
+      <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>${aimNote}${acts}`;
     // 中身が同じなら作り直さない（数秒ごとに画面が描き直されるので、操作が途切れないように）
     if (el._html !== html) { el.innerHTML = html; el._html = html; }
     el.classList.toggle('pinned', !!tip.pinned);
@@ -1043,8 +1038,6 @@
       if (b.disabled || !app.tip) return;
       const type = b.dataset.cellAct;
       const [q, r] = E.parseKey(app.tip.key);
-      // 狙う：このあと盤面で、狙う相手のセルを選ぶ
-      if (type === 'aim') { app.aimFrom = app.tip.key; toast('狙う相手のセルを選んでください（Esc でやめる）', 'info'); render(); return; }
       send({ type: 'act', action: { type, q, r } });
       // 行動のあとも同じマスを選んだまま（続けて強化・攻撃できるように）
     };
@@ -1082,7 +1075,6 @@
     });
     window.addEventListener('resize', placeChat);
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && app.aimFrom) { app.aimFrom = null; render(); return; }
       if (e.key === 'Escape' && app.tip) hideTip();
     });
 

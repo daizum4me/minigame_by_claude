@@ -4,7 +4,8 @@
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
  * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, scale, byLongPress), onView() })
- * view.setData({ game, colors, patterns, targets, selected, me, aimFrom })
+ * view.setData({ game, colors, patterns, targets, selected, me, canAim(k), aimTargets(k) })
+ * 狙い：自分のセルの中心付近から、隣の相手のセルまでドラッグする（handlers.onAim(from, to)）
  */
 (function () {
   'use strict';
@@ -192,6 +193,9 @@
           this.dragging = false;
           this.longPressed = false;
           clearTimeout(this.lpTimer);
+          // 狙えるセルの中心付近を押したら、狙いのドラッグ（盤面は動かさない）
+          const from = this.aimStartAt(x, y);
+          if (from) { this.pointers.get(e.pointerId).aim = { from, active: false }; return; }
           if (e.pointerType !== 'mouse') {
             this.lpTimer = setTimeout(() => {
               if (this.dragging || this.pointers.size !== 1) return;
@@ -201,7 +205,9 @@
             }, LONG_PRESS_MS);
           }
         } else {
-          // 2本指になったらピンチ
+          // 2本指になったらピンチ（狙いのドラッグは取りやめ）
+          for (const q of this.pointers.values()) delete q.aim;
+          this.aimDrag = null;
           this.dragging = true;
           clearTimeout(this.lpTimer);
           this.pinch = this.pinchInfo();
@@ -212,11 +218,25 @@
         const [x, y] = pos(e);
         const p = this.pointers.get(e.pointerId);
         if (!p) {
-          if (e.pointerType === 'mouse') this.setHover(this.keyAt(x, y), false);
+          if (e.pointerType === 'mouse') {
+            this.setHover(this.keyAt(x, y), false);
+            c.style.cursor = this.aimStartAt(x, y) ? 'grab' : '';
+          }
           return;
         }
         const dx = x - p.x, dy = y - p.y;
         p.x = x; p.y = y;
+        if (p.aim) {
+          if (!p.aim.active && Math.hypot(x - p.sx, y - p.sy) >= DRAG_PX) { p.aim.active = true; this.setHover(null, false); }
+          if (p.aim.active) {
+            const k = this.keyAt(x, y);
+            const ok = k && this.data.aimTargets(p.aim.from).includes(k);
+            this.aimDrag = { from: p.aim.from, x, y, to: ok ? k : null };
+            c.style.cursor = 'grabbing';
+            this.draw();
+          }
+          return;
+        }
         if (this.pointers.size >= 2) {
           const now = this.pinchInfo();
           if (this.pinch && this.pinch.d > 0) {
@@ -248,6 +268,15 @@
         clearTimeout(this.lpTimer);
         if (this.pointers.size === 1) { this.pinch = null; return; }
         if (this.pointers.size > 0) { this.pinch = this.pinchInfo(); return; }
+        // 狙いのドラッグ：狙える相手のセルの上で離したら狙う。それ以外は取りやめ
+        if (p.aim && p.aim.active) {
+          const to = this.aimDrag && this.aimDrag.to;
+          this.aimDrag = null;
+          c.style.cursor = '';
+          this.draw();
+          if (to && e.type === 'pointerup' && this.h.onAim) this.h.onAim(p.aim.from, to);
+          return;
+        }
         const click = e.type === 'pointerup' && !this.dragging && !this.longPressed;
         if (click) {
           const k = this.keyAt(p.x, p.y);
@@ -259,6 +288,16 @@
       c.addEventListener('pointerup', end);
       c.addEventListener('pointercancel', end);
       c.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !this.pointers.size) this.setHover(null, false); });
+    }
+
+    // 狙いのドラッグを始められる場所か：狙えるセルの中心付近（マスの大きさの 55% 以内）。始められるならそのマスのキー
+    aimStartAt(x, y) {
+      const d = this.data;
+      if (!d || !d.canAim) return null;
+      const k = this.keyAt(x, y);
+      if (!k || !d.canAim(k)) return null;
+      const [cx, cy] = this.screenOf(k);
+      return Math.hypot(x - cx, y - cy) <= this.scale * 0.55 ? k : null;
     }
 
     pinchInfo() {
@@ -283,7 +322,7 @@
       if (this.anim) return;
       const loop = () => {
         const d = this.data;
-        const need = d && (d.targets.length || this.flashes.size);
+        const need = d && (d.targets.length || this.flashes.size || this.aimDrag);
         if (!need) { this.anim = 0; this.draw(); return; }
         this.draw();
         this.anim = requestAnimationFrame(loop);
@@ -356,39 +395,30 @@
           ctx.stroke();
         }
       }
-      // 狙い：狙っているセルから狙われているセルへの矢印（全員に見える。狙っている人の色）
-      ctx.save();
-      ctx.lineCap = 'round';
+      // 狙い：狙っているセルから狙われているセルへの、弧を描く矢印（全員に見える。狙っている人の色）
       for (const [, c] of cells) {
         if (!c.owner || !c.aim || !g.board[c.aim]) continue;
         const col = d.colors[c.owner];
         if (!col) continue;
+        if (this.aimDrag && this.aimDrag.from === E.key(c.q, c.r)) continue;   // ドラッグで狙い直しているあいだは、前の矢印を出さない
         const [x1, y1] = this.screenOf(E.key(c.q, c.r)), [x2, y2] = this.screenOf(c.aim);
-        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-        // 向かい合って狙い合っても重ならないよう、進む向きの右側に少しずらす
-        const ox = -uy * s * 0.14, oy = ux * s * 0.14;
-        const sx = x1 + ux * s * 0.3 + ox, sy = y1 + uy * s * 0.3 + oy, ex = x2 - ux * s * 0.42 + ox, ey = y2 - uy * s * 0.42 + oy;
-        const head = Math.max(5, s * 0.26);
-        ctx.strokeStyle = col.light;
-        ctx.fillStyle = col.light;
-        ctx.lineWidth = Math.max(2, s * 0.09);
-        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex - ux * head * 0.6, ey - uy * head * 0.6); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - ux * head - uy * head * 0.6, ey - uy * head + ux * head * 0.6);
-        ctx.lineTo(ex - ux * head + uy * head * 0.6, ey - uy * head - ux * head * 0.6);
-        ctx.closePath(); ctx.fill();
+        this.arcArrow(ctx, x1, y1, x2, y2, col.light, s, 0.42);
       }
-      ctx.restore();
-      // 狙うセルを選んでいるところ：狙いのもとのセルを点線で囲む
-      if (d.aimFrom && g.board[d.aimFrom]) {
-        const [x, y] = this.screenOf(d.aimFrom);
-        hexPath(ctx, x, y, s * 0.99);
-        ctx.setLineDash([s * 0.12, s * 0.08]);
-        ctx.lineWidth = Math.max(2, s * 0.08);
-        ctx.strokeStyle = `rgba(255,211,107,${0.6 + 0.4 * pulse})`;
-        ctx.stroke();
-        ctx.setLineDash([]);
+      // ドラッグで狙っているところ：狙えるセルを光らせ、指の先まで矢印を伸ばす（狙えるセルの上ならそのセルへ）
+      if (this.aimDrag) {
+        const a = this.aimDrag;
+        for (const k of d.aimTargets(a.from)) {
+          const [x, y] = this.screenOf(k);
+          hexPath(ctx, x, y, s * 0.86);
+          ctx.lineWidth = Math.max(2, s * 0.08);
+          ctx.strokeStyle = k === a.to ? 'rgba(255,211,107,0.95)' : `rgba(255,211,107,${0.3 + 0.3 * pulse})`;
+          ctx.setLineDash([]);
+          ctx.stroke();
+        }
+        const [x1, y1] = this.screenOf(a.from);
+        const [x2, y2] = a.to ? this.screenOf(a.to) : [a.x, a.y];
+        const col = d.colors[d.me] || { light: '#FFFFFF' };
+        if (Math.hypot(x2 - x1, y2 - y1) > s * 0.4) this.arcArrow(ctx, x1, y1, x2, y2, col.light, s, a.to ? 0.42 : 0);
       }
       // 終了時の数え上げで数えたマス：明るい色で塗る
       if (this.counted) for (const [k, color] of this.counted) {
@@ -446,6 +476,34 @@
         ctx.stroke();
       }
       if (this.h.onView) this.h.onView();
+    }
+
+    // 弧を描く矢印（⤵ のように、進む向きの右側へふくらむ）。endGap：終わりを相手のマスの中心から手前に止める割合
+    arcArrow(ctx, x1, y1, x2, y2, color, s, endGap) {
+      const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      const sx = x1 + ux * s * 0.22, sy = y1 + uy * s * 0.22;
+      const ex = x2 - ux * s * endGap, ey = y2 - uy * s * endGap;
+      // 制御点：まん中から右へ（向かい合って狙い合っても、反対側にふくらむので重ならない）
+      const bend = Math.min(len * 0.45, s * 0.9);
+      const cx = (sx + ex) / 2 - uy * bend, cy = (sy + ey) / 2 + ux * bend;
+      const tx = ex - cx, ty = ey - cy, tl = Math.hypot(tx, ty) || 1, vx = tx / tl, vy = ty / tl;   // 終わりの向き
+      const head = Math.max(6, s * 0.28);
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = Math.max(2, s * 0.09);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(cx, cy, ex - vx * head * 0.6, ey - vy * head * 0.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - vx * head - vy * head * 0.6, ey - vy * head + vx * head * 0.6);
+      ctx.lineTo(ex - vx * head + vy * head * 0.6, ey - vy * head - vx * head * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     }
 
     // 体力の帯：縁と内側（0.71）のあいだの台形を、上の頂点から時計回りに n 本ぶん塗る
