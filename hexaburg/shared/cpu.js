@@ -2,7 +2,6 @@
  * ヘキサブルグ — CPU の考え方
  * 人間と同じ公開情報（盤面・全員の資源）だけで、次の1手を決める。
  * 部屋が CPU ごとに1.5〜3.5秒のばらつきのある間隔で呼ぶ。拡張・狙い・攻撃・反撃・回復に点数を付けて一番高いものを選び、
- * 行動力が足りなければ資源を生産にまわす。
  * よい行動がなければ何もしない（待つ）。
  *
  * decideRealtime(state, id, rng, level) → action（engine.apply に渡せる形）か null
@@ -47,7 +46,7 @@
     const me = playerById(g, id);
     const noise = () => (rng() - 0.5) * lv.noise;
     const out = [];
-    // 狙い：まだ何も狙っていないセルから、隣の相手のセルを狙う（行動力・戦力は使わない）。
+    // 狙い：まだ何も狙っていないセルから、隣の相手のセルを狙う（トークンは使わない。攻撃に使えるのは次のターンから）。
     // 自分がすでに狙っているセル（集中させると攻撃が安く強くなる）・体力の少ないセル・コアを選ぶ
     for (const k of E.targets(g, id, 'aim')) {
       const c = g.board[k];
@@ -58,7 +57,7 @@
       }).sort((a, b) => b.v - a.v)[0];
       out.push({ s: 4 + best.v * 0.3 + noise(), a: { type: 'aim', q: c.q, r: c.r, to: best.tk } });
     }
-    // 攻撃：戦力2で、狙っている自分のセルの数だけ削る。多く狙うほど強い。壊せるなら大きく、コアなら最優先
+    // 攻撃：戦力2で、前のターンまでに狙っていた自分のセルの数だけ削る。多く狙うほど強い。壊せるなら大きく、コアなら最優先
     for (const k of E.targets(g, id, 'attack')) {
       const t = g.board[k];
       const { n, cost } = E.attackInfo(g, id, k);
@@ -67,14 +66,14 @@
       if (me.power - cost < 5 && mostThreat(g, id) >= 2) s -= 2;   // 反撃する分の戦力は残したい
       out.push({ s: s + noise(), a: { type: 'attack', q: t.q, r: t.r } });
     }
-    // 反撃：狙ってきている相手のセルが k マスなら、戦力 2k で全部に −k。多く狙われるほど一度に大きく削れる。
-    // 壊せるセルがあるとき・コアを守るときは大きく
+    // 反撃：狙ってきている相手のセルが k マスなら、戦力5で全部に −k。多く狙われるほど一度に大きく削れる。
+    // 壊せるセルがあるとき・コアを守るときは大きく。1マスだけなら割高なので控える
     for (const k of E.targets(g, id, 'counter')) {
       const c = g.board[k];
       const { list, k: n } = E.counterInfo(g, id, k);
       const kills = list.filter(x => x.hp <= n).length;
-      let s = n * 1.6 + kills * 2.5 + (c.core ? 3 : 0) - 3;
-      if (n === 1 && !kills && !c.core) s -= 2;
+      let s = n * n * 0.9 + kills * 2.5 + (c.core ? 3 : 0) - 3;
+      if (n === 1 && !kills && !c.core) s -= 3;
       out.push({ s: s + noise(), a: { type: 'counter', q: c.q, r: c.r } });
     }
     // 回復：資源 3 で体力 +1。狙われていて体力の減ったセル、とくにコアを先に。狙われていないセルは後回し
@@ -101,16 +100,7 @@
     const me = playerById(g, id);
     if (!me || !me.alive || g.over) return null;
     const best = pick(g, id, rng, lv);
-    if (best) return best.a;
-    // 行動力がないときは、資源が余っていれば生産（資源5 → 行動力1）して、やりたいことをする
-    if ((me.ap || 0) < 1 && !E.actionBlocked(g, id, 'produce')) {
-      const P = E.RULES.produce;
-      me.ap += P.ap; me.resource -= P.resource;
-      const next = pick(g, id, rng, lv);
-      me.ap -= P.ap; me.resource += P.resource;
-      if (next && next.a.type !== 'aim' && next.a.type !== 'unaim' && next.s > 3) return { type: 'produce' };
-    }
-    return null;
+    return best ? best.a : null;
   }
 
   function pick(g, id, rng, lv) {
@@ -118,15 +108,11 @@
     return best && best.s > 0 ? best : null;
   }
 
-  // 行動力が満タンだったとしても、もうやりたい行動がないか（ないなら行動完了にする）
+  // もうやりたい行動がないか（ないなら行動完了にする）
   function wantsMore(g, id, level) {
     const me = playerById(g, id);
     if (!me || !me.alive || g.over) return false;
-    const ap = me.ap;
-    me.ap = E.RULES.rt.apMax;
-    const a = decideRealtime(g, id, () => 0.5, level);   // ゆらぎなしで考える
-    me.ap = ap;
-    return !!a;
+    return !!decideRealtime(g, id, () => 0.5, level);   // ゆらぎなしで考える
   }
 
   return { decideRealtime, wantsMore, LEVELS, LEVEL_NAMES };

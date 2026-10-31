@@ -405,7 +405,8 @@
         const [x1, y1] = this.screenOf(E.key(c.q, c.r)), [x2, y2] = this.screenOf(c.aim);
         // カーソルを乗せたセルに向いている矢印は、光る点線が流れるように動かして目立たせる
         const hot = this.hoverKey && c.aim === this.hoverKey;
-        this.arcArrow(ctx, x1, y1, x2, y2, col.light, s, 0.42, hot ? t : null);
+        // 決めたターンのうちは「準備中」（攻撃にはまだ使えない）：うすい細かな点線
+        this.arcArrow(ctx, x1, y1, x2, y2, col.light, s, 0.42, hot ? t : null, !E.isArmed(g, c));
       }
       // ドラッグで狙っているところ：狙えるセルを光らせ、指の先まで矢印を伸ばす（狙えるセルの上ならそのセルへ）
       if (this.aimDrag) {
@@ -483,7 +484,7 @@
 
     // 弧を描く矢印（⤵ のように、進む向きの右側へふくらむ）。endGap：終わりを相手のマスの中心から手前に止める割合
     // hotT：時刻（ms）を渡すと、太く光らせ、点線を矢印の向きへ流す
-    arcArrow(ctx, x1, y1, x2, y2, color, s, endGap, hotT) {
+    arcArrow(ctx, x1, y1, x2, y2, color, s, endGap, hotT, pending) {
       const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const sx = x1 + ux * s * 0.22, sy = y1 + uy * s * 0.22;
       const ex = x2 - ux * s * endGap, ey = y2 - uy * s * endGap;
@@ -497,6 +498,10 @@
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.lineWidth = Math.max(2, s * 0.09);
+      if (pending) {
+        ctx.globalAlpha = hotT != null ? 0.75 : 0.55;
+        ctx.setLineDash([s * 0.09, s * 0.11]);
+      }
       if (hotT != null) {
         ctx.lineWidth = Math.max(3, s * 0.14);
         ctx.shadowColor = color;

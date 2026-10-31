@@ -608,26 +608,13 @@
     $('#hud-round').textContent = `${g.round} / ${g.rounds}`;
     $('#hud-over').hidden = !g.over;
 
-    // 自分：行動力は丸で（光らせない）、次のターンまではバーで
+    // 自分：次のターンまではバーで
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
-    const max = R.rt.apMax;
-    // 次に回復する丸は、回復までの進み具合だけ塗る（tickTimers で動かす）
-    const apDots = n => Array.from({ length: max }, (_, i) => `<span class="ap-dot${i < n ? ' on' : i === n ? ' next' : ''}"></span>`).join('');
     const meAct = $('#me-actions');
-    const actHtml = !me ? '' : !me.alive ? '脱落' : `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${max}）">行動力 ${apDots(me.ap || 0)}</span>`;
+    const actHtml = me && !me.alive ? '脱落' : '';
     if (meAct._html !== actHtml) { meAct.innerHTML = actHtml; meAct._html = actHtml; }
     $('#dock-tickbar').hidden = g.over;
-    // 生産：資源5を行動力1に変える（行動力は使わない）
-    const prodBtn = $('#btn-produce');
-    prodBtn.hidden = !me || !me.alive || g.over;
-    if (!prodBtn.hidden) {
-      const why = E.actionBlocked(g, app.me, 'produce');
-      const html = `生産<small>${TOKEN_SVG.resource}${R.produce.resource} → 行動力 +${R.produce.ap}</small>`;
-      if (prodBtn._html !== html) { prodBtn.innerHTML = html; prodBtn._html = html; }
-      prodBtn.disabled = !!why;
-      prodBtn.title = why || `資源${R.produce.resource}を行動力${R.produce.ap}に変える（行動力は使わない）`;
-    }
     // 行動完了：全員（切断中の人は押したものとみなす。CPU はやることがなくなると押す）がそろうと、待たずに次のターンへ
     const readyBtn = $('#btn-ready');
     readyBtn.hidden = !me || !me.alive || g.over;
@@ -645,7 +632,7 @@
 
 
     $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : 'マスを選ぶと行動のボタンが出ます。自分のセルの中心から、隣の相手のセルへドラッグすると狙えます';
+      : 'マスを選ぶと行動のボタンが出ます。自分のセルの中心から、隣の相手のセルへドラッグすると狙えます（攻撃に使えるのは次のターンから）';
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
@@ -680,6 +667,20 @@
     } else {
       playSounds(g, fresh);
     }
+    // 自分のセルが新しく狙われたら、そのセルを橙に光らせ、お知らせと音（攻撃に使われるのは次のターンから）
+    const aimedNow = new Set(Object.entries(g.board).filter(([, c]) => c.owner && c.owner !== app.me && c.aim && g.board[c.aim] && g.board[c.aim].owner === app.me).map(([k, c]) => `${k}>${c.aim}`));
+    if (app.prevAimed && me && me.alive && !g.over) {
+      const fresh2 = [...aimedNow].filter(x => !app.prevAimed.has(x));
+      if (fresh2.length) {
+        const keys = fresh2.map(x => x.split('>'));
+        view.flash([...new Set(keys.map(([, t]) => t))], '255,170,60', 1800);
+        view.flash(keys.map(([f]) => f), '255,170,60', 900);
+        const by = [...new Set(keys.map(([f]) => (pl(g.board[f].owner) || {}).name))].join('・');
+        toast(`⚠ ${by} に狙われました（次のターンから攻撃されます）`, 'warn');
+        if (!mine.length) window.HexSound.play('aimed');
+      }
+    }
+    app.prevAimed = aimedNow;
     // ターンが始まったら音で知らせる（ほかの音と重なってもよい）
     if (fresh.some(l => l.tone === 'round')) window.HexSound.play('round');
     // ターンの終わり：資源が増えたマスに数字を浮かべ、下のバーの数字を動かす
@@ -749,10 +750,10 @@
   function playSounds(g, fresh) {
     if (!fresh.length) return;
     // 勝敗の音は、数え上げの演出の最後に鳴らす
-    const order = ['out', 'expand', 'heal', 'produce'];
+    const order = ['out', 'expand', 'heal'];
     const found = new Set(fresh.map(l => l.tone));
     const name = order.find(n => found.has(n));
-    if (name) window.HexSound.play(name === 'produce' ? 'heal' : name);
+    if (name) window.HexSound.play(name);
   }
 
   // ゲーム開始前の 3・2・1 のカウントダウン。数が変わるたびに音を鳴らし、0 で「スタート！」
@@ -780,13 +781,6 @@
     const bar = $('#dock-tickbar');
     bar.classList.toggle('low', left <= 3000);
     bar.firstElementChild.style.width = `${Math.min(100, left / total * 100)}%`;
-    // 行動力：次の回復までの進み具合
-    const next = document.querySelector('#me-actions .ap-dot.next');
-    if (next) {
-      const step = R.rt.apSeconds * 1000;
-      const done = Math.max(0, Math.min(1, 1 - Math.max(0, room.regenLeftMs - pass) / step));
-      next.style.setProperty('--p', `${Math.round(done * 100)}%`);
-    }
   }
 
   // ---------- 終了時の数え上げ ----------
@@ -877,19 +871,21 @@
     const list = [];
     const why = (type, extra) => E.targets(g, app.me, type).includes(key) ? '' : (E.actionBlocked(g, app.me, type) || extra);
     if (!c.owner) {
-      list.push({ type: 'expand', cost: R.cost.expand, kind: 'resource', gain: '自分のセルにする（行動力1）',
+      list.push({ type: 'expand', cost: R.cost.expand, kind: 'resource', gain: '自分のセルにする',
         why: E.targets(g, app.me, 'expand').includes(key) ? '' : E.actionBlocked(g, app.me, 'expand') || '自分のセルに隣接していません' });
     } else if (c.owner === app.me) {
       const foes = E.foeNeighbors(g, c);
       const locked = !E.canReaim(g, c) ? 'このセルの狙いは、このターンはもう変えられません' : '';
       if (c.aim) list.push({ type: 'unaim', name: '狙いを外す', gain: '1ターンに1回', why: locked });
-      if (c.hp < R.hp) list.push({ type: 'heal', cost: R.cost.heal, kind: 'resource', gain: `体力 +${R.heal}（行動力1）`, why: why('heal', '') });
+      if (c.hp < R.hp) list.push({ type: 'heal', cost: R.cost.heal, kind: 'resource', gain: `体力 +${R.heal}`, why: why('heal', '') });
       const ci = E.counterInfo(g, app.me, key);
-      if (ci.k) list.push({ type: 'counter', cost: ci.cost, kind: 'power', gain: `狙ってきている相手のセル ${ci.k} マスの体力をそれぞれ −${ci.k}（行動力1）`, why: why('counter', `戦力トークンが足りません（あと ${ci.cost - me.power}）`) });
+      if (ci.k) list.push({ type: 'counter', cost: ci.cost, kind: 'power', gain: `狙ってきている相手のセル ${ci.k} マスの体力をそれぞれ −${ci.k}`, why: why('counter', `戦力トークンが足りません（あと ${ci.cost - me.power}）`) });
     } else {
-      const { n, cost } = E.attackInfo(g, app.me, key);
-      list.push(n ? { type: 'attack', cost, kind: 'power', gain: `体力 −${n}（狙っている自分のセル ${n}・行動力1）`, why: why('attack', `戦力トークンが足りません（あと ${cost - me.power}）`) }
-        : { type: 'attack', cost: R.attack.cost, kind: 'power', gain: '自分のセルから狙うと攻撃できる', why: '隣の自分のセルから、まずこのセルを狙ってください' });
+      const { n, cost, pending } = E.attackInfo(g, app.me, key);
+      const wait = pending ? `・準備中の狙い ${pending}（次のターンから）` : '';
+      list.push(n ? { type: 'attack', cost, kind: 'power', gain: `体力 −${n}（狙っている自分のセル ${n}${wait}）`, why: why('attack', `戦力トークンが足りません（あと ${cost - me.power}）`) }
+        : pending ? { type: 'attack', cost, kind: 'power', gain: `準備中の狙い ${pending}`, why: '狙いは、決めた次のターンから攻撃に使えます' }
+        : { type: 'attack', cost, kind: 'power', gain: '自分のセルから狙うと攻撃できる', why: '隣の自分のセルから、まずこのセルを狙ってください（次のターンから攻撃に使える）' });
     }
     return { list };
   }
@@ -919,7 +915,7 @@
     const el = $('#tooltip');
     // 自分のセルなら、狙い方の案内（中心からドラッグ）
     const aimNote = c.owner === app.me && g.players.some(p => p.id === app.me && p.alive) && E.foeNeighbors(g, c).length
-      ? `<div class="tt-eff">${E.canReaim(g, c) ? `中心から隣の相手のセルへドラッグして${c.aim ? '狙いを変える' : '狙う'}（1ターンに1回・行動力なし）` : 'このセルの狙いは、このターンはもう変えられません'}</div>` : '';
+      ? `<div class="tt-eff">${E.canReaim(g, c) ? `中心から隣の相手のセルへドラッグして${c.aim ? '狙いを変える' : '狙う'}（1ターンに1回・攻撃に使えるのは次のターンから）` : 'このセルの狙いは、このターンはもう変えられません'}</div>` : '';
     const html = `<div class="tt-head">${state}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>${aimNote}${acts}`;
     // 中身が同じなら作り直さない（数秒ごとに画面が描き直されるので、操作が途切れないように）
@@ -1043,7 +1039,6 @@
     $('#color-pick').onclick = e => { const b = e.target.closest('[data-color]'); if (b && !b.disabled) send({ type: 'color', color: b.dataset.color }); };
 
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
-    $('#btn-produce').onclick = () => send({ type: 'act', action: { type: 'produce' } });
     $('#btn-ready').onclick = () => { app.readyClickAt = Date.now(); send({ type: 'act', action: { type: 'ready' } }); };
     $('#set-ticks').onchange = e => send({ type: 'settings', ticks: Number(e.target.value) });
     document.querySelectorAll('#set-ticks option').forEach(o => { const n = Number(o.value); if (n) o.textContent = `${n}ターン（${ticksTime(n)}）`; });

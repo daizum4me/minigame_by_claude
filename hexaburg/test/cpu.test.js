@@ -24,7 +24,6 @@ function play(g, rng, levelOf) {
         const r = E.apply(g, p.id, a);
         assert.ok(r.ok, `${JSON.stringify(a)} → ${r.error}`);
       }
-      if (step % 2 === 0) E.rtRegen(g);
     }
     E.rtTick(g, rng);
   }

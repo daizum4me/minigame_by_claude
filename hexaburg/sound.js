@@ -90,6 +90,10 @@
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
     },
+    aimed() {       // 自分のセルが狙われた：ぴぴっ（注意をひく短い2音）
+      tone({ freq: 988, dur: 0.09, vol: 0.1, type: 'square' });
+      tone({ freq: 988, t: 0.13, dur: 0.12, vol: 0.1, type: 'square' });
+    },
     heal() {        // 回復：きらん（上がる2音）
       tone({ freq: 880, dur: 0.12, vol: 0.1, type: 'sine' });
       tone({ freq: 1320, t: 0.08, dur: 0.22, vol: 0.09, type: 'sine' });

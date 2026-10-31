@@ -145,9 +145,9 @@ test('行動はホストが検証して全員に配信。だれでもいつで�
   const { room, inbox, last, h, g } = startTwo();
   const exp = id => { const [q, r] = freeNext(room, id); room.handle(id, { type: 'act', action: { type: 'expand', q, r } }); };
   exp(g);
-  assert.strictEqual(room.game.players.find(p => p.id === g).resource, 9);
+  assert.strictEqual(room.game.players.find(p => p.id === g).resource, 2);
   exp(h);
-  assert.strictEqual(last(g).room.game.players.find(p => p.id === h).resource, 9);
+  assert.strictEqual(last(g).room.game.players.find(p => p.id === h).resource, 2);
   room.handle(h, { type: 'act', action: { type: 'endTurn' } });
   assert.strictEqual(inbox[h].at(-1).type, 'error');
   assert.ok(!('turnLeftMs' in last(h).room));
@@ -168,13 +168,9 @@ test('30秒ごとにターンが進み、5秒ごとに行動力が回復。タ�
   const gm = room.game;
   assert.strictEqual(gm.rounds, 12);
   assert.strictEqual(last(h).room.tickLeftMs, 30000);
-  const me = gm.players.find(p => p.id === h);
-  me.ap = 0;
-  fire(5000);
-  assert.strictEqual(me.ap, 1);
   fire(30000);
   assert.strictEqual(gm.round, 1);
-  assert.ok(timers.some(t => t.ms === 30000) && timers.some(t => t.ms === 5000));   // 次のターン・回復も予約される
+  assert.ok(timers.some(t => t.ms === 30000));                       // 次のターンも予約される
 });
 
 // CPU の考えるタイマー（1.5〜3.5秒のばらつき）を1つ動かす
@@ -194,7 +190,7 @@ test('CPU はばらつきのある間隔（1.5〜3.5秒）で考えて動く', (
   const g = room.game;
   const cpuTimers = timers.filter(t => t.ms >= CPU_MS[0] && t.ms < CPU_MS[1]);
   assert.strictEqual(cpuTimers.length, 2);                              // CPU ごとに別のタイマー
-  g.players.filter(p => p.id !== h).forEach(p => { p.resource = 20; p.ap = 5; });
+  g.players.filter(p => p.id !== h).forEach(p => { p.resource = 20; });
   const before = g.log.length;
   for (let i = 0; i < 4; i++) fireCpu(timers);
   assert.ok(g.log.length > before);
@@ -219,23 +215,19 @@ test('切断しても戻ってきたら続けられる。ホストが脱落さ�
   assert.strictEqual(last(h).room.players.length, 1);
 });
 
-test('行動完了：待つ相手の全員が押したら、待たずに次のターンへ。飛ばした時間のぶん行動力も回復。切断中の人は押したものとみなす', () => {
+test('行動完了：待つ相手の全員が押したら、待たずに次のターンへ。切断中の人は押したものとみなす', () => {
   const { room, last, fire, timers, clock } = makeRoom();
   const h = room.join('t1', 'A').id;
   const g = room.join('t2', 'B').id;
   room.handle(h, { type: 'start' });
   fire(3000);
   const gm = room.game;
-  gm.players.forEach(p => { p.ap = 0; });
   clock.t += 12000;                                                  // 12秒たったところで（あと18秒）
   room.handle(h, { type: 'act', action: { type: 'ready' } });
   assert.strictEqual(gm.round, 0);                                   // まだ B が押していない
   assert.deepStrictEqual(last(g).room.readyIds, [h]);
   room.handle(g, { type: 'act', action: { type: 'ready' } });
   assert.strictEqual(gm.round, 1);                                   // すぐ次のターンへ
-  // 飛ばした18秒のぶん、行動力の回復も進む（予定より遅れていた5秒目の1回＋15秒ぶんの3回。残りの3秒は次の回復までの時間を縮める）
-  assert.deepStrictEqual(gm.players.map(p => p.ap), [4, 4]);
-  assert.strictEqual(last(h).room.regenLeftMs, 2000);
   assert.ok(gm.log.some(l => l.text.includes('全員が行動完了')));
   assert.deepStrictEqual(last(h).room.readyIds, []);                 // 印は外れる
   assert.strictEqual(last(h).room.tickLeftMs, 30000);                // 次のターンの時間は数え直し
@@ -261,12 +253,12 @@ test('CPU は、もうやりたい行動がないと判断したときだけ行�
   const cpu = gm.players.find(p => p.id !== h);
   room.handle(h, { type: 'act', action: { type: 'ready' } });
   assert.strictEqual(gm.round, 0);                                   // CPU はまだ行動完了ではないので進まない
-  // 資源も戦力もなく、行動力があってもやることがない → 行動完了 → 全員そろって次のターンへ
-  cpu.resource = 0; cpu.ap = 0;
+  // 資源がなく、戦力も攻撃・反撃に足りない → やることがない → 行動完了 → 全員そろって次のターンへ
+  cpu.resource = 0;
   fireCpu(timers);
   assert.strictEqual(gm.round, 1);
-  // 行動力がないだけ（資源はある）なら、回復を待つので行動完了にしない
-  cpu.resource = 20; cpu.ap = 0;
+  // 資源があれば拡張したいので、行動完了にしない
+  cpu.resource = 20;
   fireCpu(timers);
   assert.strictEqual(cpu.ready, false);
   assert.ok(!last(h).room.readyIds.includes(cpu.id));

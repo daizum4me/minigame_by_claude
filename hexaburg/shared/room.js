@@ -46,9 +46,8 @@
       this.chatSeq = 0;
       this.game = null;
       this.seq = 0;
-      this.timers = {};         // rtTick / rtRegen / cpu
+      this.timers = {};         // rtTick / cpu
       this.tickDeadline = 0;
-      this.regenDeadline = 0;
       this.countdownUntil = 0;  // ゲーム開始前のカウントダウンが終わる時刻
       this.closed = false;
     }
@@ -233,12 +232,12 @@
 
     player(id) { return this.players.find(x => x.id === id); }
 
-    // 15秒ごとのターンと、5秒ごとの行動力の回復
+    // 30秒ごとのターン
     checkTimers() {
       const g = this.game;
       const now = this.now();
       if (!g || this.phase !== 'game' || g.over) {
-        ['rtTick', 'rtRegen', 'countdown'].forEach(n => this.stop(n));
+        ['rtTick', 'countdown'].forEach(n => this.stop(n));
         this.countdownUntil = 0;
         return;
       }
@@ -247,10 +246,6 @@
       if (!this.timers.rtTick) {
         this.tickDeadline = now + rt.tickSeconds * 1000;
         this.timer('rtTick', () => { E.rtTick(this.game, this.rng); this.changed(); }, rt.tickSeconds * 1000);
-      }
-      if (!this.timers.rtRegen) {
-        this.regenDeadline = now + rt.apSeconds * 1000;
-        this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, rt.apSeconds * 1000);
       }
     }
 
@@ -284,22 +279,12 @@
       const playing = g.players.filter(p => p.alive && this.isPlaying(p.id));
       if (!playing.length || !playing.every(p => p.ready)) return;
       this.note('全員が行動完了したので、次のターンへ');
-      // 飛ばした時間のぶん、行動力の回復も進める（秒単位）。回復の時刻を飛ばした時間だけ前に寄せ、
-      // 途中で来るはずだった回復はまとめて行い、5秒に満たない端数は次の回復までの残り時間を縮める
-      const now = this.now(), step = E.RULES.rt.apSeconds * 1000;
-      let skip = Math.max(0, this.tickDeadline - now);
-      let left = Math.max(0, this.regenDeadline - now);   // 次の回復までの残り
-      while (skip >= left) { E.rtRegen(g); skip -= left; left = step; }
-      left -= skip;
-      this.stop('rtRegen');
-      this.regenDeadline = now + left;
-      this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, left);
       this.stop('rtTick');
       E.rtTick(g, this.rng);
       // checkTimers が次のターンのタイマーをかけ直す
     }
 
-    // CPU はそれぞれ、ばらつきのある間隔（1.5〜3.5秒）で考えて、行動力があれば1つずつ動く
+    // CPU はそれぞれ、ばらつきのある間隔（1.5〜3.5秒）で考えて、トークンがあれば1つずつ動く
     checkCpu() {
       const g = this.game;
       const live = g && this.phase === 'game' && !g.over && !this.countdownUntil;
@@ -342,7 +327,6 @@
         readyIds: live ? this.readyIds() : [],
         countdownMs: live && this.countdownUntil ? Math.max(0, this.countdownUntil - now) : 0,
         tickLeftMs: live && !this.countdownUntil ? Math.max(0, this.tickDeadline - now) : 0,
-        regenLeftMs: live ? Math.max(0, this.regenDeadline - now) : 0,
         chat: this.chat,
         game,
       };
