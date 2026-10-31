@@ -31,7 +31,7 @@
   const P2P = Object.assign({
     peerjsSrc: 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
     peerOptions: {},            // 自前の PeerServer を使うときは { host, port, path, secure }
-    idPrefix: 'hexagonia-v3-',   // v1.0 より前の版の部屋とは混ざらないように（v1.0 からは、参加のときにバージョンを確かめる）
+    idPrefix: 'hexagonia-v4-',   // 以前の版の部屋とは混ざらないように
     codeChars: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
     codeLength: 5,
     joinTimeoutMs: 15000,
@@ -85,7 +85,8 @@
   };
   const PATTERN_NAMES = { solid: '実線', dashed: '破線', double: '二重線', dotted: '点線' };
 
-  const settings = { cb: store.get('cb') === '1', patterns: store.get('patterns') === '1' };
+  // focus：行動があったマスに視点を動かす（ほかの人の行動のとき）
+  const settings = { cb: store.get('cb') === '1', patterns: store.get('patterns') === '1', focus: store.get('focus') === '1' };
 
   // 縁の模様を使うか：設定でオンにしたとき、または Okabe-Ito で9人以上（同じ色があるので模様で見分ける）
   function patternsOn() {
@@ -139,16 +140,10 @@
     'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L14.8 12 L12 16.5 L9.2 12 Z" fill="#A3A198"/>'),
     'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 15.6 L15.2 9.4 L8.8 9.4 Z" fill="none" stroke="#A3A198" stroke-width="1.3" stroke-linejoin="round"/>'),
     'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
-    'hex-factory': tile('#3A3A38', '#6A695F', '<rect x="9.2" y="9.2" width="5.6" height="5.6" fill="none" stroke="#A3A198" stroke-width="1.3"/>'),
     'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
     bridge: tile('#2E4250', '#5B7A8C', '<path d="M6.5 9.6 H17.5 M6.5 14.4 H17.5 M8.5 9.6 V14.4 M10.8 9.6 V14.4 M13.2 9.6 V14.4 M15.5 9.6 V14.4" stroke="#B9A88C" stroke-width="1.2"/>'),
     'act-expand': svg(`<path d="${HEX}" fill="none" stroke="#9CC6F2" stroke-width="1.4" stroke-dasharray="2.5 1.8"/><path d="M12 8 V16 M8 12 H16" stroke="#9CC6F2" stroke-width="2" stroke-linecap="round"/>`),
     'act-destroy': svg(`<path d="${HEX}" fill="rgba(255,120,120,.18)" stroke="#FF9C94" stroke-width="1.3"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" stroke="#FF9C94" stroke-width="2.2" stroke-linecap="round"/>`),
-    'act-develop': svg(`<path d="${HEX}" fill="${CELL_FILL}" stroke="${CELL_LINE}" stroke-width="1.2"/><path d="M12 8.5 V15.5 M8.5 12 H15.5" stroke="#FFE27A" stroke-width="2" stroke-linecap="round"/>`),
-    'act-strengthen': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>`),
-    'act-defend': tile(CELL_FILL, CELL_LINE, `<path d="M12 3.6 L19.3 7.8 L17 9.1 L12 6.2 Z M19.3 7.8 L19.3 16.2 L17 14.9 L17 9.1 Z" fill="#9CC6F2"/><path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1"/>`),
-    ap: svg('<circle cx="6" cy="12" r="3" fill="#9CC6F2"/><circle cx="12" cy="12" r="3" fill="#9CC6F2"/><circle cx="18" cy="12" r="3" fill="rgba(255,255,255,.18)"/>'),
-    ready: svg('<circle cx="12" cy="12" r="9" fill="rgba(142,221,178,.18)" stroke="#8EDDB2" stroke-width="1.5"/><path d="M7.5 12.5 L10.8 15.6 L16.6 8.8" fill="none" stroke="#8EDDB2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
     group: svg(`<g fill="rgba(76,142,218,.45)" stroke="#9CC6F2" stroke-width="1"><path d="M7 3.5 L11 5.8 L11 10.2 L7 12.5 L3 10.2 L3 5.8 Z"/><path d="M15 3.5 L19 5.8 L19 10.2 L15 12.5 L11 10.2 L11 5.8 Z"/><path d="M11 10.5 L15 12.8 L15 17.2 L11 19.5 L7 17.2 L7 12.8 Z"/></g>`),
     event: svg('<path d="M12 3 L13.8 8.6 L19.6 8.6 L14.9 12 L16.7 17.6 L12 14.2 L7.3 17.6 L9.1 12 L4.4 8.6 L10.2 8.6 Z" fill="rgba(255,211,107,.35)" stroke="#FFD36B" stroke-width="1.3" stroke-linejoin="round"/>'),
     clock: svg('<circle cx="12" cy="12" r="8.5" fill="none" stroke="#C9C6BC" stroke-width="1.6"/><path d="M12 7 V12 L15.5 14" fill="none" stroke="#C9C6BC" stroke-width="1.8" stroke-linecap="round"/>'),
@@ -241,8 +236,6 @@
         const tok = typeof msg.token === 'string' ? msg.token.slice(0, 64) : '';
         const reject = text => { safeSend(conn, { type: 'error', text, fatal: true }); setTimeout(() => conn.close(), 300); };
         if (!tok) return reject('接続情報が正しくありません');
-        // バージョンがちがうと、ルールや画面がずれるので対戦できない
-        if (msg.version !== E.VERSION) return reject(`バージョンがちがうため参加できません（ホスト v${E.VERSION}・あなた ${msg.version ? 'v' + msg.version : '古い版'}）。ページを再読み込みしてから、もう一度参加してください`);
         if (tok === this.token) return reject('ホストと同じブラウザからは参加できません（別のブラウザかシークレットウィンドウで開いてください）');
         // 同じ人の古い接続は閉じる
         for (const [c, i] of this.conns) {
@@ -271,6 +264,7 @@
         if (now - info.lastSeen > P2P.dropMs) { this.drop(conn); try { conn.close(); } catch (e) { /* 無視 */ } }
         else safeSend(conn, { type: 'pong' });
       }
+      if (this.room && this.room.graceFor) this.room.broadcast(); // 自動で進めるまでの残り時間を更新
     }
     send(msg) {
       if (!this.room) { this.queue.push(msg); return; }
@@ -358,12 +352,18 @@
 
   // CPU対戦（通信なし）：自分のブラウザで Room を動かす
   class LocalTransport {
-    constructor(name) {
+    // tutorial：チュートリアル（攻めてこない練習相手の CPU 1人と2人戦・イベントなし・すぐ始める）
+    constructor(name, tutorial) {
       this.isLocal = true;
       const clone = m => JSON.parse(JSON.stringify(m));
       this.room = new window.HexRoom.Room({ code: '', send: (pid, msg) => { if (pid === this.id) { const m = clone(msg); setTimeout(() => onMessage(m), 0); } } });
       this.id = this.room.join(token(), name).id;
       this.room.handle(this.id, { type: 'addCpu' });
+      if (tutorial) {
+        this.room.events = false;
+        this.room.handle(this.id, { type: 'cpuLevel', target: this.room.players.find(p => p.cpu).id, level: 'tutorial' });
+        this.room.handle(this.id, { type: 'start' });
+      }
     }
     send(msg) { setTimeout(() => { if (!this.room.closed) this.room.handle(this.id, msg); }, 0); }
     close() { this.room.close(); }
@@ -376,7 +376,11 @@
     me: null,
     room: null,
     lastLogSeq: 0,
+    wasMyTurn: false,
     prevCells: null,    // 前回の盤面（変化したマスを光らせるため）
+    clashResult: null,  // 公開された攻防の結果を少しのあいだ見せる { ...lastClash, until }
+    bid: null,          // 攻防で出す数の入力中の値 { key, n }
+    abandonSel: new Set(), // 捨てるセルとして選んだマス
     tip: null,          // ツールチップを出しているマス { key, pinned }。pinned なら行動のボタンも出す
   };
 
@@ -418,7 +422,9 @@
     }
     if (!prev || prev.phase !== msg.room.phase) {
       app.lastLogSeq = 0;
+      app.lastProgress = null;
       app.prevCells = null;
+      app.clashResult = null;
       app.resultHidden = false;
       const b = $('#btn-show-result');
       if (b) b.remove();
@@ -481,16 +487,17 @@
     store.set('name', name);
     if (type === 'create') {
       app.conn = new HostTransport(name);
-    } else if (type === 'local') {
-      app.conn = new LocalTransport(name);
+    } else if (type === 'local' || type === 'tutorial') {
+      app.tutorial = type === 'tutorial' ? { step: 0, base: null } : null;
+      app.conn = new LocalTransport(name, type === 'tutorial');
       return;
     } else {
       const code = $('#in-code').value.trim().toUpperCase();
       if (!code) { topMsg('部屋IDを入れてください'); return; }
-      app.conn = new GuestTransport({ type: 'join', code, token: token(), name, version: E.VERSION });
+      app.conn = new GuestTransport({ type: 'join', code, token: token(), name });
     }
     topMsg('接続しています…', 'info');
-    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = true;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = $('#btn-tutorial').disabled = true;
   }
 
   function leaveRoom(text) {
@@ -498,15 +505,17 @@
     app.conn = null;
     app.room = null;
     app.me = null;
+    app.tutorial = null;
     app.chatSeq = 0;
     app.chatUnread = 0;
     $('#chat').hidden = true;
+    $('#coach').hidden = true;
     setReconnecting(false);
     hideTip();
     const url = new URL(location.href);
     url.searchParams.delete('room');
     history.replaceState(null, '', url);
-    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = false;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = $('#btn-tutorial').disabled = false;
     show('top');
     topMsg(text || '');
   }
@@ -564,19 +573,15 @@
     sel.disabled = !isHost;
     sel.value = String(dia);
     const autoDia = enough ? R.radius[room.players.length] * 2 + 1 : 0;
+    const auto = E.autoSettings(Math.max(R.minPlayers, room.players.length));
     const st = room.settings || {};
-    $('#set-ticks').disabled = !isHost;
-    $('#set-ticks').value = String(st.ticks || 0);
-    const autoT = E.autoTicks(Math.max(R.minPlayers, room.players.length));
-    $('#ticks-note').textContent = `いまの人数なら自動で ${autoT} ターン（${ticksTime(autoT)}）`;
-    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2〜3人 9・4人 11・5〜6人 13・7〜8人 15・9〜12人 17）';
+    for (const [id, val] of [['#set-actions', st.actions || 0], ['#set-rounds', st.rounds || 0]]) { $(id).disabled = !isHost; $(id).value = String(val); }
+    $('#play-note').textContent = `いまの人数なら自動で ${auto.actions} 行動・${auto.rounds} ラウンド`;
+    $('#diameter-note').textContent = dia ? `${diameterCells(dia)}マス` : autoDia ? `いまの人数では直径 ${autoDia}（${diameterCells(autoDia)}マス）` : '人数に合わせる（2人 7・4人 11・8人 15・12人 17 など）';
     $('#lobby-wait').textContent = isHost
       ? (enough ? `${room.players.length}人で始められます（盤面の直径 ${dia || autoDia}）` : `あと${R.minPlayers - room.players.length}人以上集まると始められます。${local ? 'CPUを追加してください' : '招待URLを送るか、CPUを追加してください'}`)
       : 'ホストがゲームを始めるのを待っています…';
   }
-
-  // ターン数 → 遊ぶ時間（「7分」「約9分」）
-  const ticksTime = n => { const m = n * R.rt.tickSeconds / 60; return Number.isInteger(m) ? `${m}分` : `約${Math.round(m)}分`; };
 
   // 直径 d の六角形の盤面のマスの数
   const diameterCells = d => { const r = (d - 1) / 2; return 3 * r * (r + 1) + 1; };
@@ -587,76 +592,92 @@
     return view;
   }
 
-  // 自分が行動できるか。手番はなく、脱落していなければいつでも
-  function canPlay(g) { const me = g.players.find(p => p.id === app.me); return !g.over && !!me && me.alive; }
+  // 自分の手番で、行動できるか
+  function myTurn(g) {
+    return !g.over && !g.pending && E.current(g).id === app.me;
+  }
 
   function renderGame(room) {
     const g = room.game;
     const pl = id => g.players.find(p => p.id === id);
     const me = pl(app.me);
+    const cur = E.current(g);
     const conn = id => { const p = room.players.find(x => x.id === id); return p ? p.connected : false; };
     const cpuOf = id => { const p = room.players.find(x => x.id === id); return p && p.cpu ? p : null; };   // CPU ならその人
 
-    // 何か行動できるマスを薄く光らせる
-    const targets = canPlay(g) ? [...new Set(CELL_ACTIONS.flatMap(t => E.targets(g, app.me, t)))] : [];
+    // 自分の手番では、何か行動できるマスを薄く光らせる
+    const targets = myTurn(g) ? [...new Set(CELL_ACTIONS.flatMap(t => E.targets(g, app.me, t)))] : [];
 
     const colors = {};
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
-    boardView().setData({ game: g, colors, patterns: patternsOn(), targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, me: app.me });
+    boardView().setData({ game: g, colors, patterns: patternsOn(), targets, selected: app.tip && app.tip.pinned ? app.tip.key : null, marked: abandoning(g) ? [...app.abandonSel] : [], me: app.me });
 
-    // 変化したマス（拡張・強化・攻撃・脱落）を一瞬光らせる
+    // 変化したマス（拡張・強化・破壊・脱落）を一瞬光らせる
     const cells = {};
-    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.strong}|${c.core}|${c.def || 0}`;
+    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.strong}|${c.core}`;
     const changedCells = app.prevCells ? Object.keys(cells).filter(k => cells[k] !== app.prevCells[k]) : [];
     if (app.prevCells) view.flash(changedCells);
+    // フォーカスモード：ほかの人の行動があったマス、自分が狙われた攻防のマスへ視点を動かす
+    const pendKey = g.pending ? `${g.pending.attacker}|${g.pending.target}|${g.round}|${g.turn}` : null;
+    if (settings.focus && app.prevCells && !g.over) {
+      if (pendKey && pendKey !== app.lastPendKey && g.pending.attacker !== app.me) view.focusOn([g.pending.target]);
+      else if (changedCells.length && E.current(g).id !== app.me) view.focusOn(changedCells);
+    }
+    app.lastPendKey = pendKey;
     app.prevCells = cells;
 
     // 上部の表示
-    $('#hud-round').textContent = `${g.round} / ${g.rounds}`;
-    // いま起きているイベント
-    const evNow = !g.over && g.event ? E.EVENTS[g.event] : null;
+    $('#hud-round').textContent = g.round === 0 ? '先行' : `${g.round} / ${g.rounds}`;
+    // このラウンドのイベント
+    const EV = E.EVENTS;
+    const evNow = !g.over && g.round >= 1 && g.event ? EV[g.event] : null;
     const good = k => ['harvest', 'discovery', 'fishing', 'festival'].includes(k);
     $('#hud-event').hidden = !evNow;
-    $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text)}</small></span>` : '');
-    $('#hud-over').hidden = !g.over;
+    $('#hud-event').innerHTML = (evNow ? `<span class="${good(g.event) ? 'k-good' : 'k-bad'}" title="${esc(evNow.text)}"><b>${esc(evNow.name)}</b> <small>${esc(evNow.text.replace('このラウンド、', ''))}</small></span>` : '');
+    $('#hud-turn').innerHTML = g.over ? '<strong>ゲーム終了</strong>'
+      : `${swatch(cur.color)}<strong>${esc(cur.name)}</strong><span class="muted">の手番${cur.id === app.me ? '（あなた）' : ''}・残り行動 ${g.actionsLeft}</span>`;
 
-    // 自分：行動力は丸で（光らせない）、次のターンまではバーで
+    // 自分
     $('#me-swatch').innerHTML = me ? swatch(me.color) : '';
     $('#me-name').textContent = me ? me.name : '';
-    const max = E.apMax(g);
-    // 次に回復する丸は、回復までの進み具合だけ塗る（tickTimers で動かす）
-    const apDots = n => Array.from({ length: max }, (_, i) => `<span class="ap-dot${i < n ? ' on' : i === n ? ' next' : ''}"></span>`).join('');
     const meAct = $('#me-actions');
-    const actHtml = !me ? '' : !me.alive ? '脱落' : `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${max}）">行動力 ${apDots(me.ap || 0)}</span>`;
-    if (meAct._html !== actHtml) { meAct.innerHTML = actHtml; meAct._html = actHtml; }
-    $('#dock-tickbar').hidden = g.over;
-    // 行動完了：全員（切断中の人は押したものとみなす。CPU はやることがなくなると押す）がそろうと、待たずに次のターンへ
-    const readyBtn = $('#btn-ready');
-    readyBtn.hidden = !me || !me.alive || g.over;
-    if (!readyBtn.hidden) {
-      const alive = g.players.filter(p => p.alive).length, n = (room.readyIds || []).length;
-      const html = me.ready ? `✓ 行動完了<small>${n}/${alive}人・押すと取り消し</small>` : `行動完了<small>${n}/${alive}人</small>`;
-      if (readyBtn._html !== html) { readyBtn.innerHTML = html; readyBtn._html = html; }
-      readyBtn.classList.toggle('on', !!me.ready);
-      readyBtn.title = '全員が押すと、待たずに次のターンへ進みます（切断中の人は押したものとみなします。CPU はやることがなくなると押します。できる行動がなくなると自動で押されます）';
-      // 自分で押していないのに行動完了になったら（もうできる行動がない）、お知らせ
-      if (me.ready && !app.wasReady && Date.now() - (app.readyClickAt || 0) > 1500) toast('もうできる行動がないので、自動で行動完了にしました', 'info');
-    }
-    app.wasReady = !!(me && me.ready);
+    meAct.textContent = !me ? '' : !me.alive ? '脱落' : myTurn(g) ? `残り行動 ${g.actionsLeft} / ${g.actionsPerTurn}` : '';
     renderMyTokens(me);
 
+    // 拡張・強化・破壊はマスを選んで出るツールチップから。マスに関係ない生産と手番終了はここ
+    const canAct = me && me.alive && myTurn(g);
+    // 生産：資源でトークンを作る（行動回数を使わない）
+    const prod = (type, kind, label) => `<button class="act prod" data-act="${type}" ${canAct && !E.actionBlocked(g, app.me, type) ? '' : 'disabled'} title="生産：資源 ${R.cost[type]} で${label}トークン +1（行動回数を使わない・ログに出ない）">${TOKEN_SVG[kind]}<b>生産</b><small>資源 ${R.cost[type]} → ${label} +1</small></button>`;
+    // 取り消し：この手番の行動を、新しいものから1つずつ戻す
+    const undoLast = g.undo && g.undo.length ? g.undo[g.undo.length - 1].label : '';
+    $('#actions').innerHTML = `<button class="act undo" data-act="undo" ${canAct && undoLast ? '' : 'disabled'} title="この手番の行動を、新しいものから1つずつ取り消す（Ctrl+Z）"><b>↶ 取り消す</b><small>${undoLast ? esc(undoLast) : '取り消せる行動なし'}</small></button>`
+      + prod('produce', 'power', '戦力')
+      + `<button class="act end" data-act="endTurn" ${canAct ? '' : 'disabled'}><b>手番終了</b><small>${me ? netText(g) : ''}</small></button>`
+      + (canAct && g.actionsLeft === 0 ? `<button class="act buy" data-act="buyAction" ${E.actionBlocked(g, app.me, 'buyAction') ? 'disabled' : ''}><b>行動 +1</b><small>資源 ${E.extraActionCost(g)} を払う</small></button>` : '');
 
-    $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : 'マスを選ぶと行動のボタンが出ます。全員が「行動完了」を押すと、待たずに次のターンへ';
+    let hint = '';
+    if (g.over) hint = '';
+    else if (!me || !me.alive) hint = '脱落しました。観戦できます';
+    else if (g.abandon) hint = g.abandon.player === app.me ? '食料が足りません。捨てるセルを選んでください' : `${(g.players.find(p => p.id === g.abandon.player) || {}).name} が捨てるセルを選んでいます`;
+    else if (g.pending) hint = '破壊の攻防中です';
+    else if (!myTurn(g)) hint = `${cur.name} の手番です`;
+    else if (['produce', 'buyAction'].every(t => E.actionBlocked(g, app.me, t)) && ['expand', 'strengthen', 'cultivate', 'destroy'].every(t => !E.targets(g, app.me, t).length)) hint = 'もう行動できません。「手番終了」を押してください（「取り消す」で戻すこともできます）';
+    else if (g.actionsLeft === 0) hint = `行動回数を使い切りました。「手番終了」か、資源 ${E.extraActionCost(g)} を払って「行動 +1」`;
+    else hint = 'あなたの手番です。光っているマスを選ぶと、拡張・強化・破壊のボタンが出ます';
+    $('#hint').textContent = hint;
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
     $('#players').classList.toggle('compact', g.players.length > 6);
-    $('#players').innerHTML = g.players.map(p => {
+    // 手番の順に並べる
+    const n = g.players.length;
+    const roundOrder = g.players.map((_, k) => g.players[((g.roundStart || 0) + k) % n]);
+    $('#players').innerHTML = roundOrder.map(p => {
       const cells = E.cellsOf(g, p.id).length;
       const group = E.largestGroup(g, p.id).length;
-      return `<li class="${p.alive ? '' : 'out'}">
-        <div class="prow">${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}${p.alive && p.ready ? '<span class="badge ready" title="行動完了">✓ 完了</span>' : ''}</div>
+      const turn = !g.over && p.id === cur.id;
+      return `<li class="${p.alive ? '' : 'out'}${turn ? ' turn' : ''}">
+        <div class="prow">${turn ? '<span class="turn-mark">▶</span>' : ''}${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${cpuOf(p.id).level === 'tutorial' ? '練習相手' : window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('power', p.power)}${tokenChip('food', p.food)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -668,82 +689,102 @@
     logEl.innerHTML = g.log.map(l => `<li class="lg-${l.tone}">${esc(l.text)}</li>`).join('');
     if (atBottom || !app.lastLogSeq) logEl.scrollTop = logEl.scrollHeight;
     const fresh = app.lastLogSeq ? g.log.filter(l => l.seq > app.lastLogSeq) : [];
-    for (const l of fresh) if (l.tone === 'out') toast(l.text, 'bad');
-    // 自分のセルが攻撃されたら、そのマスを赤く光らせ、音とお知らせで知らせる
-    const hits = app.lastLogSeq ? (g.attacks || []).filter(a => a.victim === app.me && a.seq > app.lastLogSeq) : [];
-    if (hits.length) {
-      view.flash(hits.map(a => a.key), '255,70,70', 2600);
-      for (const a of hits) floater(a.key, `<span class="fl-hit">${a.took ? '壊された！' : '攻撃された！'}</span>`, 'loss', 0);
-      const by = [...new Set(hits.map(a => (pl(a.by) || {}).name))].join('・');
-      const took = hits.filter(a => a.took).length;
-      toast(took ? `${by} にセルを${took}つ壊されました` : `${by} に攻撃されています（防御 −${hits.length}）`, 'bad');
-      window.HexSound.play('attacked');
-    } else {
-      // 自分の攻撃が防御に当たったら「かきん」、壊したら「がしゃん」（ほかの音より優先）
-      const mine = app.lastLogSeq ? (g.attacks || []).filter(a => a.by === app.me && a.seq > app.lastLogSeq) : [];
-      if (mine.length) window.HexSound.play(mine.some(a => a.took) ? 'success' : 'block');
-      else playSounds(g, fresh);
+    for (const l of fresh) {
+      if (/^破壊(成功|失敗)/.test(l.text) || l.tone === 'out' || l.tone === 'hit') toast(l.text, l.tone === 'defend' ? 'info' : 'bad');
+      else if (me && l.text === `${me.name} はもう行動できないため、自動で手番終了`) toast('もう行動できないため、自動で手番を終えました', 'info');
     }
-    // ターンが始まったら音で知らせる（ほかの音と重なってもよい）
-    if (fresh.some(l => l.tone === 'round')) window.HexSound.play('round');
-    // ターンの終わり：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
-    const ti = g.tickInfo && g.tickInfo[app.me];
-    if (ti && fresh.some(l => l.seq === ti.seq)) playTick(g, ti);
+    // コアに命中したら、コアを赤く光らせる（マスは変わらないので）
+    if (g.lastClash && fresh.some(l => l.tone === 'hit')) view.flash([g.lastClash.target], '255,110,110');
+    playSounds(g, fresh);
+    // 自分の手番終了：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
+    const le = g.lastEndTurn;
+    if (le && le.player === app.me && fresh.some(l => l.seq === le.seq)) playEndTurn(g, le);
     app.lastLogSeq = g.log.length ? g.log[g.log.length - 1].seq : 0;
 
-    // ゲーム開始前のカウントダウン（終わる時刻を覚えて、tickCountdown で数える）
-    if (room.countdownMs > 0) app.countdownEnd = Date.now() + room.countdownMs;
+    // ラウンドが変わったらお知らせ（最初に開いたときは出さない）
+    const progress = g.round;
+    if (app.lastProgress != null && app.lastProgress !== progress && !g.over && g.round >= 1) popout(`ラウンド ${g.round}`, `/ ${g.rounds}`, 'round', 'round');
+    app.lastProgress = progress;
+
+    // 公開された攻防の結果を少しのあいだ見せる
+    const lc = g.lastClash;
+    if (lc && fresh.some(l => l.tone === 'clash')) {   // 出し合いがあったときだけ
+      app.clashResult = Object.assign({}, lc, { until: Date.now() + 3500 });
+      setTimeout(() => { if (app.room && app.room.game) renderClash(app.room.game, id => app.room.game.players.find(p => p.id === id)); }, 3600);
+      if (!lc.success) view.flash([lc.target], '120,190,255');   // 守られたマスは青く光らせる
+    }
+
+    // 自分の番が来たら知らせる
+    // 攻防のあいだも自分の手番は続いているので、攻防の前後では知らせない
+    const mine = !g.over && E.current(g).id === app.me && !!me && me.alive;
+    if (mine && !app.wasMyTurn) popout('あなたの手番', '', 'mine', 'turn');
+    app.wasMyTurn = mine;
+
     updateDock();
+    renderCoach();
+    renderClash(g, pl);
+    renderExtra(g, me);
+    renderAbandon(g, me);
+    updateDock();   // 捨てるセルの表示でバーの高さが変わるので、盤面の余白を合わせ直す
     tickTimers();
-    tickCountdown();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
   }
 
-  // 下のバーの自分のトークン。ターンの終わりの演出中は、演出の途中の数を見せる
+  // 画面の真ん中に大きく出るお知らせ（ターン・ラウンドが変わったとき、自分の手番になったとき）。続けて出るときは順番に
+  const popQueue = [];
+  let popBusy = false;
+  function popout(title, sub, kind, sound) {
+    popQueue.push({ title, sub, kind, sound });
+    if (!popBusy) nextPopout();
+  }
+  function nextPopout() {
+    const item = popQueue.shift();
+    const el = $('#popout');
+    if (!item) { popBusy = false; el.hidden = true; return; }
+    popBusy = true;
+    el.className = `popout ${item.kind || ''}`;
+    el.innerHTML = `<b>${esc(item.title)}</b>${item.sub ? `<small>${esc(item.sub)}</small>` : ''}`;
+    el.hidden = false;
+    // アニメーションを毎回やり直す
+    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    if (item.sound) window.HexSound.play(item.sound);
+    setTimeout(nextPopout, popQueue.length ? 700 : 1300);
+  }
+
+  // 下のバーの自分のトークン。手番終了の演出中は、演出の途中の数を見せる
   function renderMyTokens(me) {
     const v = app.tokenView;
     $('#me-tokens').innerHTML = me
-      ? tokenChip('resource', v ? v.resource : me.resource, true) + tokenChip('power', v && v.power != null ? v.power : me.power, true) + tokenChip('food', v ? v.food : me.food, true)
+      ? tokenChip('resource', v ? v.resource : me.resource, true) + tokenChip('power', me.power, true) + tokenChip('food', v ? v.food : me.food, true)
       : '';
-    // ターンごとの収支（資源・戦力・食料）。チップの横に出し、内訳はホバーで
+    // 食料の収支：次の手番終了で作る − 食べる。チップの下に出し、内訳はタップ・ホバーで
     const g = app.room && app.room.game;
-    if (!me || !me.alive || !g || g.over) return applyFlash(v);
-    const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n);
-    const net = (kind, n, title) => {
-      const chip = $(`#me-tokens .tk-${kind}`);
-      chip.insertAdjacentHTML('beforeend', `<em class="tnet ${n > 0 ? 'up' : n < 0 ? 'down' : ''}">${signed(n)}/ターン</em>`);
-      chip.title = title;
-      return chip;
-    };
-    const inc = E.income(g, app.me), pw = E.powerMade(g, app.me);
-    net('resource', inc, `資源の収支（ターンごと）：${signed(inc)}（強化済のセル・コア・森林）`);
-    net('power', pw, `戦力の収支（ターンごと）：${signed(pw)}（工場）。強化・鉱山でも増える`);
-    const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me);
-    const short = Math.max(0, eaten - made - (me.food || 0));
-    const chip = net('food', made - eaten, `食料の収支（ターンごと）：作る +${made}・食べる −${eaten} ＝ ${signed(made - eaten)}` + (short ? `。${short} 足りないので、セルを捨てることになる` : ''));
-    chip.classList.toggle('short', !!short);
-    applyFlash(v);
-  }
-
-  function applyFlash(v) {
+    const chip = $('#me-tokens .tk-food');
+    if (me && me.alive && g && !g.over && chip) {
+      const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me), net = made - eaten;
+      const per = '手番';
+      const short = Math.max(0, eaten - made - (me.food || 0));
+      chip.insertAdjacentHTML('beforeend', `<em class="tnet ${net > 0 ? 'up' : net < 0 ? 'down' : ''}">${net > 0 ? '+' : net < 0 ? '−' : '±'}${Math.abs(net)}/${per}</em>`);
+      chip.title = `食料の収支（${per}ごと）：作る +${made}・食べる −${eaten} ＝ ${net >= 0 ? '+' : '−'}${Math.abs(net)}` + (short ? `。${short} 足りないので、セルを捨てることになる` : '');
+      chip.classList.toggle('short', !!short);
+    }
     if (v && v.flash) for (const [kind, cls] of Object.entries(v.flash)) {
       const chip = $(`#me-tokens .tk-${kind}`);
       if (chip) chip.classList.add(cls);
     }
   }
 
-  // ターンの終わりの演出。数は tickInfo の合計に合わせ、マスごとの内訳は盤面から数える
-  function playTick(g, le) {
+  // 手番終了の演出（自分の手番だけ）。数は lastEndTurn の合計に合わせ、マスごとの内訳は盤面から数える
+  function playEndTurn(g, le) {
     const inc = R.income, f = R.food;
     const me = g.players.find(p => p.id === app.me);
     let baseRes = 0, baseFood = 0;
     for (const c of E.cellsOf(g, app.me)) {
       const res = (c.core ? inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0) : c.strong ? inc.strong : 0) + (c.terrain === 'forest' ? R.forestResource : 0);
-      const food = (c.core ? f.core : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
-      const pow = c.terrain === 'factory' ? R.factoryPower : 0;
+      const food = (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
       baseRes += res; baseFood += food;
-      if (res || food || pow) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : '') + (pow ? `<span class="fl-pow">${TOKEN_SVG.power}+${pow}</span>` : ''), 'gain', 0);
+      if (res || food) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : ''), 'gain', 0);
     }
     // イベント（豊作・不作など）で変わった分は、コアの上にまとめて出す
     const dRes = le.resource - baseRes, dFood = le.made - baseFood;
@@ -752,12 +793,11 @@
     // 少し遅れて、食べた分をコアの上に（セル1つずつ出すとうるさいので合計で）
     floater(me.core, `<span class="fl-food">${TOKEN_SVG.food}−${le.eaten}</span>${le.hungry ? `<span class="fl-short">${le.hungry} 足りない</span>` : ''}`, 'loss', 900);
     // 下のバー：増える前 → 増えた → 減った
-    const pw = le.power || 0, pNow = me.power;
-    const set = (resource, food, flash, power) => { app.tokenView = { resource, food, flash, power }; renderMyTokens(app.room && app.room.game.players.find(p => p.id === app.me)); };
+    const set = (resource, food, flash) => { app.tokenView = { resource, food, flash }; renderMyTokens(app.room && app.room.game.players.find(p => p.id === app.me)); };
     clearTimeout(app.tokenTimer1); clearTimeout(app.tokenTimer2); clearTimeout(app.tokenTimer3);
-    set(le.resBefore, le.foodBefore, null, pNow - pw);
-    app.tokenTimer1 = setTimeout(() => set(le.resBefore + le.resource, le.foodBefore + le.made, Object.assign({ resource: 'up', food: 'up' }, pw ? { power: 'up' } : {}), pNow), 200);
-    app.tokenTimer2 = setTimeout(() => set(le.resBefore + le.resource, Math.max(0, le.foodBefore + le.made - le.eaten), { food: le.hungry ? 'short' : 'down' }, pNow), 1100);
+    set(le.resBefore, le.foodBefore, null);
+    app.tokenTimer1 = setTimeout(() => set(le.resBefore + le.resource, le.foodBefore + le.made, { resource: 'up', food: 'up' }), 200);
+    app.tokenTimer2 = setTimeout(() => set(le.resBefore + le.resource, Math.max(0, le.foodBefore + le.made - le.eaten), { food: le.hungry ? 'short' : 'down' }), 1100);
     app.tokenTimer3 = setTimeout(() => { app.tokenView = null; renderMyTokens(app.room && app.room.game && app.room.game.players.find(p => p.id === app.me)); }, 2000);
   }
 
@@ -776,57 +816,231 @@
     }, delay);
   }
 
+  // 破壊の攻防：攻撃側と防御側が出す数を伏せて決める。そろったら同時に公開
+  function renderClash(g, pl) {
+    const el = $('#clash');
+    const pd = g.pending;
+    const res = app.clashResult && app.clashResult.until > Date.now() ? app.clashResult : null;
+    if ((!pd && !res) || g.over) { el.hidden = true; return; }
+    const info = pd || res;
+    const a = pl(info.attacker), d = pl(info.defender);
+    const cell = g.board[info.target];
+    const what = pd ? (cell.core ? 'コア' : 'セル') : 'マス';
+    const head = `<div class="clash-head">${swatch(a.color)}<b>${esc(a.name)}</b><span class="arrow">→</span>${swatch(d.color)}<b>${esc(d.name)}</b><span class="muted">の${what} (${cell.q},${cell.r}) に破壊</span></div>`;
+    if (!pd) {
+      // 公開された結果
+      el.innerHTML = `${head}
+        <p class="clash-result ${res.success ? 'bad' : 'good'}">${res.success ? '破壊成功' : '破壊失敗（守られた）'}</p>
+        <p class="muted small" style="text-align:center">${res.atk != null ? `あなたは戦力トークンを ${res.atk} 個出しました。` : res.def != null ? `あなたは戦力トークンを ${res.def} 個出しました。` : ''}出した数はほかの人には公開されません</p>`;
+      el.hidden = false;
+      return;
+    }
+    const side = pd.attacker === app.me ? 'atk' : pd.defender === app.me ? 'def' : null;
+    const status = (name, ready) => `<span class="${ready ? 'ready' : ''}">${esc(name)}：${ready ? '決定済み' : '考え中…'}</span>`;
+    let body;
+    if (side && pd[side] === null) {
+      const me = side === 'atk' ? a : d;
+      const foe = side === 'atk' ? d : a;
+      const have = me.power;   // 相手の戦力トークンの数は見えない
+      const key = `${pd.attacker}|${pd.target}|${g.round}|${g.turn}|${side}`;
+      const lo = E.minBid(side);
+      if (!app.bid || app.bid.key !== key) app.bid = { key, n: Math.min(have, 2) };
+      // 同じ手番に同じマスへもう一度宣言したときなど、前の数が持っている数を超えていたら直す
+      app.bid.n = Math.max(lo, Math.min(have, app.bid.n));
+      app.bid.lo = lo;
+      const n = app.bid.n;
+      const kind = 'power';
+      body = `<p class="ask">${side === 'atk'
+        ? `出す戦力トークンの数を決めてください（1個以上。${esc(foe.name)} の戦力トークンの数は見えません）`
+        : `あなたの${what}が狙われています。出す戦力トークンの数を決めてください（${esc(foe.name)} の戦力トークンの数は見えません）`}</p>
+        <p class="muted small">相手には公開まで見えません。攻撃側が防御側と同じ数以上出したら破壊成功（同じ数なら攻撃側の勝ち）。出したトークンはなくなります</p>
+        <div class="bid">
+          <span class="bid-n tk-${kind}">${TOKEN_SVG[kind]}<b data-bid-n>${n}</b><small>/ ${have}</small></span>
+          <input type="range" class="bid-range" data-bid-range min="${lo}" max="${have}" step="1" value="${n}" ${have <= lo ? 'disabled' : ''} aria-label="出す戦力トークンの数">
+        </div>
+        <button class="primary bid-ok${side === 'atk' ? ' danger' : ''}" data-bid-ok><span data-bid-label>${n}</span> 個で決定</button>`;
+    } else if (side) {
+      body = `<p class="muted">あなたは ${pd[side]} 個に決めました。相手を待っています…</p>`;
+    } else {
+      body = '<p class="muted">出す数を伏せて選んでいます…</p>';
+    }
+    // 攻撃側は、決着する前なら破壊を取りやめられる
+    if (pd.attacker === app.me) body += '<button class="link cancel-destroy" data-cancel-destroy>破壊をやめる（資源と行動回数が戻る）</button>';
+    el.innerHTML = `${head}${body}
+      <div class="clash-status">${status(a.name, pd.atkReady)}${status(d.name, pd.defReady)}<span class="muted" data-left="bid"></span></div>`;
+    el.hidden = false;
+    tickTimers();
+  }
+
+  // 行動回数を使い切ったら、画面中央で「手番終了」か「資源を払って行動 +1」かを選ぶ
+  function renderExtra(g, me) {
+    const el = $('#extra');
+    const show = myTurn(g) && me && me.alive && g.actionsLeft === 0 && !g.abandon;
+    const key = `${g.round}:${g.turn}:${g.extraBought}`;
+    if (!show || app.extraHidden === key) { el.hidden = true; return; }
+    const cost = E.extraActionCost(g);
+    const lack = cost - me.resource;
+    el.innerHTML = `<div class="extra-card">
+      <h3>行動回数を使い切りました</h3>
+      <div class="extra-btns">
+        <button data-extra="endTurn"><b>手番終了</b><small>${netText(g)}</small></button>
+        <button class="primary" data-extra="buyAction" ${lack > 0 ? 'disabled' : ''}><b>行動 +1</b><small>${TOKEN_SVG.resource}${cost} を払う${lack > 0 ? `（あと ${lack} 足りない）` : ''}</small></button>
+      </div>
+      <p class="muted small">行動 +1 に必要な資源は、同じ手番で買うたびに +${R.extraAction.step}（手番が変わると ${R.extraAction.base} に戻る）</p>
+      <button class="link" data-extra="hide">盤面を見る</button>
+    </div>`;
+    el.dataset.key = key;
+    el.hidden = false;
+  }
+
+  // 手番終了で受け取る資源と、作る・食べる食料
+  function netText(g) {
+    const inc = E.income(g, app.me);
+    const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me);
+    const me = g.players.find(p => p.id === app.me);
+    const short = Math.max(0, eaten - made - ((me && me.food) || 0));
+    return `資源 +${inc}・食料 +${made} −${eaten}` + (short ? `（${short} 足りない）` : '');
+  }
+
+  // 自分が捨てるセルを選んでいるところか
+  function abandoning(g) { return !!(g && g.abandon && g.abandon.player === app.me); }
+
+  // 食料が足りないとき：捨てるセルを盤面で選ぶ（コアは選べない）
+  function renderAbandon(g, me) {
+    const el = $('#abandon');
+    $('#dock').classList.toggle('abandoning', abandoning(g));
+    if (!abandoning(g)) { el.hidden = true; app.abandonSel = new Set(); return; }
+    if (app.tip) hideTip();   // 選んでいたマスのツールチップは閉じる（マスを選ぶと捨てる候補になるので）
+    const n = g.abandon.count;
+    for (const k of [...app.abandonSel]) { const c = g.board[k]; if (!c || c.owner !== app.me || c.core) app.abandonSel.delete(k); }
+    const k = app.abandonSel.size;
+    el.innerHTML = `<div class="extra-card abandon-card">
+      <h3>食料が足りません</h3>
+      <p>捨てるセルを <b>${n}</b> つ、盤面で選んでください（コアは選べません）</p>
+      <p class="abandon-count ${k === n ? 'ok' : ''}">選んだ数 <b>${k}</b> / ${n}</p>
+      <div class="extra-btns">
+        <button data-abandon="auto">おまかせで選ぶ</button>
+        <button class="primary danger" data-abandon="ok" ${k === n ? '' : 'disabled'}>このセルを捨てる</button>
+      </div>
+      <p class="muted small" data-left="abandon"></p>
+    </div>`;
+    el.hidden = false;
+    tickTimers();
+  }
+
+  // ---------- チュートリアル ----------
+  // 1ステップずつ案内する。「やってみよう」のステップは、やったら自動で次へ進む
+  const myCells = g => E.cellsOf(g, app.me);
+  const TUTORIAL = [
+    { title: 'ヘキサゴニアへようこそ', next: true,
+      text: '六角形のマスで<b>セル</b>（自分の陣地）を広げるゲームです。<br>最後のラウンドが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち。<br>中心に円のある光るセルが、あなたの<b>コア</b>です。コアを壊されると脱落なので、守りましょう。' },
+    { title: '盤面の見方', next: true,
+      text: 'マスには地形があります。<br>◆ <b>鉱山</b>：取ると戦力トークン +1　▽ <b>森林</b>：毎手番 資源 +1<br>● <b>農地</b>：自分の平原のセルを<b>開墾</b>（資源2）すると農地になり、毎手番 食料 +1<br>〜 <b>河川</b>：資源3で橋をかけないと渡れません。<br>マスにカーソルを合わせると（スマホは選ぶと）、説明が出ます。' },
+    { title: 'やってみよう：拡張', myTurn: true, target: '#tooltip [data-cell-act="expand"]',
+      text: '自分のセルの隣の、<b>光っている空きマス</b>を選んでください。出てきた<b>「拡張」</b>を押すと、そこがあなたのセルになります（資源1）。<br>押しまちがえたら、手番のあいだなら下のバーの<b>「取り消す」</b>で戻せます。',
+      done: (g, base) => myCells(g).length > base.cells },
+    { title: 'やってみよう：強化', myTurn: true, target: '#tooltip [data-cell-act="strengthen"]',
+      text: '自分のセル（コアでもOK）を選んで<b>「強化」</b>を押してください（資源2）。<br>強化すると、戦力トークン +1、そして毎手番 資源 +1・食料 +1 がもらえます。<br>強化済のセルは、あとで説明する<b>拠点</b>にもなります。',
+      done: g => myCells(g).some(c => c.strong) },
+    { title: 'トークンと食料', next: true, target: '#me-tokens',
+      text: '下のバーに、あなたの持ち物が出ています。<br><span class="k-res">資源</span>：行動に使う　<span class="k-pow">戦力</span>：攻めにも守りにも使う（ほかの人からは数が見えません）　<span class="k-food">食料</span>：セルが食べる<br>手番の終わりに、セル1つにつき食料を1食べます。足りないとセルを捨てることになります。<br>手番を終えると、どのマスで何が増えたかが盤面に浮かび、下のバーの数字も「増えてから減る」順に動きます。食料が足りなくなりそうなら、セルを選んで<b>開墾</b>しましょう。' },
+    { title: 'やってみよう：生産', myTurn: true, target: '#actions [data-act="produce"]', skippable: true,
+      text: '下のバーの<b>「生産」</b>で、資源から戦力トークンを作れます（資源2）。行動回数は使いません。<br>作ってみましょう。資源が足りなければ「次へ」で進めます。',
+      done: (g, base) => { const me = g.players.find(p => p.id === app.me); return me && me.power > base.power; } },
+    { title: 'やってみよう：手番終了', myTurn: true, target: '#actions [data-act="endTurn"]',
+      text: '行動を使ったら<b>「手番終了」</b>を押します。資源と食料をもらい、食料を食べてから次の人の番です。<br>ボタンに、もらえる量と食べる量が出ています。',
+      done: (g, base) => g.turnNo !== base.turnNo },
+    { title: '破壊と読み合い', next: true,
+      text: '相手のセルは<b>破壊</b>できます（資源2・戦力トークンが1個以上必要）。<br>攻撃側と防御側が、出す戦力トークンの数を<b>伏せて</b>決め、<b>攻撃側が防御側と同じ数以上なら</b>成功（同じ数なら攻撃側の勝ち）。成功したマスは自分のセルになります。<br>結果は成功か失敗かだけが知らされ、出した数は相手にはわかりません。' },
+    { title: 'どこを強化するか：拠点', next: true,
+      text: '<b>拠点</b>：破壊できるのは、<b>自分の強化済のセルの隣</b>にある相手のセルだけ。攻めたい方向のセルを強化しましょう。<br>前線に強化すれば攻めの足がかりになるけれど、相手もその近くを狙ってきます。後方に強化すれば安全に稼げるけれど、攻めには使えません。' },
+    { title: 'もう少しだけ', next: true,
+      text: 'ラウンドの始まりに、ときどき<b>イベント</b>（豊作・不作など）が起きます。起きたイベントは画面上部に出ます。<br>行動回数を使い切ったら、資源を払って<b>行動 +1</b> もできます。' },
+    { title: 'これでおしまい', next: true, last: true,
+      text: 'あとはこのまま CPU と最後まで遊んでみてください。<br>ルールはいつでも右上の <b>？</b> で見られます。' },
+  ];
+
+  function tutorialBase(g) {
+    const me = g.players.find(p => p.id === app.me) || {};
+    return { cells: myCells(g).length, power: me.power || 0, turnNo: g.turnNo };
+  }
+
+  function renderCoach() {
+    const el = $('#coach');
+    document.querySelectorAll('.coach-target').forEach(n => n.classList.remove('coach-target'));
+    const t = app.tutorial;
+    const g = app.room && app.room.game;
+    if (!t || !g || g.over || t.step >= TUTORIAL.length) { el.hidden = true; return; }
+    if (!t.base) t.base = tutorialBase(g);
+    let st = TUTORIAL[t.step];
+    // やってみようのステップは、やったら次へ
+    while (st.done && st.done(g, t.base)) {
+      t.step++;
+      t.base = tutorialBase(g);
+      if (t.step >= TUTORIAL.length) { el.hidden = true; return; }
+      st = TUTORIAL[t.step];
+    }
+    const mine = !g.pending && !g.abandon && E.current(g).id === app.me;
+    const wait = st.myTurn && !mine;
+    el.innerHTML = `<div class="coach-head"><b>${st.title}</b><span class="muted">${t.step + 1} / ${TUTORIAL.length}</span></div>
+      <p>${st.text}</p>
+      ${wait ? '<p class="muted small">相手の手番です。あなたの手番になるまで少し待ってください…</p>' : ''}
+      <div class="coach-btns">
+        <button class="link" data-coach="quit">チュートリアルをやめる</button>
+        ${st.next ? `<button class="primary" data-coach="next">${st.last ? 'おわる' : '次へ'}</button>` : st.skippable ? '<button data-coach="next">次へ</button>' : ''}
+      </div>`;
+    el.hidden = false;
+    if (st.target && !wait) { const n = document.querySelector(st.target); if (n) n.classList.add('coach-target'); }
+  }
+
   // 効果音：新しいログから、いちばん大事なものを1つ鳴らす
   function playSounds(g, fresh) {
     if (!fresh.length) return;
-    const order = ['win', 'out', 'success', 'abandon', 'event', 'declare', 'strengthen', 'expand'];
+    const order = ['win', 'out', 'success', 'fail', 'abandon', 'event', 'declare', 'buy', 'strengthen', 'expand', 'endTurn'];
     const found = new Set();
     for (const l of fresh) {
       if (l.tone === 'win') found.add('win');
       else if (l.tone === 'out') found.add('out');
-      else if (/^攻撃成功/.test(l.text)) found.add('success');
+      else if (/^(破壊|攻撃)成功/.test(l.text) || l.tone === 'hit') found.add('success');
       else if (l.tone === 'abandon') found.add('abandon');
       else if (l.tone === 'event' && l.text.startsWith('イベント：')) found.add('event');
+      else if (/^破壊失敗/.test(l.text)) found.add('fail');
       else if (l.tone === 'destroy') found.add('declare');
-      else if (l.tone in { strengthen: 1, expand: 1 }) found.add(l.tone);
+      else if (l.tone in { strengthen: 1, expand: 1, buy: 1 }) found.add(l.tone);
+      else if (l.tone === 'income') found.add('endTurn');
     }
     const name = order.find(n => found.has(n));
     if (name === 'win') window.HexSound.play(g.winners.includes(app.me) ? 'win' : 'lose');
     else if (name) window.HexSound.play(name);
   }
 
-  // ゲーム開始前の 3・2・1 のカウントダウン。数が変わるたびに音を鳴らし、0 で「スタート！」
-  function tickCountdown() {
-    const el = $('#countdown');
-    if (!app.countdownEnd) { el.hidden = true; return; }
-    const left = app.countdownEnd - Date.now();
-    const n = left > 0 ? Math.ceil(left / 1000) : 0;
-    if (left < -800) { app.countdownEnd = 0; app.countdownShown = null; el.hidden = true; return; }   // 「スタート！」を少し見せてから消す
-    if (n === app.countdownShown) return;
-    app.countdownShown = n;
-    el.innerHTML = n ? `<b>${n}</b>` : '<b class="go">スタート！</b>';
-    el.hidden = false;
-    el.firstElementChild.style.animation = 'none'; void el.offsetWidth; el.firstElementChild.style.animation = '';
-    window.HexSound.play(n ? 'count' : 'go');
-  }
-
-  // 次のターンまでの時間を、バーで（満タンから減っていく）。届いた時刻からの経過で数える
+  // 残り時間の表示（持ち時間・攻防・切断）。届いた時刻からの経過で数える
+  let lastTickSec = null;
   function tickTimers() {
     const room = app.room;
     const g = room && room.game;
-    if (!g || room.phase !== 'game' || g.over) return;
+    const el = $('#hud-timer');
+    if (!g || room.phase !== 'game' || g.over || g.abandon) { el.hidden = true; return; }
     const pass = Date.now() - (app.graceAt || Date.now());
-    const left = Math.max(0, room.tickLeftMs - pass), total = R.rt.tickSeconds * 1000;
-    const bar = $('#dock-tickbar');
-    bar.classList.toggle('low', left <= 3000);
-    bar.firstElementChild.style.width = `${Math.min(100, left / total * 100)}%`;
-    // 行動力：次の回復までの進み具合
-    const next = document.querySelector('#me-actions .ap-dot.next');
-    if (next) {
-      const step = R.rt.apSeconds * 1000;
-      const done = Math.max(0, Math.min(1, 1 - Math.max(0, room.regenLeftMs - pass) / step));
-      next.style.setProperty('--p', `${Math.round(done * 100)}%`);
+    const sec = ms => Math.max(0, Math.ceil(ms / 1000));
+    const turnSec = sec(room.turnLeftMs - pass);
+    const mm = `${Math.floor(turnSec / 60)}:${String(turnSec % 60).padStart(2, '0')}`;
+    el.hidden = false;
+    el.className = 'pill timer' + (turnSec <= 10 ? ' low' : '');
+    el.innerHTML = `<span class="muted">持ち時間</span> <strong>${mm}</strong>`;
+    // 自分の手番の残り10秒は時計の音
+    if (myTurn(g) && turnSec <= 10 && turnSec > 0 && turnSec !== lastTickSec) window.HexSound.play('tick');
+    lastTickSec = turnSec;
+    const abEl = document.querySelector('[data-left="abandon"]');
+    if (abEl) abEl.textContent = `あと ${sec(room.abandonLeftMs - pass)} 秒（時間切れのときは自動で選びます）`;
+    const bidEl = document.querySelector('[data-left="bid"]');
+    if (bidEl) bidEl.textContent = `あと ${sec(room.bidLeftMs - pass)} 秒`;
+    const grace = $('#grace');
+    if (room.graceFor) {
+      const p = g.players.find(x => x.id === room.graceFor);
+      grace.textContent = `${p ? p.name : ''} の接続が切れています。あと ${sec(room.graceLeftMs - pass)} 秒で手番を終えます`;
     }
+    grace.hidden = !room.graceFor;
   }
 
   function renderResult(room, g) {
@@ -849,28 +1063,40 @@
 
   // マスを選ぶ：そのマスの情報と、できる行動のボタンをツールチップに出す
   function onCellSelect(key) {
+    const g = app.room && app.room.game;
+    if (abandoning(g)) {
+      // 捨てるセルを選ぶあいだは、ツールチップは出さない（出ていたら閉じる）。盤面の外や自分以外のマスを選んでも閉じるだけ
+      hideTip();
+      const c = key && g.board[key];
+      if (!c || c.owner !== app.me) return;
+      if (c.core) { toast('コアは捨てられません'); return; }
+      if (app.abandonSel.has(key)) app.abandonSel.delete(key);
+      else if (app.abandonSel.size < g.abandon.count) app.abandonSel.add(key);
+      else toast(`捨てるのは ${g.abandon.count} つまでです`);
+      render();
+      return;
+    }
     if (!key || (app.tip && app.tip.pinned && app.tip.key === key)) { hideTip(); return; }
     showTip({ key, pinned: true });
   }
 
   function onCellHover(key, x, y, scale, byLongPress) {
-    if (byLongPress) { if (key) showTip({ key, pinned: true }); return; }
+    if (byLongPress) { if (key && !abandoning(app.room && app.room.game)) showTip({ key, pinned: true }); return; }
     if (app.tip && app.tip.pinned) return;   // 選んでいるマスがあるあいだは、そちらを出したまま
     if (!key) hideTip(); else showTip({ key, pinned: false });
   }
 
   const TERRAIN_EFFECTS = {
-    plain: `効果なし。自分のセルなら、資源 ${R.cost.develop} で発展させて農地か工場にできる`,
-    mine: `拡張したときと強化したときに、戦力トークン +${R.minePower}`,
-    farm: `発展させた土地。このセルがあると、ターンごとに食料 +${R.farmFood}`,
-    factory: `発展させた土地。このセルがあると、ターンごとに戦力トークン +${R.factoryPower}`,
-    forest: `このセルがあると、ターンごとに資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
-    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。壊されると橋が落ちて河川に戻る`,
+    plain: `効果なし。自分のセルなら、資源 ${R.cost.cultivate} で開墾して農地にできる`,
+    mine: `拡張したとき（破壊で取ったときも）と強化したときに、戦力トークン +${R.minePower}`,
+    farm: `開墾した土地。このセルがあると、手番終了時に食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
+    forest: `このセルがあると、手番終了時に資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
+    river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。破壊されると橋が落ちて河川に戻る`,
   };
 
   const CELL_ACTIONS = ['expand', 'strengthen', 'destroy'];
 
-  // そのマスでできる行動と、できないときの理由（自分のセルなら強化・発展・防御などが並ぶ）
+  // そのマスでできる行動と、できないときの理由（自分のセルなら強化と開墾の2つになることがある）
   function cellActions(g, key) {
     const c = g.board[key];
     const me = g.players.find(p => p.id === app.me);
@@ -878,30 +1104,36 @@
     const list = [];
     if (!c.owner) {
       list.push({ type: 'expand', cost: E.expandCost(c),
-        gain: c.terrain === 'mine' ? `戦力 +${R.minePower}` : c.terrain === 'forest' ? `毎ターン資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかける' : '' });
+        gain: c.terrain === 'mine' ? `戦力トークン +${R.minePower}` : c.terrain === 'farm' ? `手番終了時の食料 +${R.farmFood}` : c.terrain === 'forest' ? `手番終了時の資源 +${R.forestResource}` : c.terrain === 'river' ? '橋をかけて河川を渡る' : '' });
     } else if (c.owner === app.me) {
       if (!c.strong) {
         const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
         list.push({ type: 'strengthen', cost: R.cost.strengthen,
-          gain: `戦力 +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・毎ターン資源 +${inc}・攻撃の拠点に` });
+          gain: `戦力トークン +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・手番終了時の資源 +${inc}・食料 +${R.food.strong}。隣の相手セルを破壊できる拠点になる` });
       }
-      if (!c.core && c.terrain === 'plain') {
-        list.push({ type: 'develop', to: 'farm', name: '発展：農地', cost: R.cost.develop, gain: `毎ターン食料 +${R.farmFood}` });
-        list.push({ type: 'develop', to: 'factory', name: '発展：工場', cost: R.cost.develop, gain: `毎ターン戦力 +${R.factoryPower}` });
-      }
-      list.push({ type: 'fortify', name: '防御 +1', cost: 0, power: 1, gain: `攻撃を1回防ぐ（最大 ${R.rt.defMax}・行動力なし）` });
-      if (c.def > 0) list.push({ type: 'unfortify', name: '防御を解除', cost: 0, gain: `戦力 ${c.def} 個が戻る` });
+      if (!c.core && c.terrain === 'plain') list.push({ type: 'cultivate', cost: R.cost.cultivate, gain: `農地にする。手番終了時の食料 +${R.farmFood}（強化の +${R.food.strong} とは別）` });
+      if (!list.length) return { note: c.strong ? '強化済のセルです' : 'このセルでできる行動はありません' };
     } else {
       const foe = g.players.find(p => p.id === c.owner);
-      list.push({ type: 'destroy', name: '攻撃', cost: 0, power: 1,
-        gain: '防御を1削る。防御0なら' + (c.core ? `コアを壊して ${foe.name} を脱落させる` : c.terrain === 'river' ? '橋を落とす' : '壊して空きマスに') });
+      list.push({ type: 'destroy', cost: R.cost.destroy,
+        gain: '戦力トークンが1個以上必要（相手の戦力トークンの数は見えない）。' + (c.core
+          ? `成功するとコアを破壊（${foe.name} は脱落し、セルとトークンをまるごと奪える）`
+          : c.terrain === 'river'
+            ? '成功すると橋が落ちて河川に戻る'
+            : '成功するとこのマスが自分のセルになる') });
     }
     for (const a of list) {
       a.why = '';
       if (E.targets(g, app.me, a.type).includes(key)) continue;
-      a.why = E.actionBlocked(g, app.me, a.type)
-        || (a.type === 'fortify' ? `防御は ${R.rt.defMax} までです` : a.type === 'expand' && me.resource < a.cost ? `資源トークンが足りません（あと ${a.cost - me.resource}）`
-          : a.type === 'destroy' ? '隣に自分の強化済のセル（拠点）がありません' : '自分のセルに隣接していません');
+      const cur = E.current(g);
+      if (g.pending) a.why = '破壊の攻防が終わるまで待ってください';
+      else if (cur.id !== app.me) a.why = `${cur.name} の手番です`;
+      else if (g.abandon) a.why = '捨てるセルを選んでいるところです';
+      else if (g.actionsLeft <= 0) a.why = '行動回数を使い切りました';
+      else if (me.resource < a.cost) a.why = `資源トークンが足りません（あと ${a.cost - me.resource}）`;
+      else if (a.type === 'destroy' && me.power < 1) a.why = '戦力トークンが1個以上必要です（強化・鉱山・生産で増やせる）';
+      else if (a.type === 'destroy') a.why = '自分の強化済のセル（拠点）に隣接していません。隣のセルを強化すると狙えます';
+      else a.why = '自分のセルに隣接していません';
     }
     return { list };
   }
@@ -913,31 +1145,31 @@
     app.tip = tip;
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
-    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化')
-      + (c.def > 0 ? `・防御 ${c.def} / ${R.rt.defMax}` : '');
+    const state = !owner ? (c.terrain === 'river' ? '河川（橋なし）' : '空きマス') : (c.terrain === 'river' ? '橋・' : '') + (c.core ? 'コア・' : '') + (c.strong ? '強化済' : '未強化');
     let acts = '';
     if (tip.pinned) {
       const r = cellActions(g, tip.key);
       if (r && r.list) {
         // 理由は同じことが多いので、まとめて最後に1回だけ出す
         const whys = [...new Set(r.list.map(a => a.why).filter(Boolean))];
-        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}"${a.to ? ` data-to="${a.to}"` : ''} ${a.why ? 'disabled' : ''}>
-          <b>${a.name || (a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type])}</b>${a.type === 'unfortify' ? '' : `<span class="tt-cost">${a.power ? `${TOKEN_SVG.power}${a.power}` : `${TOKEN_SVG.resource}${a.cost}`}</span>`}${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
+        acts = `<div class="tt-acts">${r.list.map(a => `<button class="tt-act${a.type === 'destroy' ? ' danger' : ''}" data-cell-act="${a.type}" ${a.why ? 'disabled' : ''}>
+          <b>${a.name || (a.type === 'expand' && c.terrain === 'river' ? '橋をかける' : E.ACTION_NAMES[a.type])}</b><span class="tt-cost">${TOKEN_SVG.resource}${a.cost}</span>${a.gain ? `<small>${esc(a.gain)}</small>` : ''}</button>`).join('')}
           ${whys.map(w => `<p class="tt-why">${esc(w)}</p>`).join('')}</div>`;
       } else if (r && r.note) {
         acts = `<div class="tt-acts"><p class="tt-why">${esc(r.note)}</p></div>`;
       }
     }
     const el = $('#tooltip');
-    const html = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', factory: '□ ', forest: '▽ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
+    const html = `<div class="tt-head">${{ plain: '', mine: '◆ ', farm: '● ', forest: '▽ ', river: '〜 ' }[c.terrain]}${E.TERRAIN_NAMES[c.terrain]}<span class="muted">(${c.q},${c.r})</span></div>
       <div>所有者：${owner ? `${swatch(owner.color)}${esc(owner.name)}` : '<span class="muted">なし</span>'}</div>
       <div>状態：${state}</div>
       <div class="tt-eff">${TERRAIN_EFFECTS[c.terrain]}</div>${acts}`;
-    // 中身が同じなら作り直さない（数秒ごとに画面が描き直されるので、操作が途切れないように）
+    // 中身が同じなら作り直さない。スライダーを操作しているあいだも作り直さない
     if (el._html !== html) { el.innerHTML = html; el._html = html; }
     el.classList.toggle('pinned', !!tip.pinned);
     el.hidden = false;
     positionTip();
+    if (app.tutorial) renderCoach();   // ツールチップのボタンを光らせる
     if (changed && view) view.setSelected(tip.pinned ? tip.key : null);
   }
 
@@ -978,7 +1210,7 @@
     if (had && view) view.setSelected(null);
   }
 
-  // ---------- ルール（ページに分けて、アイコンと動く図つき） ----------
+  // ---------- ルール（ページに分けて） ----------
 
   function initRulesPages() {
     const pages = [...document.querySelectorAll('#rules .r-page')];
@@ -1002,24 +1234,20 @@
     $('#rules').scrollTop = 0;
   }
 
-  // ルール説明などの <i data-icon="…"> にアイコンを入れる
-  function fillIcons() {
-    document.querySelectorAll('[data-icon]').forEach(el => { if (ICONS[el.dataset.icon]) el.innerHTML = ICONS[el.dataset.icon]; });
-  }
-
   // ---------- 設定 ----------
 
   function renderSettings() {
     $('#set-cb').checked = settings.cb;
     $('#set-pattern').checked = settings.patterns;
     $('#set-sound').checked = window.HexSound.on;
+    $('#set-focus').checked = settings.focus;
     $('#set-preview').innerHTML = window.HexRoom.COLORS.map(c =>
       `<span>${swatch(c, 'big')}${colorOf(c).name}${patternsOn() ? `<small>${PATTERN_NAMES[PATTERNS[c]]}</small>` : ''}</span>`).join('');
   }
 
   // ---------- イベント ----------
 
-  // 盤面の下に浮かせた自分の情報の高さを、盤面の表示範囲・盤面のボタンの位置に反映
+  // 盤面の下に浮かせた自分の情報の高さを、盤面の表示範囲・攻防のパネル・盤面のボタンの位置に反映
   function updateDock() {
     const h = $('#dock').offsetHeight;
     if (!h) return;
@@ -1028,10 +1256,13 @@
     placeChat();
   }
 
+  // ルール説明などの <i data-icon="…"> にアイコンを入れる
+  function fillIcons() {
+    document.querySelectorAll('[data-icon]').forEach(el => { if (ICONS[el.dataset.icon]) el.innerHTML = ICONS[el.dataset.icon]; });
+  }
+
   function init() {
     fillIcons();
-    initRulesPages();
-    $('#version').textContent = `v${E.VERSION}`;
     new ResizeObserver(updateDock).observe($('#dock'));
     const params = new URLSearchParams(location.search);
     $('#in-name').value = store.get('name') || '';
@@ -1041,6 +1272,16 @@
     $('#btn-create').onclick = () => enterRoom('create');
     $('#btn-join').onclick = () => enterRoom('join');
     $('#btn-local').onclick = () => enterRoom('local');
+    $('#btn-tutorial').onclick = () => enterRoom('tutorial');
+    $('#coach').onclick = e => {
+      const b = e.target.closest('[data-coach]');
+      if (!b || !app.tutorial) return;
+      if (b.dataset.coach === 'quit') { app.tutorial = null; renderCoach(); return; }
+      app.tutorial.step++;
+      app.tutorial.base = null;
+      if (app.tutorial.step >= TUTORIAL.length) app.tutorial = null;
+      renderCoach();
+    };
     $('#btn-add-cpu').onclick = () => send({ type: 'addCpu' });
     $('#lobby-players').onclick = e => { const b = e.target.closest('[data-remove-cpu]'); if (b) send({ type: 'removeCpu', target: b.dataset.removeCpu }); };
     $('#lobby-players').onchange = e => { const s = e.target.closest('[data-cpu-level]'); if (s) send({ type: 'cpuLevel', target: s.dataset.cpuLevel, level: s.value }); };
@@ -1054,10 +1295,27 @@
     $('#btn-start').onclick = () => send({ type: 'start' });
     $('#color-pick').onclick = e => { const b = e.target.closest('[data-color]'); if (b && !b.disabled) send({ type: 'color', color: b.dataset.color }); };
 
+    $('#extra').onclick = e => {
+      const b = e.target.closest('[data-extra]');
+      if (!b || b.disabled) return;
+      if (b.dataset.extra === 'hide') { app.extraHidden = $('#extra').dataset.key; $('#extra').hidden = true; return; }
+      send({ type: 'act', action: { type: b.dataset.extra } });
+    };
+    $('#abandon').onclick = e => {
+      const b = e.target.closest('[data-abandon]');
+      const g = app.room && app.room.game;
+      if (!b || b.disabled || !abandoning(g)) return;
+      if (b.dataset.abandon === 'auto') { app.abandonSel = new Set(E.suggestAbandon(g, app.me)); render(); return; }
+      send({ type: 'act', action: { type: 'abandon', cells: [...app.abandonSel] } });
+    };
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
-    $('#btn-ready').onclick = () => { app.readyClickAt = Date.now(); send({ type: 'act', action: { type: 'ready' } }); };
-    $('#set-ticks').onchange = e => send({ type: 'settings', ticks: Number(e.target.value) });
-    document.querySelectorAll('#set-ticks option').forEach(o => { const n = Number(o.value); if (n) o.textContent = `${n}ターン（${ticksTime(n)}）`; });
+    $('#actions').onclick = e => {
+      const b = e.target.closest('[data-act]');
+      if (!b || b.disabled) return;
+      // 生産はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
+      if (b.dataset.act === 'produce') window.HexSound.play('produce');
+      send({ type: 'act', action: { type: b.dataset.act } });
+    };
     // ツールチップの上でホイールを回しても、盤面を拡大・縮小する
     $('#tooltip').addEventListener('wheel', e => {
       e.preventDefault();
@@ -1069,11 +1327,25 @@
       if (b.disabled || !app.tip) return;
       const type = b.dataset.cellAct;
       const [q, r] = E.parseKey(app.tip.key);
-      send({ type: 'act', action: b.dataset.to ? { type, q, r, to: b.dataset.to } : { type, q, r } });
-      // 行動のあとも同じマスを選んだまま（続けて強化・攻撃できるように）
+      send({ type: 'act', action: { type, q, r } });
+      // 拡張・強化のあとは同じマスを選んだまま（続けて強化できるように）。破壊は攻防の画面へ。
+      if (type === 'destroy') hideTip();
     };
+    $('#clash').onclick = e => {
+      if (e.target.closest('[data-cancel-destroy]')) { send({ type: 'act', action: { type: 'cancelDestroy' } }); return; }
+      const b = e.target.closest('[data-bid-ok]');
+      if (!b || b.disabled || !app.bid) return;
+      window.HexSound.play('bid');
+      send({ type: 'act', action: { type: 'bid', count: app.bid.n } });
+    };
+    // スライダーで出す数を選ぶ（画面は数字だけ書き換える）
+    $('#clash').addEventListener('input', e => {
+      if (!e.target.matches('[data-bid-range]') || !app.bid) return;
+      app.bid.n = Number(e.target.value);
+      $('#clash [data-bid-n]').textContent = app.bid.n;
+      $('#clash [data-bid-label]').textContent = app.bid.n;
+    });
     setInterval(tickTimers, 250);
-    setInterval(tickCountdown, 100);
     $('#players').onclick = e => {
       const b = e.target.closest('[data-forfeit]');
       if (b && confirm('この人を脱落させますか？（セルはすべて空きマスに戻ります）')) send({ type: 'forfeit', target: b.dataset.forfeit });
@@ -1083,6 +1355,17 @@
       if (e.target.id === 'btn-hide-result') { app.resultHidden = true; $('#result').hidden = true; toast('もう一度結果を見るには「結果」を押してください', 'info'); renderResultButton(); }
     };
     $('#btn-fit').onclick = () => { boardView().reset(); hideTip(); };
+    const setFocus = on => {
+      settings.focus = on;
+      store.set('focus', on ? '1' : '0');
+      $('#btn-focus').classList.toggle('on', on);
+      $('#btn-focus').setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    setFocus(settings.focus);
+    $('#btn-focus').onclick = () => { setFocus(!settings.focus); toast(settings.focus ? 'フォーカス：ほかの人の行動があったマスに視点を動かします' : 'フォーカスをやめました', 'info'); };
+    $('#set-focus').onchange = e => setFocus(e.target.checked);
+    $('#set-actions').onchange = e => send({ type: 'settings', actions: Number(e.target.value) });
+    $('#set-rounds').onchange = e => send({ type: 'settings', rounds: Number(e.target.value) });
     // チャット：PC は開いた状態、スマホは閉じた状態から（前回の状態を覚えておく）
     app.chatOpen = store.get('chatOpen') ? store.get('chatOpen') === '1' : window.innerWidth > 820;
     $('#chat [data-chat-toggle]').onclick = () => {
@@ -1107,8 +1390,14 @@
     window.addEventListener('resize', placeChat);
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && app.tip) hideTip();
+      // Ctrl+Z（Mac は ⌘+Z）で取り消し。チャットなどの入力中は除く
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.closest('input, textarea')) {
+        const g = app.room && app.room.game;
+        if (g && !E.actionBlocked(g, app.me, 'undo')) { e.preventDefault(); send({ type: 'act', action: { type: 'undo' } }); }
+      }
     });
 
+    initRulesPages();
     document.querySelectorAll('[data-open]').forEach(b => {
       b.addEventListener('click', () => {
         const d = $('#' + b.dataset.open);

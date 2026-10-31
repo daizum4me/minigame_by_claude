@@ -13,6 +13,7 @@
 
   // noise：点数のゆらぎ（大きいほど気まぐれ）
   const LEVELS = { weak: { noise: 1.2 }, normal: { noise: 0.3 }, strong: { noise: 0.05 } };
+  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0;   // 葉を枝より優先する（枝は葉を置くための手段）
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
 
   // 葉を置いたときの価値：自分の得点の増え分 − 相手の増え分の6割。折れずに残る見込みと残りターンを掛ける
@@ -29,6 +30,20 @@
       if (x.owner === me) mine += d; else others += d;
     });
     return (mine - 0.6 * others) * horizon * surv;
+  }
+
+  // 保険：自分の葉がその列の一番上にあるとき、2枚目以降の葉は点にならないが、一番上が折れたときの控えになる
+  function insurance(state, geo, me, ck, extraLeaves, surv, horizon) {
+    const c = geo.cells[ck];
+    let top = null;
+    for (const [k, lf] of Object.entries(state.leaves)) {
+      const [kc, kr] = k.split(',').map(Number);
+      if (kc === c.c && (!top || kr > top.r)) top = { k, r: kr, owner: lf.owner };
+    }
+    if (!top || top.owner !== me || top.r <= c.r) return 0;
+    let topSurv = 0;
+    for (const ek of geo.cells[top.k].edges) if (state.edges[ek] && state.edges[ek].owner === me) topSurv = Math.max(topSurv, survival(state, geo, ek, {}, horizon));
+    return (1 - topSurv) * horizon * 1.0 * surv;
   }
 
   // 辺 ek の先まで残る見込み（horizon ターン）
@@ -75,7 +90,8 @@
         if (state.edges[ek] && state.edges[ek].owner === id) surv = Math.max(surv, survival(state, geo, ek, meta, horizon / 2));
         else if (meta[ek]) surv = Math.max(surv, survival(state, geo, ek, meta, horizon / 2));
       }
-      consider(leafValue(state, geo, id, ck, extraLeaves, surv, horizon) + noise(), { type: 'addLeaf', cell: ck });
+      const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon) * LEAF_BIAS + insurance(state, geo, id, ck, extraLeaves, surv, horizon);
+      consider(v + (v > 0 ? 0.3 : 0) + noise(), { type: 'addLeaf', cell: ck });
     }
     // 枝：新しい辺に接するセルに葉を置く価値の合計（の一部）。遠く・高いほど折れやすいので割り引く。
     // すでに自分の枝に接している（もう葉を置ける）セルは、枝を足しても増えないので数えない
@@ -92,7 +108,7 @@
         if (state.leaves[ck] || extraLeaves.includes(ck) || reach.has(ck)) continue;
         gain = Math.max(gain, leafValue(state, geo, id, ck, extraLeaves, surv, horizon));   // 同じ列の葉は1枚あれば足りるので、合計ではなく一番よいものだけ
       }
-      consider(gain * 0.5 + 0.03 * e.h * surv + noise(), { type: 'addBranch', edge: ek });
+      consider(gain * BRANCH_W + CLIMB * e.h * surv + noise() - BRANCH_COST, { type: 'addBranch', edge: ek });
     }
     return best && best.s > 0.15 ? best.a : null;
   }

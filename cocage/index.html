@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Cocage</title>
-<meta name="description" content="Cocage— 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム">
+<meta name="description" content="Cocage — 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232A2A28%22/><path d=%22M50 94 L50 40 M50 62 L72 44 M50 52 L28 36%22 stroke=%22%237BD39A%22 stroke-width=%228%22 stroke-linecap=%22round%22 fill=%22none%22/><polygon points=%2250,6 70,17 70,39 50,50 30,39 30,17%22 fill=%22%237BD39A%22 fill-opacity=%22.45%22 stroke=%22%237BD39A%22 stroke-width=%225%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
 <link rel="stylesheet" href="style.css?v=1">
@@ -80,6 +80,7 @@
       <div class="legend" id="overlay-legend" hidden><span>低</span><i></i><span>高</span><small id="overlay-note"></small></div>
     </div>
     <div class="board-tools">
+      <button id="btn-fit" class="tool" title="拡大を戻して、盤面全体を見る">⤢ 全体</button>
       <button id="btn-center" class="tool" title="盤面を自分の幹が真ん中に来るように回す">⟲ 自分の幹へ</button>
       <button class="tool" data-open="rules" title="ルール">？</button>
     </div>
@@ -88,10 +89,6 @@
     <section id="dock" class="dock">
       <div class="tickbar" id="tickbar"><i></i></div>
       <div class="dock-row">
-        <div class="seg" id="mode-seg" role="group" aria-label="置くもの">
-          <button data-mode="b" class="on">枝を置く</button>
-          <button data-mode="l">葉を置く</button>
-        </div>
         <ol id="plan" class="plan"></ol>
         <button id="btn-finish" class="primary">全て確定</button>
       </div>
@@ -158,14 +155,14 @@
     <h3>得点</h3>
     <ul>
       <li>列で<b>一番上の葉</b>：1 ＋ min(3, その列の下にある他人の葉の数)（最大4点）。</li>
-      <li>一番上ではない葉：上に他人の葉があれば 0.3 点、上が自分の葉だけなら 0 点。</li>
+      <li>ほかの葉：その人の、その列で一番上の葉（上に他人の葉があるもの）だけが 0.3 点。同じ人の2枚目以降の葉は 0 点です。<br>例（上から）：A の葉＝2、B の葉＝0.3、A の葉＝0、A の葉＝0、A の葉＝0</li>
       <li>一番上の葉が消えたら、その下の葉が新しい一番上になります。</li>
     </ul>
     <h3>操作</h3>
     <ul>
-      <li>「枝を置く」では置ける辺が点線で光ります。クリックで計画に加わります。「葉を置く」では置けるセルが光ります。</li>
-      <li>計画した行動は数字つきで盤面に出ます（自分にだけ見えます）。下のバーで確定したり、外したりできます。「全て確定」で、残りを使わずに確定できます。</li>
-      <li>盤面は左右にドラッグして回せます。</li>
+      <li>今置けるところは白く光ります。光っている辺をクリックすると枝、セルをクリックすると葉が、計画に加わります。</li>
+      <li>計画した行動は数字つきで盤面に出ます（自分にだけ見えます）。<b>右クリック</b>で、その行動を取り消せます（行動のないところなら、いちばん新しい行動）。下のバーでも、確定したり外したりできます。「全て確定」で、残りを使わずに確定できます。</li>
+      <li>盤面は、ホイールで拡大・縮小、ドラッグで移動できます（横はループ）。スマホは、ピンチと1本指のドラッグ。「全体」で元の大きさに戻ります。</li>
     </ul>
   </div>
   <div class="row"><button class="primary" data-close>閉じる</button></div>

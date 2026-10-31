@@ -1,5 +1,5 @@
 /*
- * Cocage— 画面と通信
+ * Cocage — 画面と通信
  * 通信は PeerJS（WebRTC の P2P）。部屋を作った人（ホスト）のブラウザで Room を動かし、
  * 参加者は行動の要求をホストへ送る。ホストが検証して、全員に最新の状態を配信する。
  */
@@ -261,7 +261,6 @@
     conn: null,
     me: null,
     room: null,
-    mode: 'b',          // 置くもの：b（枝）／l（葉）
     overlay: 'normal',  // 折れやすさの表示：normal／p／loss
     graceAt: 0,
   };
@@ -395,7 +394,7 @@
 
   let board = null;
   function boardView() {
-    if (!board) board = new window.CocageBoard($('#board'), { onHover, onPick });
+    if (!board) board = new window.CocageBoard($('#board'), { onHover, onPick, onCancel });
     return board;
   }
 
@@ -409,11 +408,11 @@
     g.players.forEach(p => { colors[p.id] = colorOf(p.color); });
     const live = !g.over && !!me;
     const candidates = live && !me.finished ? E.candidates(g, app.me) : null;
-    boardView().setData({ game: g, me: app.me, mode: app.mode, overlay: app.overlay, colors, candidates });
+    boardView().setData({ game: g, me: app.me, overlay: app.overlay, colors, candidates });
     // 新しいターンが解決されたら、点数を稼いだ葉から数字をこぼす（最初に画面を開いたときは出さない）
     if (app.lastRound != null && g.round > app.lastRound) {
       const { points } = E.scoreBoard(g);
-      board.spill(Object.entries(points).filter(([, v]) => v > 0).map(([ck, v]) => ({ cell: ck, pts: v, color: colors[g.leaves[ck].owner] })));
+      board.playTurn(Object.entries(points).filter(([, v]) => v > 0).map(([ck, v]) => ({ cell: ck, pts: v, color: colors[g.leaves[ck].owner] })), g.lastTurn);
     }
     app.lastRound = g.round;
 
@@ -424,8 +423,6 @@
     $('#overlay-note').textContent = app.overlay === 'p' ? '毎ターンの折れる確率（いまの盤面で相対）' : '確率 × 失う枝と葉の数（いまの盤面で相対）';
 
     // 下のバー：置くもの・計画・確定
-    document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === app.mode));
-    $('#mode-seg').hidden = !live;
     $('#btn-finish').hidden = !live;
     const plan = me ? me.plan : [];
     const geo = E.geometry(g.cols);
@@ -445,8 +442,7 @@
     $('#hint').textContent = g.over ? ''
       : !me ? '観戦中です'
       : me.finished ? `確定ずみ。ほかの人を待っています（確定した人：${room.finishedCount}/${n}人）。時間まで、取り消して変更できます`
-      : app.mode === 'b' ? '枝：点線で光っている辺をクリック。自分の幹・枝の頂点からつなぎます（行動力1）'
-      : '葉：点線で光っているセルをクリック。自分の枝に接するセルに置きます（行動力1）';
+      : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動';
     $('#tickbar').hidden = g.over;
 
     renderScores(g);
@@ -546,6 +542,15 @@
 
   function hideTip() { const t = $('#tooltip'); if (t) t.hidden = true; }
 
+  // 右クリック：置いた計画を取り消す（計画に当たらなかったら、いちばん新しいもの）
+  function onCancel(index) {
+    const g = app.room && app.room.game;
+    if (!g || g.over) return;
+    const me = g.players.find(p => p.id === app.me);
+    if (!me || !me.plan.length) return;
+    act({ type: 'remove', index: index >= 0 ? index : me.plan.length - 1 });
+  }
+
   function onPick(c) {
     if (!app.room || !app.room.game || app.room.game.over) return;
     if (c.t === 'b') act({ type: 'addBranch', edge: c.key });
@@ -588,8 +593,8 @@
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-remove]'); if (b) send({ type: 'removePlayer', target: b.dataset.remove }); });
 
     document.querySelectorAll('[data-overlay]').forEach(b => { b.onclick = () => { app.overlay = b.dataset.overlay; render(); }; });
-    document.querySelectorAll('[data-mode]').forEach(b => { b.onclick = () => { app.mode = b.dataset.mode; render(); }; });
     $('#btn-center').onclick = () => boardView().centerOn(app.me);
+    $('#btn-fit').onclick = () => boardView().fit();
     $('#plan').addEventListener('click', e => {
       const c = e.target.closest('[data-confirm]'), r = e.target.closest('[data-remove]');
       if (c) act({ type: 'confirm', index: Number(c.dataset.confirm) });

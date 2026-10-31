@@ -1,5 +1,5 @@
 /*
- * Cocage— ルール判定
+ * Cocage — ルール判定
  * 幹から枝と葉を伸ばし、各列の「一番上の葉」で得点を競う2〜5人用のヘックス盤ゲーム。全36ターン。
  * 全員が同時に（最大3回の行動を）決め、ターンの終わりにまとめて解決する：
  *   行動（同じ辺・セルを選んだら抽選）→ 幹の成長 → 枝の折れ判定 → 光合成（得点）
@@ -279,19 +279,23 @@
 
   // ---------- 得点 ----------
 
-  // 1列ぶん：list は { r, owner } の配列。それぞれの得点を、同じ並びで返す
+  // 1列ぶん：list は { r, owner } の配列。それぞれの得点を、同じ並びで返す。
+  //   一番上の葉：1 + min(3, 下にある他人の葉の数)
+  //   ほかの葉：その人の、その列で一番上の葉（上に他人の葉がある）だけが 0.3。同じ人の2枚目以降は 0
+  //   例（上から）：A=2・B=0.3・A=0・A=0・A=0
   function scoreColumn(list) {
     const order = list.map((x, i) => i).sort((a, b) => list[b].r - list[a].r);
     const pts = list.map(() => 0);
+    const seen = new Set();
     order.forEach((idx, n) => {
       const owner = list[idx].owner;
       if (n === 0) {
         const below = order.slice(1).filter(j => list[j].owner !== owner).length;
         pts[idx] = RULES.score.top + Math.min(RULES.score.bonusMax, below);
-      } else {
-        const coveredByOther = order.slice(0, n).some(j => list[j].owner !== owner);
-        pts[idx] = coveredByOther ? RULES.score.covered : 0;
+      } else if (!seen.has(owner)) {
+        pts[idx] = RULES.score.covered;
       }
+      seen.add(owner);
     });
     return pts;
   }
@@ -361,7 +365,7 @@
     const turn = state.round + 1;
     const info = {
       turn, placedBranches: 0, placedLeaves: 0, contested: 0, lost: [],
-      broken: [], removed: [], removedLeaves: 0, topChanges: 0, gains: {},
+      broken: [], removed: [], removedLeaves: 0, removedLeafList: [], topChanges: 0, gains: {},
     };
 
     // 1. 行動：同じ辺・セルを選んだ人が複数いたら、等確率の抽選で1人だけが成功
@@ -408,13 +412,13 @@
     for (const ek of brokenNow) for (const k of subtree(state, ek)) goneEdges.add(k);
     for (const k of goneEdges) {
       const e = state.edges[k];
-      info.removed.push({ key: k, owner: e.owner, primary: brokenNow.includes(k) });
+      info.removed.push({ key: k, owner: e.owner, l: e.l, primary: brokenNow.includes(k) });
       delete state.edges[k];
     }
     info.broken = brokenNow;
     for (const [ck, lf] of Object.entries(state.leaves)) {
       const anchored = geo.cells[ck].edges.some(k => state.edges[k] && state.edges[k].owner === lf.owner);
-      if (!anchored) { delete state.leaves[ck]; info.removedLeaves++; }
+      if (!anchored) { info.removedLeafList.push({ cell: ck, owner: lf.owner }); delete state.leaves[ck]; info.removedLeaves++; }
     }
 
     // 4. 光合成：列ごとに得点

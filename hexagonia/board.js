@@ -4,7 +4,7 @@
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
  * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, scale, byLongPress), onView() })
- * view.setData({ game, colors, patterns, targets, selected, me })
+ * view.setData({ game, colors, patterns, targets, selected, marked, me })
  */
 (function () {
   'use strict';
@@ -14,6 +14,7 @@
   const DRAG_PX = 6;          // これ以上動いたらドラッグ扱い
   const LONG_PRESS_MS = 450;
   const FLASH_MS = 900;       // 変化したマスを光らせる時間
+  const FOCUS_MS = 450;       // 行動があったマスへ視点を動かす時間
   const MIN_HEX_PX = 9;       // 拡大率の下限・上限（マスの半径のピクセル数）
   const MAX_HEX_PX = 140;
   const FIT_MAX_HEX_PX = 90;  // 全体表示のときの上限（小さい画面以外で大きくなりすぎないように）
@@ -126,6 +127,35 @@
       const t = performance.now();
       for (const k of keys) this.flashes.set(k, { t, color: color || '255,255,255', ms: ms || FLASH_MS });
       if (keys.length) this.animate();
+    }
+
+    // 行動があったマスへ、なめらかに視点を動かす（全体表示のときは少し拡大する）
+    focusOn(keys) {
+      if (!keys.length || this.pointers.size || !this.dpr) return;
+      let sx = 0, sy = 0;
+      for (const k of keys) { const [q, r] = E.parseKey(k); const [x, y] = toWorld(q, r); sx += x; sy += y; }
+      const wx = sx / keys.length, wy = sy / keys.length;
+      const [, hi] = this.limits();
+      const scale = this.moved ? this.scale : Math.min(hi, this.fitScale() * 1.8);
+      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      this.focusAnim = {
+        t0: performance.now(),
+        from: { ox: this.ox, oy: this.oy, scale: this.scale },
+        to: { ox: w / 2 - wx * scale, oy: (h - (this.insetBottom || 0)) / 2 - wy * scale, scale },
+      };
+      this.moved = true;
+      this.animate();
+    }
+
+    stepFocus(t) {
+      const f = this.focusAnim;
+      if (!f) return;
+      const k = Math.min(1, (t - f.t0) / FOCUS_MS);
+      const e = 1 - Math.pow(1 - k, 3);
+      this.ox = f.from.ox + (f.to.ox - f.from.ox) * e;
+      this.oy = f.from.oy + (f.to.oy - f.from.oy) * e;
+      this.scale = f.from.scale + (f.to.scale - f.from.scale) * e;
+      if (k >= 1) { this.focusAnim = null; this.clamp(); }
     }
 
     setSelected(key) {
@@ -277,12 +307,12 @@
       }
     }
 
-    // 対象マスがあるとき・光らせているマスがあるときだけ動かす
+    // 攻防中・対象マスがあるときだけゆっくり点滅させる
     animate() {
       if (this.anim) return;
       const loop = () => {
         const d = this.data;
-        const need = d && (d.targets.length || this.flashes.size);
+        const need = d && (d.targets.length || (d.game.pending && !d.game.over) || this.flashes.size || this.focusAnim);
         if (!need) { this.anim = 0; this.draw(); return; }
         this.draw();
         this.anim = requestAnimationFrame(loop);
@@ -300,6 +330,7 @@
       ctx.fillStyle = COL.page;
       ctx.fillRect(0, 0, w, h);
       if (!d) return;
+      this.stepFocus(performance.now());
       const s = this.scale, g = d.game;
       const t = performance.now();
       const pulse = 0.55 + 0.45 * Math.sin(t / 260);
@@ -371,12 +402,6 @@
           ctx.lineWidth = Math.max(1.2, s * 0.06);
           ctx.lineJoin = 'round';
           ctx.stroke();
-        } else if (c.terrain === 'factory') {
-          // 工場：□（枠だけ）
-          ctx.strokeStyle = COL.mark;
-          ctx.lineWidth = Math.max(1.2, s * 0.06);
-          ctx.lineJoin = 'miter';
-          ctx.strokeRect(x - s * 0.2, y - s * 0.2, s * 0.4, s * 0.4);
         } else if (c.terrain === 'farm') {
           // 農地：●
           ctx.beginPath();
@@ -397,8 +422,6 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
-        // 防御（リアルタイムモード）：縁と内側の小さな六角形（強化の印）のあいだ（印とは接しないように）を、1つにつき辺1本ぶんずつ埋める。6で一周
-        if (c.def > 0) this.defRing(ctx, x, y, s, this.defSides(g, c).slice(0, Math.min(6, c.def)), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
         this.edge(ctx, x, y, s * 0.88, c.core ? Math.max(2.5, s * 0.11) : Math.max(1.5, s * 0.06), col.light, pat);
@@ -419,6 +442,22 @@
           ctx.strokeStyle = col.light;
           ctx.stroke();
         }
+      }
+      // 捨てるセルとして選んだマス：赤い枠と×
+      for (const k of d.marked || []) {
+        if (!g.board[k]) continue;
+        const [x, y] = this.screenOf(k);
+        hexPath(ctx, x, y, s * 0.86);
+        ctx.fillStyle = 'rgba(255,90,90,0.25)';
+        ctx.fill();
+        ctx.lineWidth = Math.max(2, s * 0.08);
+        ctx.strokeStyle = 'rgba(255,120,120,0.95)';
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - s * 0.3, y - s * 0.3); ctx.lineTo(x + s * 0.3, y + s * 0.3);
+        ctx.moveTo(x + s * 0.3, y - s * 0.3); ctx.lineTo(x - s * 0.3, y + s * 0.3);
+        ctx.stroke();
       }
       // 行動できるマス（薄く光らせる）
       for (const k of targets) {
@@ -458,6 +497,15 @@
         ctx.setLineDash([]);
         ctx.stroke();
       }
+      // 攻防中のマス
+      if (g.pending && !g.over) {
+        const [x, y] = this.screenOf(g.pending.target);
+        ctx.beginPath();
+        ctx.arc(x, y, s * (0.95 + 0.1 * pulse), 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(2, s * 0.09);
+        ctx.strokeStyle = `rgba(255,120,120,${0.5 + 0.5 * pulse})`;
+        ctx.stroke();
+      }
       if (this.hoverKey && g.board[this.hoverKey]) {
         // ホバー中のマス
         const [x, y] = this.screenOf(this.hoverKey);
@@ -468,34 +516,6 @@
         ctx.stroke();
       }
       if (this.h.onView) this.h.onView();
-    }
-
-    // 防御を埋める辺の順番（0〜5。辺 i は頂点 i と i+1 のあいだ、上の頂点から時計回り）：
-    // 相手のセルと接している辺から。残りは、相手と接している辺に近いものから（どこにも接していなければ上から時計回り）
-    defSides(g, c) {
-      const foe = [];
-      for (const [dq, dr] of E.DIRS) {
-        const [wx, wy] = toWorld(dq, dr);
-        const i = ((Math.round(Math.atan2(wy, wx) * 180 / Math.PI / 60) + 1) % 6 + 6) % 6;
-        const n = g.board[E.key(c.q + dq, c.r + dr)];
-        if (n && n.owner && n.owner !== c.owner) foe.push(i);
-      }
-      const near = i => foe.length ? Math.min(...foe.map(f => { const d = Math.abs(f - i) % 6; return Math.min(d, 6 - d); })) : 0;
-      return [0, 1, 2, 3, 4, 5].sort((a, b) => near(a) - near(b) || a - b);
-    }
-
-    // 防御の帯：sides の辺ごとに、縁と内側の六角形（強化の印より少し外）のあいだの台形を塗る（セルの明るい色）
-    defRing(ctx, x, y, s, sides, col) {
-      const ro = s * 0.86, ri = s * 0.71;   // 内側は強化の印（0.62）とすき間をあける
-      const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
-      ctx.fillStyle = col.light;
-      for (const i of sides) {
-        ctx.beginPath();
-        ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));
-        ctx.lineTo(...pt(ri, i + 1)); ctx.lineTo(...pt(ri, i));
-        ctx.closePath();
-        ctx.fill();
-      }
     }
 
     // セルの縁（陣営ごとの模様：実線・点線・二重線・破線）
