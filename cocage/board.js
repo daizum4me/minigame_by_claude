@@ -187,11 +187,7 @@
       e.preventDefault();
       if (!this.data || !this.data.game) return;
       const [x, y] = this.local(e);
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && e.deltaX) {   // 横スクロール：回す
-        this.setPan(this.pan - e.deltaX / this.k);
-        this.hover = null; this.redraw();
-        return;
-      }
+      if (!e.deltaY) return;
       const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 0.5 : 0.0016;
       this.zoomAt(x, y, Math.exp(-e.deltaY * unit));
       this.setHover(null);
@@ -285,12 +281,18 @@
       const thr = Math.max(7, this.S * 0.3);
       const out = { edge: null, cand: null };
       if (d.candidates) {
-        let best = thr;
-        for (const ek of d.candidates.edges) { const dist = this.distToEdge(ek, x, y); if (dist < best) { best = dist; out.cand = { t: 'b', key: ek }; } }
-        if (!out.cand) {
-          best = this.S * 0.87;
-          for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; out.cand = { t: 'l', key: ck }; } }
-        }
+        // 1) 光っている線のすぐそばなら枝 → 2) 光っている葉の六角形の中なら葉 → 3) 線の少し遠く → 4) セルの中のその他
+        const nearEdge = lim => {
+          let best = lim, hit = null;
+          for (const ek of d.candidates.edges) { const dist = this.distToEdge(ek, x, y); if (dist < best) { best = dist; hit = { t: 'b', key: ek }; } }
+          return hit;
+        };
+        const inCell = r => {
+          let best = r, hit = null;
+          for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'l', key: ck }; } }
+          return hit;
+        };
+        out.cand = nearEdge(Math.max(4, this.S * 0.14)) || inCell(this.S * 0.68) || nearEdge(thr) || inCell(this.S * 0.87);
       }
       let best = thr;
       const g = d.game;
@@ -302,18 +304,27 @@
       return out.edge || out.cand ? out : null;
     }
 
-    // 点にある、自分の計画（何番目か。なければ -1）
+    // 点にある、自分の計画（何番目か。なければ -1）。葉の六角形の中なら葉、線のそばなら枝（置くときの判定と同じ順）
     planHit(x, y) {
       const g = this.data.game, me = g.players.find(p => p.id === this.data.me);
       if (!me) return -1;
+      const nearest = (type, lim) => {
+        let best = -1, bestD = lim;
+        me.plan.forEach((it, i) => {
+          if (it.t !== type) return;
+          const dist = type === 'b' ? this.distToEdge(it.e, x, y) : this.distToCell(it.c, x, y);
+          if (dist < bestD) { bestD = dist; best = i; }
+        });
+        return best;
+      };
       const thr = Math.max(8, this.S * 0.35);
-      let best = -1, bestD = Infinity;
-      me.plan.forEach((it, i) => {
-        const dist = it.t === 'b' ? this.distToEdge(it.e, x, y) : Math.max(0, this.distToCell(it.c, x, y) - this.S * 0.4);
-        const lim = it.t === 'b' ? thr : this.S * 0.5;
-        if (dist < lim && dist < bestD) { bestD = dist; best = i; }
-      });
-      return best;
+      const a = nearest('b', Math.max(4, this.S * 0.14));
+      if (a >= 0) return a;
+      const b = nearest('l', this.S * 0.68);
+      if (b >= 0) return b;
+      const c = nearest('b', thr);
+      if (c >= 0) return c;
+      return nearest('l', this.S * 0.87);
     }
 
     // ---------- 演出 ----------
@@ -689,6 +700,8 @@
     }
   }
 
+  CocageBoard.PART_MS = PART_MS;
+  CocageBoard.BREAK_MS = BREAK_MS;
   window.CocageBoard = CocageBoard;
   window.CocageBoardColors = { COL, heat, rgba, lighten };
 })();
