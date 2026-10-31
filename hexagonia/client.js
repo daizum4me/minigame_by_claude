@@ -614,11 +614,21 @@
     const actHtml = !me ? '' : !me.alive ? '脱落' : `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${max}）">行動力 ${apDots(me.ap || 0)}</span>`;
     if (meAct._html !== actHtml) { meAct.innerHTML = actHtml; meAct._html = actHtml; }
     $('#dock-tickbar').hidden = g.over;
+    // 行動完了：全員（CPU と切断中の人は押したものとみなす）がそろうと、待たずに次のターンへ
+    const readyBtn = $('#btn-ready');
+    readyBtn.hidden = !me || !me.alive || g.over;
+    if (!readyBtn.hidden) {
+      const alive = g.players.filter(p => p.alive).length, n = (room.readyIds || []).length;
+      const html = me.ready ? `✓ 行動完了<small>${n}/${alive}人・押すと取り消し</small>` : `行動完了<small>${n}/${alive}人</small>`;
+      if (readyBtn._html !== html) { readyBtn.innerHTML = html; readyBtn._html = html; }
+      readyBtn.classList.toggle('on', !!me.ready);
+      readyBtn.title = '全員が押すと、待たずに次のターンへ進みます（CPU と切断中の人は押したものとみなします）';
+    }
     renderMyTokens(me);
 
 
     $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : 'マスを選ぶと行動のボタンが出ます。防御は行動力を使いません';
+      : 'マスを選ぶと行動のボタンが出ます。全員が「行動完了」を押すと、待たずに次のターンへ';
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
@@ -627,7 +637,7 @@
       const cells = E.cellsOf(g, p.id).length;
       const group = E.largestGroup(g, p.id).length;
       return `<li class="${p.alive ? '' : 'out'}">
-        <div class="prow">${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}</div>
+        <div class="prow">${swatch(p.color)}<span class="pname">${esc(p.name)}</span>${cpuOf(p.id) ? `<span class="badge cpu">CPU・${window.HexCpu.LEVEL_NAMES[cpuOf(p.id).level] || 'ふつう'}</span>` : ''}${p.id === app.me ? '<span class="badge me">あなた</span>' : ''}${conn(p.id) ? '' : '<span class="badge warn" title="切断中">切断中</span>'}${p.alive ? '' : '<span class="badge">脱落</span>'}${p.alive && p.ready ? '<span class="badge ready" title="行動完了">✓ 完了</span>' : ''}</div>
         <div class="pstats"><span class="cells" title="つながっている一番大きなかたまり（勝敗はこれで決まる）／セルの総数"><svg viewBox="0 0 24 24" class="tk"><path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg><b>${group}</b><small>/${cells}</small></span>${tokenChip('resource', p.resource)}${tokenChip('power', p.power)}${tokenChip('food', p.food)}</div>
         ${isHost && p.alive && !conn(p.id) && !g.over ? `<button class="small" data-forfeit="${p.id}">脱落させる</button>` : ''}
       </li>`;
@@ -987,6 +997,7 @@
     $('#color-pick').onclick = e => { const b = e.target.closest('[data-color]'); if (b && !b.disabled) send({ type: 'color', color: b.dataset.color }); };
 
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
+    $('#btn-ready').onclick = () => send({ type: 'act', action: { type: 'ready' } });
     $('#set-ticks').onchange = e => send({ type: 'settings', ticks: Number(e.target.value) });
     document.querySelectorAll('#set-ticks option').forEach(o => { const n = Number(o.value); if (n) o.textContent = `${n}ターン（${ticksTime(n)}）`; });
     // ツールチップの上でホイールを回しても、盤面を拡大・縮小する

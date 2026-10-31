@@ -90,6 +90,7 @@
         this.players = this.players.filter(x => x !== p);
       } else if (this.game) {
         this.note(`🔌 ${p.name} の接続が切れました`);
+        this.checkReady();   // 切断した人は行動完了とみなす
       }
       this.changed();
     }
@@ -188,6 +189,7 @@
           if (this.countdownUntil) return err('まだ始まっていません');
           const r = E.apply(this.game, id, msg.action);
           if (!r.ok) return err(r.error);
+          if (msg.action.type === 'ready') this.checkReady();
           this.changed();
           return;
         }
@@ -253,6 +255,24 @@
       }
     }
 
+    // 行動完了の人（CPU と切断中の人は、押したものとみなす）
+    readyIds() {
+      const g = this.game;
+      return g ? g.players.filter(p => p.alive && (p.ready || (this.player(p.id) || {}).cpu || !(this.player(p.id) || {}).connected)).map(p => p.id) : [];
+    }
+
+    // 生きている人間のプレイヤーがひとりでもいて、全員が行動完了なら、待たずに次のターンへ
+    checkReady() {
+      const g = this.game;
+      if (!g || g.over || this.phase !== 'game' || this.countdownUntil) return;
+      const humans = g.players.filter(p => p.alive && !(this.player(p.id) || {}).cpu && (this.player(p.id) || {}).connected);
+      if (!humans.length || !humans.every(p => p.ready)) return;
+      this.note('全員が行動完了したので、次のターンへ');
+      this.stop('rtTick');
+      E.rtTick(g, this.rng);
+      // checkTimers が次のターンのタイマーをかけ直す
+    }
+
     // CPU は一定の間隔で考えて、行動力があれば1つずつ動く
     checkCpu() {
       const g = this.game;
@@ -294,6 +314,7 @@
         hostId: this.hostId,
         settings: this.settings,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu, level: p.cpu ? p.level : undefined })),
+        readyIds: live ? this.readyIds() : [],
         countdownMs: live && this.countdownUntil ? Math.max(0, this.countdownUntil - now) : 0,
         tickLeftMs: live && !this.countdownUntil ? Math.max(0, this.tickDeadline - now) : 0,
         regenLeftMs: live ? Math.max(0, this.regenDeadline - now) : 0,

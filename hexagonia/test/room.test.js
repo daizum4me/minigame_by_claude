@@ -232,3 +232,33 @@ test('切断しても戻ってきたら続けられる。ホストが脱落さ�
   assert.strictEqual(last(h).room.phase, 'lobby');
   assert.strictEqual(last(h).room.players.length, 1);
 });
+
+test('行動完了：人間の全員が押したら、待たずに次のターンへ（CPU と切断中の人は押したものとみなす）', () => {
+  const { room, last, fire, timers } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  fire(3000);
+  const gm = room.game;
+  const cpu = gm.players.find(p => p.id !== h && p.id !== g).id;
+  room.handle(h, { type: 'act', action: { type: 'ready' } });
+  assert.strictEqual(gm.round, 0);                                   // まだ B が押していない
+  assert.deepStrictEqual(last(g).room.readyIds.sort(), [h, cpu].sort());
+  room.handle(g, { type: 'act', action: { type: 'ready' } });
+  assert.strictEqual(gm.round, 1);                                   // すぐ次のターンへ
+  assert.ok(gm.log.some(l => l.text.includes('全員が行動完了')));
+  assert.deepStrictEqual(last(h).room.readyIds, [cpu]);              // 印は外れる
+  assert.strictEqual(last(h).room.tickLeftMs, 30000);                // 次のターンの時間は数え直し
+  assert.strictEqual(timers.filter(t => t.ms === 30000).length, 1);
+  // B が切断したら、A が押すだけで進む
+  room.disconnect(g);
+  room.handle(h, { type: 'act', action: { type: 'ready' } });
+  assert.strictEqual(gm.round, 2);
+  // A が押したあとに B が切断しても進む
+  room.join('t2', 'B');
+  room.handle(h, { type: 'act', action: { type: 'ready' } });
+  assert.strictEqual(gm.round, 2);
+  room.disconnect(g);
+  assert.strictEqual(gm.round, 3);
+});

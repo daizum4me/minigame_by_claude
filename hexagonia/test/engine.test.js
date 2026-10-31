@@ -450,3 +450,18 @@ test('イベント：ターン4〜8回ごとに起き、1ターンのあいだ�
   for (let i = 0; i < 30; i++) E.rtTick(no);
   assert.strictEqual(no.event, null);
 });
+
+test('行動完了：押すと印がつき、もう一度押すと外れる。ターンが変わると全員外れる。脱落した人は押せない', () => {
+  const { g, a, b } = rtGame();
+  P(g, a).ap = 0;
+  assert.ok(E.apply(g, a, { type: 'ready' }).ok);         // 行動力がなくても押せる
+  assert.strictEqual(P(g, a).ready, true);
+  assert.ok(E.apply(g, a, { type: 'ready' }).ok);
+  assert.strictEqual(P(g, a).ready, false);
+  E.apply(g, a, { type: 'ready', on: true });
+  E.apply(g, b, { type: 'ready', on: true });
+  E.rtTick(g);
+  assert.deepStrictEqual(g.players.map(p => !!p.ready), [false, false]);
+  E.forfeit(g, b);
+  assert.strictEqual(E.apply(g, b, { type: 'ready' }).ok, false);
+});

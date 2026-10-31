@@ -75,7 +75,7 @@
   const TERRAIN_KINDS = ['mine', 'forest'];   // 盤面を作るときに置く、効果のある地形（農地・工場は発展で作る）
   const DEVELOP_KINDS = ['farm', 'factory'];  // 発展で作れる地形
 
-  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', develop: '発展', destroy: '攻撃', fortify: '防御', unfortify: '防御の解除' };
+  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', develop: '発展', destroy: '攻撃', fortify: '防御', unfortify: '防御の解除', ready: '行動完了' };
   // 行動力を使う行動（ほかは使わない）
   const AP_ACTIONS = ['expand', 'strengthen', 'develop', 'destroy'];
 
@@ -368,6 +368,7 @@
     if (state.over) return;
     rng = rng || Math.random;
     state.round++;
+    for (const p of state.players) p.ready = false;
     addLog(state, `ターン ${state.round} / ${state.rounds}`, 'round');
     const seq = state.logSeq;
     for (const p of state.players) {
@@ -475,7 +476,7 @@
     const p = playerById(state, id);
     if (!p || !p.alive) return '脱落しています';
     if (!(type in ACTION_NAMES)) return '不明な行動です';
-    if (type === 'unfortify') return '';
+    if (type === 'unfortify' || type === 'ready') return '';
     if (AP_ACTIONS.includes(type) && (p.ap || 0) < 1) return `行動力が足りません（${RULES.rt.apSeconds}秒に1回復）`;
     if (type === 'fortify' || type === 'destroy') return p.power < 1 ? '戦力トークンが1個以上必要です' : '';
     const min = type === 'expand' ? RULES.cost.expand : RULES.cost[type];
@@ -511,12 +512,18 @@
   /*
    * 行動を実行する。state は書き換わる。
    * action: { type: 'expand'|'strengthen'|'destroy'|'fortify'|'unfortify', q, r } / { type: 'develop', q, r, to: 'farm'|'factory' }
+   *         { type: 'ready', on }（行動完了。全員がそろうと部屋が次のターンへ進める）
    */
   function apply(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
     const blocked = actionBlocked(state, id, action.type);
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
+    // 行動完了：このターンはもう行動しない、という印（もう一度押すと取り消し）。ターンが変わると外れる
+    if (action.type === 'ready') {
+      p.ready = action.on === undefined ? !p.ready : !!action.on;
+      return { ok: true };
+    }
     const k = key(Number(action.q), Number(action.r));
     const cell = state.board[k];
     if (!cell) return fail('盤面の外です');
