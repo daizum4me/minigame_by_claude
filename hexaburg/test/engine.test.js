@@ -17,6 +17,7 @@ const PLAYERS = [
 ];
 
 function newGame(n, seed) { return E.createGame(PLAYERS.slice(0, n), seeded(seed || 1)); }
+const NOB = () => 0.99;   // おまけが出ない乱数
 const P = (g, id) => g.players.find(p => p.id === id);
 const nb = (g, q, r) => E.neighbors(q, r).filter(([nq, nr]) => g.board[E.key(nq, nr)]);
 const freeNext = (g, id) => nb(g, ...E.parseKey(P(g, id).core)).find(([q, r]) => !g.board[E.key(q, r)].owner);
@@ -80,9 +81,9 @@ test('行動力は5秒に1回復（上限5）。ターンの終わりに全員�
   P(g, a).ap = 0;
   for (let i = 0; i < 8; i++) E.rtRegen(g);
   assert.strictEqual(P(g, a).ap, 5);
-  E.rtTick(g);
+  E.rtTick(g, NOB);
   assert.deepStrictEqual([g.round, P(g, a).resource, g.tickInfo[a].resource], [1, 12, 2]);
-  for (let i = 1; i < g.rounds; i++) E.rtTick(g);
+  for (let i = 1; i < g.rounds; i++) E.rtTick(g, NOB);
   assert.ok(g.over);
   assert.match(g.endReason, /ターン終了/);
 });
@@ -94,10 +95,10 @@ test('勝敗はセルの総数ではなく、つながっている一番大き�
   const lone = () => Object.values(g.board).find(c => !c.owner && !nb(g, c.q, c.r).some(([q, r]) => g.board[E.key(q, r)].owner));
   for (let i = 0; i < 2; i++) { const c = lone(); set(c.q, c.r, a); }   // a：離れたセル（かたまり1・合計3）
   assert.deepStrictEqual([E.cellsOf(g, a).length, E.largestGroup(g, a).length], [3, 1]);
-  for (let i = 0; i < g.rounds; i++) E.rtTick(g);
+  for (let i = 0; i < g.rounds; i++) E.rtTick(g, NOB);
   assert.deepStrictEqual(g.winners, [b]);
   const h = rtGame(2);
-  for (let i = 0; i < h.g.rounds; i++) E.rtTick(h.g);
+  for (let i = 0; i < h.g.rounds; i++) E.rtTick(h.g, NOB);
   assert.deepStrictEqual(h.g.winners.sort(), [h.a, h.b].sort());
 });
 
@@ -109,7 +110,7 @@ test('行動完了：押すと印がつき、もう一度押すと外れる。�
   assert.ok(E.apply(g, a, { type: 'ready' }).ok);
   assert.strictEqual(P(g, a).ready, false);
   E.apply(g, b, { type: 'ready', on: true });
-  E.rtTick(g);
+  E.rtTick(g, NOB);
   assert.deepStrictEqual(g.players.map(p => !!p.ready), [false, false]);
   assert.strictEqual(E.hasMoves(g, a), true);                        // 行動力がなくても、回復すれば拡張できる
   P(g, a).resource = 0;
@@ -155,7 +156,7 @@ test('狙い：自分のセルから隣の相手のセルを狙う（行動力�
   assert.strictEqual(E.apply(g, a, { type: 'aim', q: 0, r: 0, to: tk }).ok, false);  // 自分のセルではない
   const [bq, br] = E.parseKey(tk);
   assert.strictEqual(E.apply(g, b, { type: 'aim', q: bq, r: br, to: '0,0' }).ok, false);   // 隣の相手のセルではない
-  E.rtTick(g);
+  E.rtTick(g, NOB);
   assert.ok(E.apply(g, a, { type: 'unaim', q, r }).ok);                              // 次のターンなら変えられる
   assert.strictEqual(g.board[mine[0]].aim, null);
 });
@@ -207,25 +208,37 @@ test('反撃：狙ってきている相手のセルが k マスなら、戦力 2
   assert.strictEqual(E.apply(g, b, { type: 'counter', q: cq, r: cr }).ok, false);     // 狙われていないセルからは反撃できない
 });
 
-test('発展：コア以外の自分のセルを、資源3・行動力1で鉱山（ターンごとに資源 +2）か工場（戦力 +2）にする。壊れたら元に戻る', () => {
+test('おまけ：ターンの終わりに、セル1つにつき 25% で資源 +1、別に 25% で戦力 +1（両方のこともある）', () => {
   const { g, a } = rtGame();
   const [q, r] = freeNext(g, a);
-  assert.ok(E.apply(g, a, { type: 'expand', q, r }).ok);
-  const [cq, cr] = E.parseKey(P(g, a).core);
-  assert.strictEqual(E.apply(g, a, { type: 'develop', q: cq, r: cr, to: 'mine' }).ok, false);   // コアは不可
-  assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'farm' }).ok, false);           // 鉱山か工場だけ
-  assert.ok(E.apply(g, a, { type: 'develop', q, r, to: 'mine' }).ok);
-  assert.deepStrictEqual([g.board[E.key(q, r)].kind, P(g, a).resource, P(g, a).ap], ['mine', 6, 1]);
-  assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'factory' }).ok, false);         // 発展ずみは不可
-  assert.deepStrictEqual([E.income(g, a), E.powerIncome(g, a)], [4, 3]);
-  const [q2, r2] = freeNext(g, a);
-  E.apply(g, a, { type: 'expand', q: q2, r: r2 });
-  P(g, a).ap = 3;
-  assert.ok(E.apply(g, a, { type: 'develop', q: q2, r: r2, to: 'factory' }).ok);
-  assert.strictEqual(E.powerIncome(g, a), 5);
+  E.apply(g, a, { type: 'expand', q, r });                           // a のセルは2つ
   const before = [P(g, a).resource, P(g, a).power];
-  E.rtTick(g);
-  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [before[0] + 4, before[1] + 5]);
+  // 乱数を順に 0.1（当たり）・0.9（外れ）…と返す：セルごとに 資源・戦力 の順で判定
+  const seq = [0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.9, 0.9]; let n = 0;
+  E.rtTick(g, () => seq[n++ % seq.length]);
+  const ti = g.tickInfo[a];
+  assert.deepStrictEqual([ti.resource, ti.power], [2 + 1, 3 + 2]);
+  assert.deepStrictEqual(ti.bonus.map(b => [b.res, b.pow]), [[1, 1], [0, 1]]);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [before[0] + 3, before[1] + 5]);
+  assert.strictEqual(E.bonusExpect(g, a), 0.5);
+  E.rtTick(g, NOB);
+  assert.deepStrictEqual([g.tickInfo[a].resource, g.tickInfo[a].power, g.tickInfo[a].bonus.length], [2, 3, 0]);
+});
+
+test('回復：資源3・行動力1で、体力の減った自分のセル（コアも）の体力を1戻す（最大6）', () => {
+  const { g, a, b } = rtGame();
+  const core = g.board[P(g, a).core];
+  const [cq, cr] = E.parseKey(P(g, a).core);
+  assert.strictEqual(E.apply(g, a, { type: 'heal', q: cq, r: cr }).ok, false);       // 体力が満タンなら不可
+  core.hp = 4;
+  assert.ok(E.apply(g, a, { type: 'heal', q: cq, r: cr }).ok);
+  assert.deepStrictEqual([core.hp, P(g, a).resource, P(g, a).ap], [5, 7, 2]);
+  const bc = g.board[P(g, b).core]; bc.hp = 3;
+  assert.strictEqual(E.apply(g, a, { type: 'heal', q: bc.q, r: bc.r }).ok, false);   // 相手のセルは不可
+  P(g, a).resource = 2;
+  assert.match(E.apply(g, a, { type: 'heal', q: cq, r: cr }).error, /資源/);
+  P(g, a).resource = 3; P(g, a).ap = 0;
+  assert.match(E.apply(g, a, { type: 'heal', q: cq, r: cr }).error, /行動力/);
 });
 
 test('コアが壊れたら脱落し、残りのセルは空きマスに。資源と戦力は壊した人が受け継ぐ。戦力はターンごとに +3', () => {
@@ -244,6 +257,6 @@ test('コアが壊れたら脱落し、残りのセルは空きマスに。資�
   assert.deepStrictEqual(E.cellsOf(g, b), []);
   assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [10 + 7, 50 - 36 + 4]);
   const before = P(g, a).power;
-  E.rtTick(g);
+  E.rtTick(g, NOB);
   assert.strictEqual(P(g, a).power, before + 3);
 });

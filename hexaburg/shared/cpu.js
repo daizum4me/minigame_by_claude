@@ -1,7 +1,7 @@
 /*
  * ヘキサブルグ — CPU の考え方
  * 人間と同じ公開情報（盤面・全員の資源）だけで、次の1手を決める。
- * 部屋が CPU ごとに1.5〜3.5秒のばらつきのある間隔で呼ぶ。拡張・狙い・攻撃・反撃に点数を付けて一番高いものを選び、
+ * 部屋が CPU ごとに1.5〜3.5秒のばらつきのある間隔で呼ぶ。拡張・狙い・攻撃・反撃・回復に点数を付けて一番高いものを選び、
  * よい行動がなければ何もしない（待つ）。
  *
  * decideRealtime(state, id, rng, level) → action（engine.apply に渡せる形）か null
@@ -41,7 +41,7 @@
     return out;
   }
 
-  // 狙い・攻撃・反撃に点数を付ける
+  // 狙い・攻撃・反撃・回復に点数を付ける
   function scoreBattle(g, id, rng, lv) {
     const me = playerById(g, id);
     const noise = () => (rng() - 0.5) * lv.noise;
@@ -76,15 +76,14 @@
       if (n === 1 && !kills && !c.core) s -= 2;
       out.push({ s: s + noise(), a: { type: 'counter', q: c.q, r: c.r } });
     }
-    // 発展：前線から遠い（壊されにくい）セルを、鉱山（資源 +2）か工場（戦力 +2）にする。終盤は元が取れない
-    const left = g.rounds - g.round;
-    const dev = E.targets(g, id, 'develop').map(k => g.board[k]).filter(c => !E.foeNeighbors(g, c).length);
-    if (dev.length && left >= 3) {
-      const c = dev[Math.floor(rng() * dev.length)];
-      const kinds = E.cellsOf(g, id).filter(x => x.kind);
-      const mines = kinds.filter(x => x.kind === 'mine').length, facts = kinds.length - mines;
-      out.push({ s: 3.6 - mines * 0.4 + Math.min(2, left / 6) + noise(), a: { type: 'develop', q: c.q, r: c.r, to: 'mine' } });
-      out.push({ s: 3.2 - facts * 0.4 + (mostThreat(g, id) >= 2 ? 1.2 : 0) + Math.min(2, left / 6) + noise(), a: { type: 'develop', q: c.q, r: c.r, to: 'factory' } });
+    // 回復：資源 3 で体力 +1。狙われていて体力の減ったセル、とくにコアを先に。狙われていないセルは後回し
+    for (const k of E.targets(g, id, 'heal')) {
+      const c = g.board[k];
+      const n = E.aimersOf(g, k).filter(x => x.owner !== id).length;
+      let s = n * 1.2 + (E.RULES.hp - c.hp) * 0.5 + (c.core ? 4 : 0) - 1.5;
+      if (!n && !c.core) s -= 2;
+      s += Math.min(2.5, Math.max(0, me.resource - 6) / 8);   // 資源が余っているなら惜しまない
+      out.push({ s: s + noise(), a: { type: 'heal', q: c.q, r: c.r } });
     }
     return out;
   }

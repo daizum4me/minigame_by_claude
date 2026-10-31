@@ -90,6 +90,10 @@
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
     },
+    heal() {        // 回復：きらん（上がる2音）
+      tone({ freq: 880, dur: 0.12, vol: 0.1, type: 'sine' });
+      tone({ freq: 1320, t: 0.08, dur: 0.22, vol: 0.09, type: 'sine' });
+    },
     out() {         // 脱落：下がる3音
       [523, 415, 311].forEach((f, i) => tone({ freq: f, t: i * 0.16, dur: 0.3, vol: 0.12, type: 'triangle' }));
     },

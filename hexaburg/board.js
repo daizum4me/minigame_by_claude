@@ -380,14 +380,6 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
-        // 発展：鉱山は ◆（正方形を45°回したひし形）、工場は □（中空の正方形）
-        if (c.kind === 'mine' || c.kind === 'factory') {
-          ctx.save();
-          ctx.translate(x, y);
-          if (c.kind === 'mine') { ctx.rotate(Math.PI / 4); ctx.fillStyle = col.light; ctx.fillRect(-s * 0.17, -s * 0.17, s * 0.34, s * 0.34); }
-          else { ctx.strokeStyle = col.light; ctx.lineWidth = Math.max(1.5, s * 0.07); ctx.strokeRect(-s * 0.2, -s * 0.2, s * 0.4, s * 0.4); }
-          ctx.restore();
-        }
         // 体力：縁の内側を、体力1つにつき辺1本ぶんずつ、明るい色で塗る（6で一周）
         if (c.hp > 0) this.hpRing(ctx, x, y, s, Math.min(6, c.hp), col);
         ctx.save();
@@ -496,7 +488,7 @@
       const sx = x1 + ux * s * 0.22, sy = y1 + uy * s * 0.22;
       const ex = x2 - ux * s * endGap, ey = y2 - uy * s * endGap;
       // 制御点：まん中から右へ（向かい合って狙い合っても、反対側にふくらむので重ならない）
-      const bend = Math.min(len * 0.45, s * 0.9);
+      const bend = Math.min(len * 0.22, s * 0.45);
       const cx = (sx + ex) / 2 - uy * bend, cy = (sy + ey) / 2 + ux * bend;
       const tx = ex - cx, ty = ey - cy, tl = Math.hypot(tx, ty) || 1, vx = tx / tl, vy = ty / tl;   // 終わりの向き
       const head = Math.max(6, s * 0.28);
@@ -526,9 +518,9 @@
       ctx.restore();
     }
 
-    // 体力の帯：縁と内側（0.71）のあいだの台形を、上の頂点から時計回りに n 本ぶん塗る
+    // 体力の帯：縁と内側（0.6）のあいだの台形を、上の頂点から時計回りに n 本ぶん塗る
     hpRing(ctx, x, y, s, n, col) {
-      const ro = s * 0.86, ri = s * 0.71;
+      const ro = s * 0.86, ri = s * 0.6;
       const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
       ctx.fillStyle = rgba(col.light, 0.55);   // 少し透かす
       for (let i = 0; i < n; i++) {

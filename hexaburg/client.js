@@ -134,8 +134,7 @@
     power: TOKEN_SVG.power,
     'act-attack': svg(`<path d="M5 19 L17 7" stroke="#FF9C94" stroke-width="2.4" stroke-linecap="round"/><path d="M19 5 L12.5 6.8 L17.2 11.5 Z" fill="#FF9C94"/>`),
     'act-counter': svg(`<path d="M12 4 L12 20 M4 12 L20 12" stroke="#FF9C94" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="#FF9C94" stroke-width="1.6"/>`),
-    'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L16.5 12 L12 16.5 L7.5 12 Z" fill="#A3A198"/>'),
-    'hex-factory': tile('#3A3A38', '#6A695F', '<rect x="8.6" y="8.6" width="6.8" height="6.8" fill="none" stroke="#A3A198" stroke-width="1.4"/>'),
+    'hex-heal': tile('#3A3A38', '#6A695F', '<path d="M10.6 7.5h2.8v3.1h3.1v2.8h-3.1v3.1h-2.8v-3.1H7.5v-2.8h3.1z" fill="#A3A198"/>'),
     'act-expand': svg(`<path d="${HEX}" fill="none" stroke="#9CC6F2" stroke-width="1.4" stroke-dasharray="2.5 1.8"/><path d="M12 8 V16 M8 12 H16" stroke="#9CC6F2" stroke-width="2" stroke-linecap="round"/>`),
     ap: svg('<circle cx="6" cy="12" r="3" fill="#9CC6F2"/><circle cx="12" cy="12" r="3" fill="#9CC6F2"/><circle cx="18" cy="12" r="3" fill="rgba(255,255,255,.18)"/>'),
     ready: svg('<circle cx="12" cy="12" r="9" fill="rgba(142,221,178,.18)" stroke="#8EDDB2" stroke-width="1.5"/><path d="M7.5 12.5 L10.8 15.6 L16.6 8.8" fill="none" stroke="#8EDDB2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
@@ -600,7 +599,7 @@
 
     // 変化したマス（拡張・脱落）を一瞬光らせる
     const cells = {};
-    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.core}|${c.hp}|${c.kind}`;
+    for (const [k, c] of Object.entries(g.board)) cells[k] = `${c.owner}|${c.core}|${c.hp}`;
     const changedCells = app.prevCells ? Object.keys(cells).filter(k => cells[k] !== app.prevCells[k]) : [];
     if (app.prevCells) view.flash(changedCells);
     app.prevCells = cells;
@@ -697,8 +696,10 @@
     const g = app.room && app.room.game;
     if (me && me.alive && g && !g.over) {
       const net = (kind, n, title) => { const chip = $(`#me-tokens .tk-${kind}`); chip.insertAdjacentHTML('beforeend', `<em class="tnet up">+${n}/ターン</em>`); chip.title = title; };
-      net('resource', E.income(g, app.me), `資源の収支（ターンごと）：+${E.income(g, app.me)}（コア +${R.income.core}・鉱山1つにつき +${R.income.mine}）。拡張・発展に使う`);
-      net('power', E.powerIncome(g, app.me), `戦力の収支（ターンごと）：+${E.powerIncome(g, app.me)}（毎ターン +${R.income.power}・工場1つにつき +${R.income.factory}）。攻撃・反撃に使う`);
+      const ex = E.bonusExpect(g, app.me), pct = Math.round(R.bonus.chance * 100);
+      const exs = Number.isInteger(ex) ? ex : ex.toFixed(1);
+      net('resource', E.income(g, app.me), `資源の収支（ターンごと）：+${E.income(g, app.me)}（コア +${R.income.core}）＋おまけ（セル1つにつき ${pct}% で +1・平均 +${exs}）。拡張・回復に使う`);
+      net('power', E.powerIncome(g, app.me), `戦力の収支（ターンごと）：+${E.powerIncome(g, app.me)}（毎ターン +${R.income.power}）＋おまけ（セル1つにつき ${pct}% で +1・平均 +${exs}）。攻撃・反撃に使う`);
     }
     if (v && v.flash) for (const kind of ['resource', 'power']) { const chip = $(`#me-tokens .tk-${kind}`); if (chip) chip.classList.add(v.flash); }
   }
@@ -706,11 +707,11 @@
   // ターンの終わりの演出：コアの上に増えた資源を浮かべ、下のバーの数字を「増える前 → 増えた」と動かす
   function playTick(g, le) {
     const me = g.players.find(p => p.id === app.me);
-    // コアの上に基本の分、鉱山・工場の上にそれぞれの分を浮かべる
-    floater(me.core, `<span class="fl-res">${TOKEN_SVG.resource}+${R.income.core}</span><span class="fl-pow">${TOKEN_SVG.power}+${R.income.power}</span>`, 'gain', 0);
-    for (const c of E.cellsOf(g, app.me)) {
-      if (c.kind === 'mine') floater(E.key(c.q, c.r), `<span class="fl-res">${TOKEN_SVG.resource}+${R.income.mine}</span>`, 'gain', 120);
-      if (c.kind === 'factory') floater(E.key(c.q, c.r), `<span class="fl-pow">${TOKEN_SVG.power}+${R.income.factory}</span>`, 'gain', 120);
+    // コアの上に基本の分、おまけの出たセルの上にそれぞれの分を浮かべる
+    const cb = (le.bonus || []).find(b => b.k === me.core) || { res: 0, pow: 0 };   // コアのおまけは基本の分に足して見せる
+    floater(me.core, `<span class="fl-res">${TOKEN_SVG.resource}+${R.income.core + cb.res}</span><span class="fl-pow">${TOKEN_SVG.power}+${R.income.power + cb.pow}</span>`, 'gain', 0);
+    for (const b of (le.bonus || []).filter(b => b.k !== me.core)) {
+      floater(b.k, `${b.res ? `<span class="fl-res">${TOKEN_SVG.resource}+1</span>` : ''}${b.pow ? `<span class="fl-pow">${TOKEN_SVG.power}+1</span>` : ''}`, 'gain', 120);
     }
     const set = (resource, power, flash) => { app.tokenView = { resource, power, flash }; renderMyTokens(app.room && app.room.game.players.find(p => p.id === app.me)); };
     clearTimeout(app.tokenTimer1); clearTimeout(app.tokenTimer3);
@@ -738,10 +739,10 @@
   function playSounds(g, fresh) {
     if (!fresh.length) return;
     // 勝敗の音は、数え上げの演出の最後に鳴らす
-    const order = ['out', 'expand', 'develop'];
+    const order = ['out', 'expand', 'heal'];
     const found = new Set(fresh.map(l => l.tone));
     const name = order.find(n => found.has(n));
-    if (name) window.HexSound.play(name === 'develop' ? 'expand' : name);
+    if (name) window.HexSound.play(name);
   }
 
   // ゲーム開始前の 3・2・1 のカウントダウン。数が変わるたびに音を鳴らし、0 で「スタート！」
@@ -872,10 +873,7 @@
       const foes = E.foeNeighbors(g, c);
       const locked = !E.canReaim(g, c) ? 'このセルの狙いは、このターンはもう変えられません' : '';
       if (c.aim) list.push({ type: 'unaim', name: '狙いを外す', gain: '1ターンに1回', why: locked });
-      if (!c.core && !c.kind) {
-        list.push({ type: 'develop', to: 'mine', name: '発展：鉱山', cost: R.cost.develop, kind: 'resource', gain: `ターンごとに資源 +${R.income.mine}（行動力1）`, why: why('develop', '') });
-        list.push({ type: 'develop', to: 'factory', name: '発展：工場', cost: R.cost.develop, kind: 'resource', gain: `ターンごとに戦力 +${R.income.factory}（行動力1）`, why: why('develop', '') });
-      }
+      if (c.hp < R.hp) list.push({ type: 'heal', cost: R.cost.heal, kind: 'resource', gain: `体力 +${R.heal}（行動力1）`, why: why('heal', '') });
       const ci = E.counterInfo(g, app.me, key);
       if (ci.k) list.push({ type: 'counter', cost: ci.cost, kind: 'power', gain: `狙ってきている相手のセル ${ci.k} マスの体力をそれぞれ −${ci.k}（行動力1）`, why: why('counter', `戦力トークンが足りません（あと ${ci.cost - me.power}）`) });
     } else {
@@ -894,7 +892,7 @@
     const c = g.board[tip.key];
     const owner = c.owner && g.players.find(p => p.id === c.owner);
     const aimedBy = c.owner ? E.aimersOf(g, tip.key).filter(x => x.owner !== c.owner).length : 0;
-    const state = !owner ? '空きマス' : `${c.core ? 'コア' : c.kind ? E.DEVELOP_KINDS[c.kind] : 'セル'}・体力 ${c.hp} / ${R.hp}${aimedBy ? `・${aimedBy}マスから狙われている` : ''}`;
+    const state = !owner ? '空きマス' : `${c.core ? 'コア' : 'セル'}・体力 ${c.hp} / ${R.hp}${aimedBy ? `・${aimedBy}マスから狙われている` : ''}`;
     let acts = '';
     if (tip.pinned) {
       const r = cellActions(g, tip.key);
