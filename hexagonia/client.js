@@ -122,6 +122,38 @@
   };
   const TOKEN_NAMES = { resource: '資源', power: '戦力', food: '食料' };
 
+  // ルール説明のアイコン（盤面の見た目に合わせた小さな絵）
+  const HEX = 'M12 2 L20.7 7 L20.7 17 L12 22 L3.3 17 L3.3 7 Z';
+  const hexAt = r => { const k = r / 10; return `M12 ${12 - 10 * k} L${12 + 8.7 * k} ${12 - 5 * k} L${12 + 8.7 * k} ${12 + 5 * k} L12 ${12 + 10 * k} L${12 - 8.7 * k} ${12 + 5 * k} L${12 - 8.7 * k} ${12 - 5 * k} Z`; };
+  const svg = body => `<svg viewBox="0 0 24 24" class="tk">${body}</svg>`;
+  const tile = (fill, stroke, extra) => svg(`<path d="${HEX}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>${extra || ''}`);
+  const CELL_FILL = 'rgba(76,142,218,.45)', CELL_LINE = '#9CC6F2';
+  const ICONS = {
+    resource: TOKEN_SVG.resource,
+    food: TOKEN_SVG.food,
+    power: TOKEN_SVG.power,
+    cell: tile(CELL_FILL, CELL_LINE),
+    'cell-strong': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1.2"/>`),
+    core: tile('rgba(227,155,0,.4)', '#FFD36B', '<circle cx="12" cy="12" r="3.6" fill="#E39B00" stroke="#FFD36B" stroke-width="1"/>'),
+    'hex-plain': tile('#3A3A38', '#6A695F'),
+    'hex-mine': tile('#3A3A38', '#6A695F', '<path d="M12 7.5 L14.8 12 L12 16.5 L9.2 12 Z" fill="#A3A198"/>'),
+    'hex-forest': tile('#3A3A38', '#6A695F', '<path d="M12 15.6 L15.2 9.4 L8.8 9.4 Z" fill="none" stroke="#A3A198" stroke-width="1.3" stroke-linejoin="round"/>'),
+    'hex-farm': tile('#3A3A38', '#6A695F', '<circle cx="12" cy="12" r="2.6" fill="#A3A198"/>'),
+    'hex-factory': tile('#3A3A38', '#6A695F', '<rect x="9.2" y="9.2" width="5.6" height="5.6" fill="none" stroke="#A3A198" stroke-width="1.3"/>'),
+    'hex-river': tile('#2E4250', '#5B7A8C', '<path d="M7.5 10.5 q2.2 -1.6 4.5 0 t4.5 0 M7.5 13.8 q2.2 -1.6 4.5 0 t4.5 0" fill="none" stroke="#7FA4BC" stroke-width="1.2"/>'),
+    bridge: tile('#2E4250', '#5B7A8C', '<path d="M6.5 9.6 H17.5 M6.5 14.4 H17.5 M8.5 9.6 V14.4 M10.8 9.6 V14.4 M13.2 9.6 V14.4 M15.5 9.6 V14.4" stroke="#B9A88C" stroke-width="1.2"/>'),
+    'act-expand': svg(`<path d="${HEX}" fill="none" stroke="#9CC6F2" stroke-width="1.4" stroke-dasharray="2.5 1.8"/><path d="M12 8 V16 M8 12 H16" stroke="#9CC6F2" stroke-width="2" stroke-linecap="round"/>`),
+    'act-destroy': svg(`<path d="${HEX}" fill="rgba(255,120,120,.18)" stroke="#FF9C94" stroke-width="1.3"/><path d="M8.5 8.5 L15.5 15.5 M15.5 8.5 L8.5 15.5" stroke="#FF9C94" stroke-width="2.2" stroke-linecap="round"/>`),
+    'act-develop': svg(`<path d="${HEX}" fill="${CELL_FILL}" stroke="${CELL_LINE}" stroke-width="1.2"/><path d="M12 8.5 V15.5 M8.5 12 H15.5" stroke="#FFE27A" stroke-width="2" stroke-linecap="round"/>`),
+    'act-strengthen': tile(CELL_FILL, CELL_LINE, `<path d="${hexAt(6.2)}" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>`),
+    'act-defend': tile(CELL_FILL, CELL_LINE, `<path d="M12 3.6 L19.3 7.8 L17 9.1 L12 6.2 Z M19.3 7.8 L19.3 16.2 L17 14.9 L17 9.1 Z" fill="#9CC6F2"/><path d="${hexAt(6.2)}" fill="none" stroke="${CELL_LINE}" stroke-width="1"/>`),
+    ap: svg('<circle cx="6" cy="12" r="3" fill="#9CC6F2"/><circle cx="12" cy="12" r="3" fill="#9CC6F2"/><circle cx="18" cy="12" r="3" fill="rgba(255,255,255,.18)"/>'),
+    ready: svg('<circle cx="12" cy="12" r="9" fill="rgba(142,221,178,.18)" stroke="#8EDDB2" stroke-width="1.5"/><path d="M7.5 12.5 L10.8 15.6 L16.6 8.8" fill="none" stroke="#8EDDB2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
+    group: svg(`<g fill="rgba(76,142,218,.45)" stroke="#9CC6F2" stroke-width="1"><path d="M7 3.5 L11 5.8 L11 10.2 L7 12.5 L3 10.2 L3 5.8 Z"/><path d="M15 3.5 L19 5.8 L19 10.2 L15 12.5 L11 10.2 L11 5.8 Z"/><path d="M11 10.5 L15 12.8 L15 17.2 L11 19.5 L7 17.2 L7 12.8 Z"/></g>`),
+    event: svg('<path d="M12 3 L13.8 8.6 L19.6 8.6 L14.9 12 L16.7 17.6 L12 14.2 L7.3 17.6 L9.1 12 L4.4 8.6 L10.2 8.6 Z" fill="rgba(255,211,107,.35)" stroke="#FFD36B" stroke-width="1.3" stroke-linejoin="round"/>'),
+    clock: svg('<circle cx="12" cy="12" r="8.5" fill="none" stroke="#C9C6BC" stroke-width="1.6"/><path d="M12 7 V12 L15.5 14" fill="none" stroke="#C9C6BC" stroke-width="1.8" stroke-linecap="round"/>'),
+    hand: svg('<path d="M9 12 V5.5 a1.5 1.5 0 0 1 3 0 V11 M12 10 V4.5 a1.5 1.5 0 0 1 3 0 V11 M15 10.5 V6 a1.5 1.5 0 0 1 3 0 V14 c0 4 -2.5 6.5 -6 6.5 c-2.6 0 -4.2 -1.3 -5.6 -3.4 L4 13 a1.5 1.5 0 0 1 2.5 -1.6 L9 14" fill="none" stroke="#C9C6BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+  };
   const tokenChip = (kind, n, label) =>
     `<span class="tchip tk-${kind}" title="${TOKEN_NAMES[kind]}トークン${n == null ? '（ほかの人の数は見えない）' : ''}">${TOKEN_SVG[kind]}<b>${n == null ? '?' : n}</b>${label ? `<small>${TOKEN_NAMES[kind]}</small>` : ''}</span>`;
 
@@ -952,6 +984,35 @@
     if (had && view) view.setSelected(null);
   }
 
+  // ---------- ルール（ページに分けて、アイコンと動く図つき） ----------
+
+  function initRulesPages() {
+    const pages = [...document.querySelectorAll('#rules .r-page')];
+    $('#r-tabs').innerHTML = pages.map((pg, i) => `<button type="button" data-rules-page="${i}">${esc(pg.dataset.title)}</button>`).join('');
+    $('#r-tabs').onclick = e => { const b = e.target.closest('[data-rules-page]'); if (b) showRulesPage(Number(b.dataset.rulesPage)); };
+    $('#r-prev').onclick = () => showRulesPage((app.rulesPage || 0) - 1);
+    $('#r-next').onclick = () => showRulesPage((app.rulesPage || 0) + 1);
+  }
+
+  function showRulesPage(n) {
+    const pages = [...document.querySelectorAll('#rules .r-page')];
+    n = Math.max(0, Math.min(pages.length - 1, n));
+    app.rulesPage = n;
+    pages.forEach((pg, i) => {
+      pg.hidden = i !== n;
+    });
+    document.querySelectorAll('#r-tabs button').forEach((b, i) => { b.classList.toggle('on', i === n); b.setAttribute('aria-current', i === n ? 'page' : 'false'); });
+    $('#r-prev').disabled = n === 0;
+    $('#r-next').disabled = n === pages.length - 1;
+    $('#r-pos').textContent = `${n + 1} / ${pages.length}`;
+    $('#rules').scrollTop = 0;
+  }
+
+  // ルール説明などの <i data-icon="…"> にアイコンを入れる
+  function fillIcons() {
+    document.querySelectorAll('[data-icon]').forEach(el => { if (ICONS[el.dataset.icon]) el.innerHTML = ICONS[el.dataset.icon]; });
+  }
+
   // ---------- 設定 ----------
 
   function renderSettings() {
@@ -974,6 +1035,8 @@
   }
 
   function init() {
+    fillIcons();
+    initRulesPages();
     new ResizeObserver(updateDock).observe($('#dock'));
     const params = new URLSearchParams(location.search);
     $('#in-name').value = store.get('name') || '';
@@ -1055,6 +1118,7 @@
       b.addEventListener('click', () => {
         const d = $('#' + b.dataset.open);
         if (d.id === 'settings') renderSettings();
+        if (d.id === 'rules') showRulesPage(app.rulesPage || 0);
         d.showModal();
         d.scrollTop = 0;   // 「閉じる」ボタンに自動で移るフォーカスで、いちばん下から始まらないように
       });

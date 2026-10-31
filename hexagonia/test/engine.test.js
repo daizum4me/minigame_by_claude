@@ -28,7 +28,6 @@ function setCell(g, q, r, props) { Object.assign(g.board[E.key(q, r)], { owner: 
 
 function rtGame(seed) {
   const g = newGame(2, seed);
-  g.players.forEach(p => { p.ap = 3; });   // 行動力は最初は0なので、テストでは3からにしておく
   const [a, b] = g.players.map(p => p.id);
   return { g, a, b };
 }
@@ -171,11 +170,11 @@ test('12人まで遊べる：6人までは全員が外周、7人以上は約3分
   assert.throws(() => E.createGame(PLAYERS.slice(0, 2), seeded(1), { rounds: 7 }));
 });
 
-test('初期状態：資源10・戦力2・行動力0・コア未強化。手番はない', () => {
+test('初期状態：資源10・戦力2・行動力3・コア未強化。手番はない', () => {
   const g = newGame(3);
   assert.strictEqual(g.mode, 'realtime');
   for (const p of g.players) {
-    assert.deepStrictEqual([p.resource, p.power, p.ap, p.alive], [10, 2, 0, true]);
+    assert.deepStrictEqual([p.resource, p.power, p.ap, p.alive], [10, 2, 3, true]);
     const c = g.board[p.core];
     assert.ok(c.core && !c.strong && c.owner === p.id);
   }
