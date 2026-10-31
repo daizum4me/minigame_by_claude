@@ -230,8 +230,8 @@ test('ターンの終わりに全員いっせいに資源（強化済+1・コア
   assert.strictEqual(g.round, 1);
   assert.deepStrictEqual([g.tickInfo[a].resource, P(g, a).resource], [3 + 1 + 1, 15]);
   assert.strictEqual(g.tickInfo[b].resource, 2);
-  // 食料：コア +6（強化しても増えない）、セル1つにつき1を食べる
-  assert.deepStrictEqual([g.tickInfo[a].made, g.tickInfo[a].eaten, P(g, a).food], [6, 3, 3]);
+  // 食料：コア +7（強化しても増えない）、セル1つにつき1を食べる
+  assert.deepStrictEqual([g.tickInfo[a].made, g.tickInfo[a].eaten, P(g, a).food], [7, 3, 4]);
   for (let i = 1; i < g.rounds; i++) E.rtTick(g);
   assert.ok(g.over);
   assert.match(g.endReason, /ターン終了/);
@@ -244,8 +244,8 @@ test('食料が足りなければ、ターンの終わりに自動でセルを�
   me.food = 0;
   const cells = E.cellsOf(g, a).length;
   E.rtTick(g);
-  assert.strictEqual(g.tickInfo[a].made, 6);
-  assert.strictEqual(E.cellsOf(g, a).length, cells - (10 - 6));      // 10マスで食べる10・作る6 → 4つ捨てる
+  assert.strictEqual(g.tickInfo[a].made, 7);
+  assert.strictEqual(E.cellsOf(g, a).length, cells - (10 - 7));      // 10マスで食べる10・作る7 → 3つ捨てる
   assert.ok(g.board[me.core].owner === a);
   assert.ok(g.log.some(l => l.tone === 'abandon'));
   // おすすめ：離れたセルから
@@ -264,7 +264,7 @@ test('発展：資源4・行動力1で、自分の平原のセル（コア以外
   assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'mine' }).ok, false);   // 農地か工場だけ
   assert.ok(E.apply(g, a, { type: 'develop', q, r, to: 'farm' }).ok);
   assert.deepStrictEqual([g.board[E.key(q, r)].terrain, P(g, a).resource, P(g, a).ap], ['farm', 6, 2]);
-  assert.strictEqual(E.foodMade(g, a), 8);
+  assert.strictEqual(E.foodMade(g, a), 9);
   assert.ok(!E.targets(g, a, 'develop').includes(E.key(q, r)));            // 発展ずみの土地はもう発展できない
   // 工場：ターンの終わりに戦力 +1
   const [q2, r2] = nb(g, ...E.parseKey(P(g, a).core)).find(([x, y]) => !g.board[E.key(x, y)].owner && g.board[E.key(x, y)].terrain !== 'river');
@@ -437,7 +437,7 @@ test('イベント：ターン4〜8回ごとに起き、1ターンのあいだ�
   const base = [E.income(h, a), E.foodMade(h, a)];
   const at = ev => { h.event = ev; return [E.income(h, a), E.foodMade(h, a)]; };
   assert.deepStrictEqual(at('famine'), [base[0], 3]);
-  assert.deepStrictEqual(at('harvest'), [base[0], 9]);
+  assert.deepStrictEqual(at('harvest'), [base[0], 10]);
   assert.deepStrictEqual(at('depletion'), [1, base[1]]);
   assert.deepStrictEqual(at('discovery'), [3, base[1]]);
   h.event = 'festival';

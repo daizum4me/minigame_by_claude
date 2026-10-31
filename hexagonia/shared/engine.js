@@ -46,9 +46,9 @@
     cost: { expand: 2, bridge: 5, strengthen: 4, develop: 4 },
     // ターンごとの資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
-    // 食料：ターンごとに、コア +6・農地1つにつき +2 を作り（強化では増えない）、セル1つにつき1を食べる。
+    // 食料：ターンごとに、コア +7・農地1つにつき +2 を作り（強化では増えない）、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけ自動でセルを捨てる
-    food: { start: 0, core: 6, perCell: 1 },
+    food: { start: 0, core: 7, perCell: 1 },
     strengthenPower: 1,                 // 強化でもらえる戦力トークン
     // 拠点：攻撃できるのは、自分の強化済のセル（強化済のコアも）に隣接する相手のセルだけ
   };
@@ -448,7 +448,7 @@
     return cellsOf(state, id).filter(c => c.terrain === 'factory').length * RULES.factoryPower;
   }
 
-  // ターンごとに作る食料：コア +6、農地のセル1つにつき +2
+  // ターンごとに作る食料：コア +7、農地のセル1つにつき +2
   function foodMade(state, id) {
     const f = RULES.food;
     const ev = eventOf(state);
