@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサブルグ — 六角形のマスを広げて、つながった一番大きなかたまりを競う2〜12人のリアルタイム陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -147,7 +147,7 @@
         <h3><i class="ic" data-icon="group"></i>目的</h3>
         <figure class="r-fig"><svg viewBox="0 0 260 120" class="r-anim" aria-hidden="true"><polygon points="62.0,47.0 76.7,55.5 76.7,72.5 62.0,81.0 47.3,72.5 47.3,55.5" class="c-core" /><circle cx="62" cy="64" r="5" class="core-dot"/><g class="rk" style="animation-name:rk-8-88"><polygon points="91.4,47.0 106.2,55.5 106.2,72.5 91.4,81.0 76.7,72.5 76.7,55.5" class="c-own" /></g><g class="rk" style="animation-name:rk-20-88"><polygon points="120.9,47.0 135.6,55.5 135.6,72.5 120.9,81.0 106.2,72.5 106.2,55.5" class="c-own" /></g><g class="rk" style="animation-name:rk-32-88"><polygon points="150.3,47.0 165.1,55.5 165.1,72.5 150.3,81.0 135.6,72.5 135.6,55.5" class="c-own" /></g><g class="rk" style="animation-name:rk-44-88"><polygon points="179.8,47.0 194.5,55.5 194.5,72.5 179.8,81.0 165.1,72.5 165.1,55.5" class="c-own" /></g><g class="rk" style="animation-name:rk-56-88"><polygon points="135.6,72.5 150.3,81.0 150.3,98.0 135.6,106.5 120.9,98.0 120.9,81.0" class="c-own" /></g><g class="rk" style="animation-name:rk-70-88"><text x="120.888" y="32.5" class="lbl good" text-anchor="middle">かたまり 6</text></g></svg><figcaption>自分のセルを広げ、つながった一番大きなかたまりで競う</figcaption></figure>
         <ul class="r-list">
-          <li>六角形の盤面で、自分の<b>セル</b>を広げて争う、手番のないリアルタイムの陣取りゲーム（2〜12人）</li>
+          <li>六角形の盤面で、自分の<b>セル</b>を広げ、狙って壊し合う、手番のないリアルタイムの陣取りゲーム（2〜12人）</li>
           <li>最後のターンが終わったとき、<b>つながっている一番大きなかたまり</b>が一番大きい人の勝ち（セルの総数ではない）</li>
         </ul>
       </section>
@@ -166,8 +166,8 @@
         <figure class="r-fig"><svg viewBox="0 0 260 120" class="r-anim" aria-hidden="true"><text x="16" y="24" class="lbl">ターン（30秒）</text><rect x="16" y="32" width="228" height="10" class="bar-bg"/><rect x="16" y="32" width="228" height="10" class="bar r-drain"/><text x="16" y="74" class="lbl">行動力（5秒に1回復・最大5）</text><circle cx="26" cy="92" r="8" class="dot-off"/><circle cx="26" cy="92" r="8" class="dot-on rk" style="animation-name:rk-4-90"/><circle cx="50" cy="92" r="8" class="dot-off"/><circle cx="50" cy="92" r="8" class="dot-on rk" style="animation-name:rk-20-90"/><circle cx="74" cy="92" r="8" class="dot-off"/><circle cx="74" cy="92" r="8" class="dot-on rk" style="animation-name:rk-36-90"/><circle cx="98" cy="92" r="8" class="dot-off"/><circle cx="98" cy="92" r="8" class="dot-on rk" style="animation-name:rk-52-90"/><circle cx="122" cy="92" r="8" class="dot-off"/><circle cx="122" cy="92" r="8" class="dot-on rk" style="animation-name:rk-68-90"/><g class="rk" style="animation-name:rk-88-98"><text x="150" y="97" class="lbl accent">次のターンへ</text></g></svg><figcaption>ターンごとに資源と食料。行動は行動力を使って、いつでも</figcaption></figure>
         <ul class="r-list">
           <li>手番はなく、<b>いつでも行動できる</b>。ゲーム開始の前に 3・2・1 のカウントダウンがある</li>
-          <li><b>30秒ごとの「ターン」</b>で、全員いっせいに<span class="k-res">資源</span>を受け取る（コア +2）</li>
-          <li><i class="ic" data-icon="ap"></i><b>行動力</b>：拡張で1使う。<b>5秒に1回復</b>（最大5・最初は3）</li>
+          <li><b>30秒ごとの「ターン」</b>で、全員いっせいに<span class="k-res">資源</span>（コア +2）と<span class="k-pow">戦力</span>（+3）を受け取る</li>
+          <li><i class="ic" data-icon="ap"></i><b>行動力</b>：拡張・攻撃・反撃で1使う（狙いは使わない）。<b>5秒に1回復</b>（最大5・最初は3）</li>
           <li>決まった回数のターン（4人まで18回＝9分など）が終わったら勝敗を決める</li>
         </ul>
       </section>
@@ -176,7 +176,7 @@
         <figure class="r-fig"><svg viewBox="0 0 260 120" class="r-anim" aria-hidden="true"><rect x="20" y="22" width="68" height="34" rx="8" class="chip"/><text x="54" y="44" class="lbl" text-anchor="middle">あなた</text><g class="rk" style="animation-name:rk-15-85"><circle cx="82" cy="24" r="9" class="ok-dot"/><path d="M77 24 L81 28 L87 20" class="ok-mark"/></g><rect x="100" y="22" width="68" height="34" rx="8" class="chip"/><text x="134" y="44" class="lbl" text-anchor="middle">Bさん</text><g class="rk" style="animation-name:rk-35-85"><circle cx="162" cy="24" r="9" class="ok-dot"/><path d="M157 24 L161 28 L167 20" class="ok-mark"/></g><rect x="180" y="22" width="68" height="34" rx="8" class="chip"/><text x="214" y="44" class="lbl" text-anchor="middle">Cさん</text><g class="rk" style="animation-name:rk-55-85"><circle cx="242" cy="24" r="9" class="ok-dot"/><path d="M237 24 L241 28 L247 20" class="ok-mark"/></g><g class="rk" style="animation-name:rk-70-92"><text x="130" y="92" class="lbl accent" text-anchor="middle">全員そろったので、すぐ次のターンへ</text></g></svg><figcaption>「行動完了」を全員が押すと、30秒を待たずに次のターン（飛ばした時間ぶん行動力も回復）</figcaption></figure>
         <ul class="r-list">
           <li>下のバーの「行動完了」を押すと、このターンはもう行動しないという印がつく（もう一度押すと取り消し）</li>
-          <li>もう拡張できないときは、自動で行動完了になる。CPU は、やることがなくなると行動完了にする。切断中の人は押したものとみなす</li>
+          <li>もうできる行動（拡張・攻撃・反撃）がないときは、自動で行動完了になる。CPU は、やることがなくなると行動完了にする。切断中の人は押したものとみなす</li>
         </ul>
       </section>
     </article>
@@ -186,9 +186,30 @@
         <h3><i class="ic" data-icon="act-expand"></i>拡張</h3>
         <figure class="r-fig"><svg viewBox="0 0 300 120" class="r-anim" aria-hidden="true"><polygon points="60.0,38.0 79.1,49.0 79.1,71.0 60.0,82.0 40.9,71.0 40.9,49.0" class="c-core" /><circle cx="60" cy="60" r="5" class="core-dot"/><polygon points="98.1,38.0 117.2,49.0 117.2,71.0 98.1,82.0 79.1,71.0 79.1,49.0" class="c-empty" /><g class="rk" style="animation-name:rk-15-92"><polygon points="98.1,38.0 117.2,49.0 117.2,71.0 98.1,82.0 79.1,71.0 79.1,49.0" class="c-own" /></g><polygon points="117.2,71.0 136.2,82.0 136.2,104.0 117.2,115.0 98.1,104.0 98.1,82.0" class="c-empty" /><g class="rk" style="animation-name:rk-37-92"><polygon points="117.2,71.0 136.2,82.0 136.2,104.0 117.2,115.0 98.1,104.0 98.1,82.0" class="c-own" /></g><polygon points="136.2,38.0 155.3,49.0 155.3,71.0 136.2,82.0 117.2,71.0 117.2,49.0" class="c-empty" /><g class="rk" style="animation-name:rk-59-92"><polygon points="136.2,38.0 155.3,49.0 155.3,71.0 136.2,82.0 117.2,71.0 117.2,49.0" class="c-own" /></g><g class="rk" style="animation-name:rk-15-92"><text x="215" y="40" class="lbl res">資源 −2</text></g><g class="rk" style="animation-name:rk-15-92"><text x="215" y="60" class="lbl accent">行動力 −1</text></g></svg><figcaption>自分のセルの隣の空きマスを、資源2と行動力1で自分のセルにする</figcaption></figure>
         <ul class="r-list">
-          <li>行動は<b>拡張</b>だけ。盤面の空きマスを選ぶと「拡張」のボタンが出る</li>
+          <li>盤面の空きマスを選ぶと「拡張」のボタンが出る</li>
           <li>自分のセルの隣の空きマスに、<span class="cost"><i class="ic" data-icon="resource"></i>2</span>と行動力1で、自分のセルを置く</li>
-          <li>相手のセルには置けない。先に押さえたほうのもの</li>
+          <li>相手のセルには置けない。壊れて空いたマスには、また拡張できる</li>
+        </ul>
+      </section>
+    </article>
+
+    <article class="r-page" data-title="狙い・攻撃・反撃" hidden>
+      <section class="r-sec">
+        <h3><i class="ic" data-icon="act-attack"></i>狙いと攻撃</h3>
+        <figure class="r-fig"><svg viewBox="0 0 290 115" class="r-anim" aria-hidden="true"><polygon points="170.0,38.0 189.1,49.0 189.1,71.0 170.0,82.0 150.9,71.0 150.9,49.0" class="c-foe" /><g class="rk" style="animation-name:rk-0-90"><polygon points="170.0,41.1 186.4,50.5 183.5,52.2 170.0,44.4" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-90"><polygon points="186.4,50.5 186.4,69.5 183.5,67.8 183.5,52.2" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-62"><polygon points="186.4,69.5 170.0,78.9 170.0,75.6 183.5,67.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-62"><polygon points="170.0,78.9 153.6,69.5 156.5,67.8 170.0,75.6" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-30"><polygon points="153.6,69.5 153.6,50.5 156.5,52.2 156.5,67.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-30"><polygon points="153.6,50.5 170.0,41.1 170.0,44.4 156.5,52.2" class="c-ring"/></g><polygon points="131.9,38.0 150.9,49.0 150.9,71.0 131.9,82.0 112.8,71.0 112.8,49.0" class="c-own" /><g class="rk" style="animation-name:rk-4-94"><line x1="139.9" y1="60.0" x2="151.2" y2="60.0" class="arr"/><polygon points="156.0,60.0 148.0,64.8 148.0,55.2" class="arr-h"/></g><polygon points="150.9,5.0 170.0,16.0 170.0,38.0 150.9,49.0 131.9,38.0 131.9,16.0" class="c-own" /><g class="rk" style="animation-name:rk-4-94"><line x1="154.9" y1="33.9" x2="160.6" y2="43.7" class="arr"/><polygon points="163.0,47.9 154.8,43.3 163.2,38.5" class="arr-h"/></g><g class="rk" style="animation-name:rk-26-32"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-58-64"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-86-92"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-24-96"><text x="210" y="40" class="lbl pow">戦力5で</text><text x="210" y="60" class="lbl bad">体力 −2</text></g><g class="rk" style="animation-name:rk-90-98"><text x="210" y="84" class="lbl bad">壊れた！</text></g></svg><figcaption>2マスで狙うと、戦力 7−2=5 で体力 −2。狙うマスが多いほど安く強い</figcaption></figure>
+        <ul class="r-list">
+          <li>セルの<b>体力</b>は6。縁の内側の帯で見える（全員に見える）。0 になると<b>壊れて空きマスに戻る</b></li>
+          <li><b>狙い</b>：自分のセルを選んで「狙う」→ 隣の相手のセルを選ぶ。矢印で全員に見える。行動力は使わない。<b>ひとつのセルの狙いは1ターンに1回</b>しか決めたり変えたりできない</li>
+          <li><b class="k-bad">攻撃</b>：狙っている相手のセルを選んで「攻撃」。そのセルを狙っている自分のセルの数を n とすると、<span class="k-pow">戦力 7−n</span>で<b>体力を n 減らす</b>（n は1〜6。行動力1）</li>
+        </ul>
+      </section>
+      <section class="r-sec">
+        <h3><i class="ic" data-icon="act-counter"></i>反撃</h3>
+        <figure class="r-fig"><svg viewBox="0 0 290 118" class="r-anim" aria-hidden="true"><polygon points="145.0,42.0 162.3,52.0 162.3,72.0 145.0,82.0 127.7,72.0 127.7,52.0" class="c-own" /><polygon points="110.4,42.0 127.7,52.0 127.7,72.0 110.4,82.0 93.0,72.0 93.0,52.0" class="c-foe" /><line x1="118.4" y1="62.0" x2="126.2" y2="62.0" class="arr-foe"/><polygon points="131.0,62.0 123.0,66.8 123.0,57.2" class="arr-foe-h"/><g class="rk" style="animation-name:rk-0-95"><polygon points="110.4,44.8 125.3,53.4 122.7,54.9 110.4,47.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-95"><polygon points="125.3,53.4 125.3,70.6 122.7,69.1 122.7,54.9" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-95"><polygon points="125.3,70.6 110.4,79.2 110.4,76.2 122.7,69.1" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="110.4,79.2 95.5,70.6 98.1,69.1 110.4,76.2" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="95.5,70.6 95.5,53.4 98.1,54.9 98.1,69.1" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="95.5,53.4 110.4,44.8 110.4,47.8 98.1,54.9" class="c-ring"/></g><g class="rk" style="animation-name:rk-46-54"><circle cx="110.36" cy="62" r="18.0" class="hit"/></g><polygon points="179.6,42.0 197.0,52.0 197.0,72.0 179.6,82.0 162.3,72.0 162.3,52.0" class="c-foe" /><line x1="171.6" y1="62.0" x2="163.8" y2="62.0" class="arr-foe"/><polygon points="159.0,62.0 167.0,57.2 167.0,66.8" class="arr-foe-h"/><g class="rk" style="animation-name:rk-0-95"><polygon points="179.6,44.8 194.5,53.4 191.9,54.9 179.6,47.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-95"><polygon points="194.5,53.4 194.5,70.6 191.9,69.1 191.9,54.9" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-95"><polygon points="194.5,70.6 179.6,79.2 179.6,76.2 191.9,69.1" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="179.6,79.2 164.7,70.6 167.3,69.1 179.6,76.2" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="164.7,70.6 164.7,53.4 167.3,54.9 167.3,69.1" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="164.7,53.4 179.6,44.8 179.6,47.8 167.3,54.9" class="c-ring"/></g><g class="rk" style="animation-name:rk-46-54"><circle cx="179.64" cy="62" r="18.0" class="hit"/></g><polygon points="127.7,12.0 145.0,22.0 145.0,42.0 127.7,52.0 110.4,42.0 110.4,22.0" class="c-foe" /><line x1="131.7" y1="38.9" x2="135.6" y2="45.7" class="arr-foe"/><polygon points="138.0,49.9 129.8,45.3 138.2,40.5" class="arr-foe-h"/><g class="rk" style="animation-name:rk-0-95"><polygon points="127.7,14.8 142.6,23.4 140.0,24.9 127.7,17.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-95"><polygon points="142.6,23.4 142.6,40.6 140.0,39.1 140.0,24.9" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-95"><polygon points="142.6,40.6 127.7,49.2 127.7,46.2 140.0,39.1" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="127.7,49.2 112.8,40.6 115.4,39.1 127.7,46.2" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="112.8,40.6 112.8,23.4 115.4,24.9 115.4,39.1" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-50"><polygon points="112.8,23.4 127.7,14.8 127.7,17.8 115.4,24.9" class="c-ring"/></g><g class="rk" style="animation-name:rk-46-54"><circle cx="127.68" cy="32.0" r="18.0" class="hit"/></g><g class="rk" style="animation-name:rk-40-95"><text x="145" y="108" class="lbl bad" text-anchor="middle">反撃！ 戦力5で、狙ってきた全員の体力 −3</text></g></svg><figcaption>狙われるほど危ないが、反撃1回でまとめて削れる</figcaption></figure>
+        <ul class="r-list">
+          <li><b>反撃</b>：狙われている自分のセルを選んで「反撃」。<span class="k-pow">戦力5</span>で、そのセルを狙っている<b>相手のセルすべての体力を3減らす</b>（行動力1）</li>
+          <li>たくさんのセルに狙われるほど攻撃は痛いが、反撃1回でまとめて削れる</li>
+          <li><i class="ic" data-icon="power"></i><span class="k-pow">戦力</span>は最初に3、ターンごとに +3。<i class="ic" data-icon="core"></i>コアが壊れると脱落し、資源と戦力は壊した人のものになる</li>
         </ul>
       </section>
     </article>
@@ -253,11 +274,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=1"></script>
-<script src="shared/cpu.js?v=1"></script>
-<script src="shared/room.js?v=1"></script>
-<script src="sound.js?v=1"></script>
-<script src="board.js?v=1"></script>
-<script src="client.js?v=1"></script>
+<script src="shared/engine.js?v=3"></script>
+<script src="shared/cpu.js?v=3"></script>
+<script src="shared/room.js?v=3"></script>
+<script src="sound.js?v=3"></script>
+<script src="board.js?v=3"></script>
+<script src="client.js?v=3"></script>
 </body>
 </html>

@@ -2,7 +2,8 @@
  * ヘキサブルグ — ルール判定
  * 盤面の生成・行動の検証と実行・ターンの処理・勝敗をここで扱う。
  * 手番はなく、だれでもいつでも行動できる（行動力を使う）。30秒ごとの「ターン」で全員いっせいに資源を受け取る。
- * 行動は「拡張」だけ。最後のターンが終わったとき、つながっている一番大きなかたまりが大きい人の勝ち。
+ * 行動は「拡張」「狙い」「攻撃」「反撃」。セルは体力（最初は6）を持ち、0 になると壊れて空きマスに戻る。
+ * 最後のターンが終わったとき、つながっている一番大きなかたまりが大きい人の勝ち。
  * 状態（state）はただのオブジェクト（JSON にそのまま変換できる）。
  * ホストのブラウザでもテスト（Node.js）でも同じものを使う。
  *
@@ -29,8 +30,14 @@
     radiusRange: [3, 10],               // 設定できる半径（直径 7〜21 マス）
     innerCoresFrom: 7,                  // この人数からは、コアの約3分の1を盤面の内側（中心と外周のあいだ）に置く
     startResource: 10,
+    startPower: 3,                      // 戦力トークン（攻撃・反撃に使う）
     cost: { expand: 2 },
-    income: { core: 2 },                // ターンごとの資源：コア +2
+    income: { core: 2, power: 3 },      // ターンごとに：資源はコア +2、戦力 +3
+    hp: 6,                              // セルの体力（0 になると壊れる）
+    // 攻撃：戦力 7 − n 個で、狙った相手のセルの体力を n 減らす（n はそのセルを狙っている自分のセルの数。1〜6）
+    attack: { base: 7, maxAimers: 6 },
+    // 反撃：戦力 5 個で、自分のセルを狙っている相手のセルすべての体力を 3 減らす
+    counter: { cost: 5, damage: 3 },
   };
 
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -39,7 +46,8 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const ACTION_NAMES = { expand: '拡張', ready: '行動完了' };
+  const ACTION_NAMES = { expand: '拡張', aim: '狙い', unaim: '狙いを外す', attack: '攻撃', counter: '反撃', ready: '行動完了' };
+  const AP_ACTIONS = ['expand', 'attack', 'counter'];   // 行動力を1使う行動（狙いは使わない）
 
   function shuffle(arr, rng) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -129,7 +137,7 @@
     const board = {};
     for (let q = -radius; q <= radius; q++) {
       for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) {
-        board[key(q, r)] = { q, r, owner: null, core: false };
+        board[key(q, r)] = { q, r, owner: null, core: false, hp: 0, aim: null, aimRound: -1 };
       }
     }
     return { radius, board, cores };
@@ -157,12 +165,12 @@
       board,
       players: order.map((p, i) => {
         const [q, r] = cores[i];
-        Object.assign(board[key(q, r)], { owner: p.id, core: true });
-        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, ap: rt.apStart, alive: true, core: key(q, r) };
+        Object.assign(board[key(q, r)], { owner: p.id, core: true, hp: RULES.hp });
+        return { id: p.id, name: p.name, color: p.color, resource: RULES.startResource, power: RULES.startPower, ap: rt.apStart, alive: true, core: key(q, r) };
       }),
       rounds,
       round: 0,              // 済んだターンの数
-      tickInfo: {},          // 人ごとの、最後のターンで増えた資源（画面の演出用）
+      tickInfo: {},          // 人ごとの、最後のターンで増えた資源と戦力（画面の演出用）
       over: false,
       winners: [],
       endReason: '',
@@ -197,8 +205,9 @@
     for (const p of state.players) {
       if (!p.alive) continue;
       const n = income(state, p.id);
-      state.tickInfo[p.id] = { seq, player: p.id, resBefore: p.resource, resource: n };
+      state.tickInfo[p.id] = { seq, player: p.id, resBefore: p.resource, resource: n, powBefore: p.power, power: RULES.income.power };
       p.resource += n;
+      p.power += RULES.income.power;
     }
     if (state.round >= state.rounds) finishByGroup(state);
   }
@@ -227,23 +236,50 @@
     const p = playerById(state, id);
     if (!p || !p.alive) return '脱落しています';
     if (!(type in ACTION_NAMES)) return '不明な行動です';
-    if (type === 'ready') return '';
-    if ((p.ap || 0) < 1) return `行動力が足りません（${RULES.rt.apSeconds}秒に1回復）`;
-    if (p.resource < RULES.cost[type]) return '資源トークンが足りません';
+    if (AP_ACTIONS.includes(type) && (p.ap || 0) < 1) return `行動力が足りません（${RULES.rt.apSeconds}秒に1回復）`;
+    if (type === 'expand' && p.resource < RULES.cost.expand) return '資源トークンが足りません';
+    if (type === 'counter' && p.power < RULES.counter.cost) return `戦力トークンが足りません（${RULES.counter.cost}個いる）`;
     return '';
   }
 
+  // そのセル（キー）を狙っている、ほかの人のセル（攻撃するときは自分のセルだけを数える）
+  function aimersOf(state, k, owner) {
+    return Object.values(state.board).filter(c => c.owner && c.aim === k && (owner === undefined || c.owner === owner));
+  }
+
+  // 攻撃：狙っている自分のセルの数 n（1〜6）と、かかる戦力（7 − n）
+  function attackInfo(state, id, k) {
+    const n = Math.min(RULES.attack.maxAimers, aimersOf(state, k, id).length);
+    return { n, cost: RULES.attack.base - n };
+  }
+
+  // このターンに、そのセルの狙いを新しく決めたり変えたりできるか
+  const canReaim = (state, c) => c.aimRound !== state.round;
+
+  // 自分のセルの隣にある相手のセル（狙える相手）
+  const foeNeighbors = (state, c) => neighbors(c.q, c.r).map(([q, r]) => state.board[key(q, r)]).filter(n => n && n.owner && n.owner !== c.owner);
+
   // 行動の対象にできるマスのキー一覧（画面のハイライト用）
   function targets(state, id, type) {
-    if (type !== 'expand' || actionBlocked(state, id, type)) return [];
-    return Object.entries(state.board).filter(([, c]) => !c.owner && adjacentToOwn(state, id, c.q, c.r)).map(([k]) => k);
+    if (actionBlocked(state, id, type)) return [];
+    const p = playerById(state, id);
+    const out = [];
+    for (const [k, c] of Object.entries(state.board)) {
+      if (type === 'expand') { if (!c.owner && adjacentToOwn(state, id, c.q, c.r)) out.push(k); }
+      else if (type === 'attack') { if (c.owner && c.owner !== id) { const a = attackInfo(state, id, k); if (a.n > 0 && p.power >= a.cost) out.push(k); } }
+      else if (type === 'counter') { if (c.owner === id && aimersOf(state, k).some(x => x.owner !== id)) out.push(k); }
+      else if (type === 'aim') { if (c.owner === id && canReaim(state, c) && foeNeighbors(state, c).length) out.push(k); }
+    }
+    return out;
   }
 
   function fail(error) { return { ok: false, error }; }
 
   /*
    * 行動を実行する。state は書き換わる。
-   * action: { type: 'expand', q, r } / { type: 'ready', on }（行動完了。全員がそろうと部屋が次のターンへ進める）
+   * action: { type: 'expand' | 'attack' | 'counter', q, r }
+   *         { type: 'aim', q, r, to }（自分のセル (q,r) から、隣の相手のセル to（キー）を狙う） / { type: 'unaim', q, r }
+   *         { type: 'ready', on }（行動完了。全員がそろうと部屋が次のターンへ進める）
    */
   function apply(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
@@ -259,20 +295,82 @@
     const k = key(Number(action.q), Number(action.r));
     const cell = state.board[k];
     if (!cell) return fail('盤面の外です');
-    if (!targets(state, id, 'expand').includes(k)) return fail('そのマスには拡張できません');
+    // 狙い：自分のセルから、隣の相手のセルを狙う（行動力は使わない）。ひとつのセルの狙いは1ターンに1回しか決めたり変えたりできない
+    if (action.type === 'aim' || action.type === 'unaim') {
+      if (cell.owner !== id) return fail('自分のセルを選んでください');
+      if (!canReaim(state, cell)) return fail('このセルの狙いは、このターンはもう変えられません');
+      if (action.type === 'unaim') {
+        if (!cell.aim) return fail('このセルは何も狙っていません');
+        cell.aim = null;
+      } else {
+        const t = state.board[String(action.to)];
+        if (!t || !foeNeighbors(state, cell).includes(t)) return fail('隣の相手のセルを選んでください');
+        if (cell.aim === action.to) return fail('もうそのセルを狙っています');
+        cell.aim = String(action.to);
+      }
+      cell.aimRound = state.round;
+      return { ok: true };
+    }
+    if (!targets(state, id, action.type).includes(k)) {
+      if (action.type === 'attack') return fail(attackInfo(state, id, k).n ? '戦力トークンが足りません' : 'このセルを狙っている自分のセルがありません');
+      if (action.type === 'counter') return fail('このセルを狙っている相手のセルがありません');
+      return fail('そのマスには拡張できません');
+    }
     p.ap--;
-    p.resource -= RULES.cost.expand;
-    cell.owner = id;
-    addLog(state, `${p.name} がマス${cellLabel(cell)}に拡張`, 'expand');
+    if (action.type === 'expand') {
+      p.resource -= RULES.cost.expand;
+      Object.assign(cell, { owner: id, hp: RULES.hp, aim: null, aimRound: -1 });
+      addLog(state, `${p.name} がマス${cellLabel(cell)}に拡張`, 'expand');
+    } else if (action.type === 'attack') {
+      // 攻撃：戦力 7 − n で、体力を n 減らす（n は狙っている自分のセルの数）
+      const { n, cost } = attackInfo(state, id, k);
+      const foe = playerById(state, cell.owner);
+      p.power -= cost;
+      addLog(state, `${p.name} が ${foe.name} の${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を攻撃（体力 −${n}）`, 'attack');
+      recordHit(state, id, [cell]);
+      damage(state, p, cell, n);
+    } else if (action.type === 'counter') {
+      // 反撃：戦力 5 で、このセルを狙っている相手のセルすべての体力を 3 減らす
+      const list = aimersOf(state, k).filter(c => c.owner !== id);
+      p.power -= RULES.counter.cost;
+      addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}から反撃（${list.length}マスの体力 −${RULES.counter.damage}）`, 'counter');
+      recordHit(state, id, list);
+      for (const c of list) damage(state, p, c, RULES.counter.damage);
+    }
     return { ok: true };
   }
 
-  // 脱落（切断したまま戻らない人をホストが脱落させたとき）。セルは空きマスに戻り、資源もなくなる
-  function eliminate(state, p) {
+  // 攻撃・反撃の記録（画面で、当たったマスを光らせ、やられた人に知らせるため。新しいものだけ残す）
+  function recordHit(state, by, cells) {
+    const hit = { seq: state.logSeq, by, keys: cells.map(c => key(c.q, c.r)), victims: [...new Set(cells.map(c => c.owner))] };
+    state.hits = (state.hits || []).concat(hit).slice(-20);
+  }
+
+  // 体力を減らす。0 になったら壊れて空きマスに戻る（コアなら持ち主は脱落）
+  function damage(state, by, cell, n) {
+    if (!cell.owner) return;
+    cell.hp = Math.max(0, cell.hp - n);
+    if (cell.hp > 0) return;
+    const owner = playerById(state, cell.owner), wasCore = cell.core;
+    addLog(state, `${owner.name} の${wasCore ? 'コア' : 'セル'}${cellLabel(cell)}が壊れた`, 'break');
+    breakCell(state, cell);
+    if (wasCore) eliminate(state, owner, by);
+  }
+
+  // セルを空きマスに戻す。そのセルの狙いも、そのセルへの狙いも消える
+  function breakCell(state, cell) {
+    const k = key(cell.q, cell.r);
+    Object.assign(cell, { owner: null, core: false, hp: 0, aim: null, aimRound: -1 });
+    for (const c of Object.values(state.board)) if (c.aim === k) c.aim = null;
+  }
+
+  // 脱落。セルは空きマスに戻る。heir（コアを壊した人）がいれば、資源と戦力を受け継ぐ
+  function eliminate(state, p, heir) {
     p.alive = false;
-    for (const c of cellsOf(state, p.id)) Object.assign(c, { owner: null, core: false });
-    p.resource = 0; p.ap = 0;
-    addLog(state, `💀 ${p.name} が脱落`, 'out');
+    for (const c of cellsOf(state, p.id)) breakCell(state, c);
+    if (heir) { heir.resource += p.resource; heir.power += p.power; }
+    p.resource = 0; p.power = 0; p.ap = 0;
+    addLog(state, heir ? `💀 ${p.name} のコアが壊され、脱落（資源と戦力は ${heir.name} のものに）` : `💀 ${p.name} が脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);
   }
@@ -316,13 +414,14 @@
     return best;
   }
 
-  // 行動力が満タンだったとして、何か行動（拡張）できるか。できなければ自動で行動完了にする
+  // 行動力が満タンだったとして、何か行動（拡張・攻撃・反撃）できるか。できなければ自動で行動完了にする
+  // （狙いは行動力も戦力も使わないので数えない）
   function hasMoves(state, id) {
     const p = playerById(state, id);
     if (!p || !p.alive || state.over) return false;
     const ap = p.ap;
     p.ap = RULES.rt.apMax;
-    const ok = targets(state, id, 'expand').length > 0;
+    const ok = ['expand', 'attack', 'counter'].some(t => targets(state, id, t).length > 0);
     p.ap = ap;
     return ok;
   }
@@ -337,7 +436,7 @@
   return {
     RULES, DIRS, ACTION_NAMES,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
-    createGame, apply, targets, actionBlocked, income, cellsOf, forfeit,
+    createGame, apply, targets, actionBlocked, income, cellsOf, forfeit, aimersOf, attackInfo, foeNeighbors, canReaim,
     autoTicks, rtTick, rtRegen, apMax, hasMoves, largestGroup,
   };
 });

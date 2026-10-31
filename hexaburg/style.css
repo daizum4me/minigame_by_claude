@@ -602,9 +602,15 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .r-anim .r-rise text { animation: r-rise 6s linear infinite; }
 @keyframes r-rise { 0% { transform: translateY(0); } 100% { transform: translateY(-40px); } }
 @keyframes rk-0-26 { 0%, 0% { opacity: 0; } 3%, 26% { opacity: 1; } 29%, 100% { opacity: 0; } }
+@keyframes rk-0-30 { 0%, 0% { opacity: 0; } 3%, 30% { opacity: 1; } 33%, 100% { opacity: 0; } }
+@keyframes rk-0-50 { 0%, 0% { opacity: 0; } 3%, 50% { opacity: 1; } 53%, 100% { opacity: 0; } }
 @keyframes rk-0-54 { 0%, 0% { opacity: 0; } 3%, 54% { opacity: 1; } 57%, 100% { opacity: 0; } }
+@keyframes rk-0-62 { 0%, 0% { opacity: 0; } 3%, 62% { opacity: 1; } 65%, 100% { opacity: 0; } }
 @keyframes rk-0-82 { 0%, 0% { opacity: 0; } 3%, 82% { opacity: 1; } 85%, 100% { opacity: 0; } }
+@keyframes rk-0-90 { 0%, 0% { opacity: 0; } 3%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
+@keyframes rk-0-95 { 0%, 0% { opacity: 0; } 3%, 95% { opacity: 1; } 98%, 100% { opacity: 0; } }
 @keyframes rk-4-90 { 0%, 4% { opacity: 0; } 7%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
+@keyframes rk-4-94 { 0%, 4% { opacity: 0; } 7%, 94% { opacity: 1; } 97%, 100% { opacity: 0; } }
 @keyframes rk-5-40 { 0%, 5% { opacity: 0; } 8%, 40% { opacity: 1; } 43%, 100% { opacity: 0; } }
 @keyframes rk-8-88 { 0%, 8% { opacity: 0; } 11%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
 @keyframes rk-10-24 { 0%, 10% { opacity: 0; } 13%, 24% { opacity: 1; } 27%, 100% { opacity: 0; } }
@@ -617,6 +623,8 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 @keyframes rk-22-28 { 0%, 22% { opacity: 0; } 25%, 28% { opacity: 1; } 31%, 100% { opacity: 0; } }
 @keyframes rk-24-38 { 0%, 24% { opacity: 0; } 27%, 38% { opacity: 1; } 41%, 100% { opacity: 0; } }
 @keyframes rk-24-92 { 0%, 24% { opacity: 0; } 27%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
+@keyframes rk-24-96 { 0%, 24% { opacity: 0; } 27%, 96% { opacity: 1; } 99%, 100% { opacity: 0; } }
+@keyframes rk-26-32 { 0%, 26% { opacity: 0; } 29%, 32% { opacity: 1; } 35%, 100% { opacity: 0; } }
 @keyframes rk-32-88 { 0%, 32% { opacity: 0; } 35%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
 @keyframes rk-35-85 { 0%, 35% { opacity: 0; } 38%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
 @keyframes rk-35-90 { 0%, 35% { opacity: 0; } 38%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
@@ -624,7 +632,9 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 @keyframes rk-37-92 { 0%, 37% { opacity: 0; } 40%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-38-52 { 0%, 38% { opacity: 0; } 41%, 52% { opacity: 1; } 55%, 100% { opacity: 0; } }
 @keyframes rk-38-92 { 0%, 38% { opacity: 0; } 41%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
+@keyframes rk-40-95 { 0%, 40% { opacity: 0; } 43%, 95% { opacity: 1; } 98%, 100% { opacity: 0; } }
 @keyframes rk-44-88 { 0%, 44% { opacity: 0; } 47%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
+@keyframes rk-46-54 { 0%, 46% { opacity: 0; } 49%, 54% { opacity: 1; } 57%, 100% { opacity: 0; } }
 @keyframes rk-50-56 { 0%, 50% { opacity: 0; } 53%, 56% { opacity: 1; } 59%, 100% { opacity: 0; } }
 @keyframes rk-50-85 { 0%, 50% { opacity: 0; } 53%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
 @keyframes rk-50-90 { 0%, 50% { opacity: 0; } 53%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
@@ -633,6 +643,7 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 @keyframes rk-52-92 { 0%, 52% { opacity: 0; } 55%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-55-85 { 0%, 55% { opacity: 0; } 58%, 85% { opacity: 1; } 88%, 100% { opacity: 0; } }
 @keyframes rk-56-88 { 0%, 56% { opacity: 0; } 59%, 88% { opacity: 1; } 91%, 100% { opacity: 0; } }
+@keyframes rk-58-64 { 0%, 58% { opacity: 0; } 61%, 64% { opacity: 1; } 67%, 100% { opacity: 0; } }
 @keyframes rk-59-92 { 0%, 59% { opacity: 0; } 62%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-66-92 { 0%, 66% { opacity: 0; } 69%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-68-90 { 0%, 68% { opacity: 0; } 71%, 90% { opacity: 1; } 93%, 100% { opacity: 0; } }
@@ -641,7 +652,9 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 @keyframes rk-78-84 { 0%, 78% { opacity: 0; } 81%, 84% { opacity: 1; } 87%, 100% { opacity: 0; } }
 @keyframes rk-84-96 { 0%, 84% { opacity: 0; } 87%, 96% { opacity: 1; } 99%, 100% { opacity: 0; } }
 @keyframes rk-84-98 { 0%, 84% { opacity: 0; } 87%, 98% { opacity: 1; } 100%, 100% { opacity: 0; } }
+@keyframes rk-86-92 { 0%, 86% { opacity: 0; } 89%, 92% { opacity: 1; } 95%, 100% { opacity: 0; } }
 @keyframes rk-88-98 { 0%, 88% { opacity: 0; } 91%, 98% { opacity: 1; } 100%, 100% { opacity: 0; } }
+@keyframes rk-90-98 { 0%, 90% { opacity: 0; } 93%, 98% { opacity: 1; } 100%, 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .r-anim .rk { animation: none !important; opacity: 1; } .r-anim .bar { animation: none; } }
 
 
@@ -659,3 +672,9 @@ h3 #play-note { font-weight: 400; margin-left: 6px; letter-spacing: 0; }
 .finale li b { font-size: 20px; font-variant-numeric: tabular-nums; }
 .finale li.now { opacity: 1; background: rgba(255, 255, 255, 0.06); }
 .finale li.win { opacity: 1; background: rgba(255, 211, 107, 0.18); color: var(--warn); }
+
+.r-anim .arr { stroke: #9CC6F2; stroke-width: 3; stroke-linecap: round; }
+.r-anim .arr-h { fill: #9CC6F2; }
+.r-anim .arr-foe { stroke: #FF9C94; stroke-width: 3; stroke-linecap: round; }
+.r-anim .arr-foe-h { fill: #FF9C94; }
+.r-anim .lbl.pow { fill: #FFA8B8; font-weight: 700; }

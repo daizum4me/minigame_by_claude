@@ -128,3 +128,99 @@ test('途中で脱落させる（切断）：セルは空きマスに戻る。�
   assert.ok(g.over);
   assert.deepStrictEqual(g.winners, [a]);
 });
+
+// ---------- 狙い・攻撃・反撃 ----------
+
+// a のコアの隣に b のセル t を置き、t の周りに a のセルを並べる（a のセルは t を狙える）
+function battle(seed) {
+  const { g, a, b } = rtGame(seed);
+  const set = (k, owner) => Object.assign(g.board[k], { owner, hp: E.RULES.hp, aim: null, aimRound: -1 });
+  const [cq, cr] = E.parseKey(P(g, a).core);
+  const tk = E.key(...freeNext(g, a));
+  set(tk, b);
+  const [tq, tr] = E.parseKey(tk);
+  const mine = [P(g, a).core, ...nb(g, tq, tr).map(([q, r]) => E.key(q, r)).filter(k => !g.board[k].owner).slice(0, 3)];
+  mine.slice(1).forEach(k => set(k, a));
+  return { g, a, b, tk, mine };
+}
+
+test('狙い：自分のセルから隣の相手のセルを狙う（行動力を使わない）。ひとつのセルの狙いは1ターンに1回だけ決めたり変えたりできる', () => {
+  const { g, a, b, tk, mine } = battle();
+  const [q, r] = E.parseKey(mine[0]);
+  P(g, a).ap = 0;
+  assert.ok(E.apply(g, a, { type: 'aim', q, r, to: tk }).ok);
+  assert.strictEqual(g.board[mine[0]].aim, tk);
+  assert.strictEqual(P(g, a).ap, 0);
+  assert.match(E.apply(g, a, { type: 'unaim', q, r }).error, /このターンはもう/);    // 同じターンにもう一度は不可
+  assert.strictEqual(E.apply(g, a, { type: 'aim', q: 0, r: 0, to: tk }).ok, false);  // 自分のセルではない
+  const [bq, br] = E.parseKey(tk);
+  assert.strictEqual(E.apply(g, b, { type: 'aim', q: bq, r: br, to: '0,0' }).ok, false);   // 隣の相手のセルではない
+  E.rtTick(g);
+  assert.ok(E.apply(g, a, { type: 'unaim', q, r }).ok);                              // 次のターンなら変えられる
+  assert.strictEqual(g.board[mine[0]].aim, null);
+});
+
+test('攻撃：戦力 7−n で、狙っている自分のセルの数 n だけ体力を減らす（行動力1）。体力が0になると壊れて空きマスに戻り、狙いも消える', () => {
+  const { g, a, b, tk, mine } = battle();
+  P(g, a).power = 30; P(g, a).ap = 5;
+  assert.strictEqual(E.apply(g, a, { type: 'attack', ...Object.fromEntries(['q', 'r'].map((x, i) => [x, E.parseKey(tk)[i]])) }).ok, false);   // まだ狙っていない
+  for (const k of mine) { const [q, r] = E.parseKey(k); assert.ok(E.apply(g, a, { type: 'aim', q, r, to: tk }).ok); }
+  assert.deepStrictEqual(E.attackInfo(g, a, tk), { n: mine.length, cost: 7 - mine.length });
+  const [tq, tr] = E.parseKey(tk);
+  assert.ok(E.apply(g, a, { type: 'attack', q: tq, r: tr }).ok);
+  assert.deepStrictEqual([g.board[tk].hp, P(g, a).power, P(g, a).ap], [6 - mine.length, 30 - (7 - mine.length), 4]);
+  assert.ok(E.apply(g, a, { type: 'attack', q: tq, r: tr }).ok);
+  assert.deepStrictEqual([g.board[tk].owner, g.board[tk].hp], [null, 0]);              // 壊れて空きマスに
+  assert.ok(mine.every(k => g.board[k].aim === null));                                 // 狙いも消える
+  assert.ok(g.log.some(l => /が壊れた/.test(l.text)));
+  assert.strictEqual(g.hits.at(-1).victims[0], b);
+});
+
+test('攻撃は狙っているセルが多いほど安く強い（1つなら戦力6で −1、6つなら戦力1で −6）。戦力が足りなければできない', () => {
+  const { g, a, tk, mine } = battle(3);
+  const [q, r] = E.parseKey(mine[0]);
+  E.apply(g, a, { type: 'aim', q, r, to: tk });
+  assert.deepStrictEqual(E.attackInfo(g, a, tk), { n: 1, cost: 6 });
+  P(g, a).power = 5;
+  assert.ok(!E.targets(g, a, 'attack').includes(tk));
+  P(g, a).power = 6;
+  assert.ok(E.targets(g, a, 'attack').includes(tk));
+});
+
+test('反撃：自分のセルを選び、戦力5で、そのセルを狙っている相手のセルすべての体力を3減らす（行動力1）', () => {
+  const { g, a, b, tk, mine } = battle();
+  for (const k of mine) { const [q, r] = E.parseKey(k); E.apply(g, a, { type: 'aim', q, r, to: tk }); }
+  const [tq, tr] = E.parseKey(tk);
+  P(g, b).power = 4;
+  assert.match(E.apply(g, b, { type: 'counter', q: tq, r: tr }).error, /戦力/);
+  P(g, b).power = 10;
+  assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);
+  assert.deepStrictEqual(mine.map(k => g.board[k].hp), mine.map(() => 3));
+  assert.deepStrictEqual([P(g, b).power, P(g, b).ap], [5, 2]);
+  assert.ok(E.apply(g, b, { type: 'counter', q: tq, r: tr }).ok);                     // もう一度で全部壊れる（コアも）
+  assert.strictEqual(P(g, a).alive, false);                                           // コアが壊れたので a は脱落
+  assert.ok(g.over);
+  assert.deepStrictEqual(g.winners, [b]);
+  const [cq, cr] = E.parseKey(P(g, b).core);
+  assert.strictEqual(E.apply(g, b, { type: 'counter', q: cq, r: cr }).ok, false);     // 狙われていないセルからは反撃できない
+});
+
+test('コアが壊れたら脱落し、残りのセルは空きマスに。資源と戦力は壊した人が受け継ぐ。戦力はターンごとに +3', () => {
+  const g = newGame(3);
+  const [a, b] = g.players.map(p => p.id);
+  const bc = g.board[P(g, b).core];
+  const [nq, nr] = nb(g, bc.q, bc.r).find(([q, r]) => !g.board[E.key(q, r)].owner);
+  Object.assign(g.board[E.key(nq, nr)], { owner: a, hp: 6 });
+  P(g, a).power = 50; P(g, a).ap = 5; P(g, b).resource = 7; P(g, b).power = 4;
+  E.apply(g, a, { type: 'aim', q: nq, r: nr, to: P(g, b).core });
+  for (let i = 0; i < 5; i++) { P(g, a).ap = 5; E.apply(g, a, { type: 'attack', q: bc.q, r: bc.r }); }
+  assert.strictEqual(bc.hp, 1);
+  P(g, a).ap = 5;
+  assert.ok(E.apply(g, a, { type: 'attack', q: bc.q, r: bc.r }).ok);
+  assert.strictEqual(P(g, b).alive, false);
+  assert.deepStrictEqual(E.cellsOf(g, b), []);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [10 + 7, 50 - 36 + 4]);
+  const before = P(g, a).power;
+  E.rtTick(g);
+  assert.strictEqual(P(g, a).power, before + 3);
+});

@@ -74,6 +74,19 @@
     pip(n) {        // 終了時の数え上げ：数えるたびに少しずつ高くなる「ぴっ」
       tone({ freq: Math.min(1600, 520 + (n || 0) * 22), dur: 0.06, vol: 0.07, type: 'triangle' });
     },
+    block() {       // 攻撃・反撃が当たった：かきん
+      tone({ freq: 1320, dur: 0.25, vol: 0.08, type: 'square' });
+      tone({ freq: 1760, dur: 0.2, vol: 0.05, type: 'square' });
+      noise({ dur: 0.08, type: 'highpass', freq: 4000, vol: 0.1 });
+    },
+    success() {     // セルを壊した：がしゃん
+      noise({ dur: 0.45, type: 'lowpass', freq: 3000, freqEnd: 300, vol: 0.3 });
+      tone({ freq: 140, freqEnd: 60, dur: 0.35, vol: 0.2 });
+    },
+    attacked() {    // 自分のセルが攻撃された：警報のように2回
+      [0, 0.16].forEach(t => tone({ freq: 880, freqEnd: 520, t, dur: 0.13, vol: 0.11, type: 'square' }));
+      noise({ t: 0, dur: 0.2, type: 'lowpass', freq: 1500, freqEnd: 300, vol: 0.15 });
+    },
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
     },

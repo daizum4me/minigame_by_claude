@@ -4,7 +4,7 @@
  * ホバー・長押しでのマス情報（onHover）を扱う。
  *
  * const view = new HexBoardView(canvas, { onSelect(key), onHover(key, x, y, scale, byLongPress), onView() })
- * view.setData({ game, colors, patterns, targets, selected, me })
+ * view.setData({ game, colors, patterns, targets, selected, me, aimFrom })
  */
 (function () {
   'use strict';
@@ -340,6 +340,8 @@
         hexPath(ctx, x, y, s * 0.93);
         ctx.fillStyle = rgba(col.base, 0.42);
         ctx.fill();
+        // 体力：縁の内側を、体力1つにつき辺1本ぶんずつ、明るい色で塗る（6で一周）
+        if (c.hp > 0) this.hpRing(ctx, x, y, s, Math.min(6, c.hp), col);
         ctx.save();
         if (c.core) { ctx.shadowColor = col.light; ctx.shadowBlur = Math.max(6, s * 0.5); }
         this.edge(ctx, x, y, s * 0.88, c.core ? Math.max(2.5, s * 0.11) : Math.max(1.5, s * 0.06), col.light, pat);
@@ -353,6 +355,40 @@
           ctx.strokeStyle = col.light;
           ctx.stroke();
         }
+      }
+      // 狙い：狙っているセルから狙われているセルへの矢印（全員に見える。狙っている人の色）
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (const [, c] of cells) {
+        if (!c.owner || !c.aim || !g.board[c.aim]) continue;
+        const col = d.colors[c.owner];
+        if (!col) continue;
+        const [x1, y1] = this.screenOf(E.key(c.q, c.r)), [x2, y2] = this.screenOf(c.aim);
+        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+        // 向かい合って狙い合っても重ならないよう、進む向きの右側に少しずらす
+        const ox = -uy * s * 0.14, oy = ux * s * 0.14;
+        const sx = x1 + ux * s * 0.3 + ox, sy = y1 + uy * s * 0.3 + oy, ex = x2 - ux * s * 0.42 + ox, ey = y2 - uy * s * 0.42 + oy;
+        const head = Math.max(5, s * 0.26);
+        ctx.strokeStyle = col.light;
+        ctx.fillStyle = col.light;
+        ctx.lineWidth = Math.max(2, s * 0.09);
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex - ux * head * 0.6, ey - uy * head * 0.6); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - ux * head - uy * head * 0.6, ey - uy * head + ux * head * 0.6);
+        ctx.lineTo(ex - ux * head + uy * head * 0.6, ey - uy * head - ux * head * 0.6);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      // 狙うセルを選んでいるところ：狙いのもとのセルを点線で囲む
+      if (d.aimFrom && g.board[d.aimFrom]) {
+        const [x, y] = this.screenOf(d.aimFrom);
+        hexPath(ctx, x, y, s * 0.99);
+        ctx.setLineDash([s * 0.12, s * 0.08]);
+        ctx.lineWidth = Math.max(2, s * 0.08);
+        ctx.strokeStyle = `rgba(255,211,107,${0.6 + 0.4 * pulse})`;
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
       // 終了時の数え上げで数えたマス：明るい色で塗る
       if (this.counted) for (const [k, color] of this.counted) {
@@ -410,6 +446,20 @@
         ctx.stroke();
       }
       if (this.h.onView) this.h.onView();
+    }
+
+    // 体力の帯：縁と内側（0.71）のあいだの台形を、上の頂点から時計回りに n 本ぶん塗る
+    hpRing(ctx, x, y, s, n, col) {
+      const ro = s * 0.86, ri = s * 0.71;
+      const pt = (r, i) => { const a = Math.PI / 180 * (60 * i - 90); return [x + r * Math.cos(a), y + r * Math.sin(a)]; };
+      ctx.fillStyle = col.light;
+      for (let i = 0; i < n; i++) {
+        ctx.beginPath();
+        ctx.moveTo(...pt(ro, i)); ctx.lineTo(...pt(ro, i + 1));
+        ctx.lineTo(...pt(ri, i + 1)); ctx.lineTo(...pt(ri, i));
+        ctx.closePath();
+        ctx.fill();
+      }
     }
 
     // セルの縁（陣営ごとの模様：実線・点線・二重線・破線）
