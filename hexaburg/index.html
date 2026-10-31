@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサブルグ — 六角形のマスを広げて、つながった一番大きなかたまりを競う2〜12人のリアルタイム陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -115,6 +115,7 @@
         <span id="me-swatch"></span>
         <strong id="me-name"></strong>
         <span id="me-actions" class="muted"></span>
+        <button id="btn-produce" class="produce-btn" hidden></button>
       </div>
       <div class="tickbar" id="dock-tickbar" hidden title="次のターンまで" aria-label="次のターンまで"><i></i></div>
       <div id="me-tokens" class="tokens"></div>
@@ -169,6 +170,7 @@
           <li><b>30秒ごとの「ターン」</b>で、全員いっせいに<span class="k-res">資源</span>（コア +2）と<span class="k-pow">戦力</span>（+3）を受け取る</li>
           <li><b>おまけ</b>：さらに、自分のセル1つにつき <b>25%</b> で資源 +1、<b>別に 25%</b> で戦力 +1（両方もらえることもある）。セルが多いほど増えやすい</li>
           <li><i class="ic" data-icon="ap"></i><b>行動力</b>：拡張・回復・攻撃・反撃で1使う（狙いは使わない）。<b>5秒に1回復</b>（最大5・最初は3）</li>
+          <li><i class="ic" data-icon="resource"></i><b>生産</b>：下のバーの「生産」で、<span class="cost"><i class="ic" data-icon="resource"></i>5</span>を<b>行動力1</b>に変える（行動力は使わない。満タンのときは不可）。資源が余ったら行動力にまわせる</li>
           <li>決まった回数のターン（4人まで18回＝9分など）が終わったら勝敗を決める</li>
         </ul>
       </section>
@@ -204,11 +206,11 @@
     <article class="r-page" data-title="狙い・攻撃・反撃" hidden>
       <section class="r-sec">
         <h3><i class="ic" data-icon="act-attack"></i>狙いと攻撃</h3>
-        <figure class="r-fig"><svg viewBox="0 0 290 115" class="r-anim" aria-hidden="true"><polygon points="170.0,38.0 189.1,49.0 189.1,71.0 170.0,82.0 150.9,71.0 150.9,49.0" class="c-foe" /><g class="rk" style="animation-name:rk-0-90"><polygon points="170.0,41.1 186.4,50.5 181.4,53.4 170.0,46.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-90"><polygon points="186.4,50.5 186.4,69.5 181.4,66.6 181.4,53.4" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-62"><polygon points="186.4,69.5 170.0,78.9 170.0,73.2 181.4,66.6" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-62"><polygon points="170.0,78.9 153.6,69.5 158.6,66.6 170.0,73.2" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-30"><polygon points="153.6,69.5 153.6,50.5 158.6,53.4 158.6,66.6" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-30"><polygon points="153.6,50.5 170.0,41.1 170.0,46.8 158.6,53.4" class="c-ring"/></g><polygon points="131.9,38.0 150.9,49.0 150.9,71.0 131.9,82.0 112.8,71.0 112.8,49.0" class="c-own" /><g class="rk" style="animation-name:rk-4-94"><path d="M137.9 60.0 Q147.9 68.4 154.3 63.1" class="arr" fill="none"/><polygon points="158.0,60.0 154.9,68.8 148.8,61.4" class="arr-h"/></g><polygon points="150.9,5.0 170.0,16.0 170.0,38.0 150.9,49.0 131.9,38.0 131.9,16.0" class="c-own" /><g class="rk" style="animation-name:rk-4-94"><path d="M153.9 32.2 Q151.7 45.1 159.5 48.0" class="arr" fill="none"/><polygon points="164.0,49.6 154.8,51.4 158.1,42.3" class="arr-h"/></g><g class="rk" style="animation-name:rk-26-32"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-58-64"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-86-92"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-24-88"><text x="210" y="40" class="lbl pow">戦力5で</text><text x="210" y="60" class="lbl bad">体力 −2</text></g><g class="rk" style="animation-name:rk-88-90"><text x="210" y="84" class="lbl bad">壊れた！</text></g></svg><figcaption>2マスで狙うと、戦力 7−2=5 で体力 −2。狙うマスが多いほど安く強い</figcaption></figure>
+        <figure class="r-fig"><svg viewBox="0 0 290 115" class="r-anim" aria-hidden="true"><polygon points="170.0,38.0 189.1,49.0 189.1,71.0 170.0,82.0 150.9,71.0 150.9,49.0" class="c-foe" /><g class="rk" style="animation-name:rk-0-90"><polygon points="170.0,41.1 186.4,50.5 181.4,53.4 170.0,46.8" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-90"><polygon points="186.4,50.5 186.4,69.5 181.4,66.6 181.4,53.4" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-62"><polygon points="186.4,69.5 170.0,78.9 170.0,73.2 181.4,66.6" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-62"><polygon points="170.0,78.9 153.6,69.5 158.6,66.6 170.0,73.2" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-30"><polygon points="153.6,69.5 153.6,50.5 158.6,53.4 158.6,66.6" class="c-ring"/></g><g class="rk" style="animation-name:rk-0-30"><polygon points="153.6,50.5 170.0,41.1 170.0,46.8 158.6,53.4" class="c-ring"/></g><polygon points="131.9,38.0 150.9,49.0 150.9,71.0 131.9,82.0 112.8,71.0 112.8,49.0" class="c-own" /><g class="rk" style="animation-name:rk-4-94"><path d="M137.9 60.0 Q147.9 68.4 154.3 63.1" class="arr" fill="none"/><polygon points="158.0,60.0 154.9,68.8 148.8,61.4" class="arr-h"/></g><polygon points="150.9,5.0 170.0,16.0 170.0,38.0 150.9,49.0 131.9,38.0 131.9,16.0" class="c-own" /><g class="rk" style="animation-name:rk-4-94"><path d="M153.9 32.2 Q151.7 45.1 159.5 48.0" class="arr" fill="none"/><polygon points="164.0,49.6 154.8,51.4 158.1,42.3" class="arr-h"/></g><g class="rk" style="animation-name:rk-26-32"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-58-64"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-86-92"><circle cx="170" cy="60" r="19.8" class="hit"/></g><g class="rk" style="animation-name:rk-24-88"><text x="210" y="40" class="lbl pow">戦力2で</text><text x="210" y="60" class="lbl bad">体力 −2</text></g><g class="rk" style="animation-name:rk-88-90"><text x="210" y="84" class="lbl bad">壊れた！</text></g></svg><figcaption>攻撃はいつも戦力2。2マスで狙うと体力 −2。狙うマスが多いほど強い</figcaption></figure>
         <ul class="r-list">
           <li>セルの<b>体力</b>は6。縁の内側の帯で見える（全員に見える）。0 になると<b>壊れて空きマスに戻る</b></li>
           <li><b>狙い</b>：自分のセルの<b>中心から、隣の相手のセルまでドラッグ</b>して離す（狙いを変えるときも同じ）。弧を描く矢印で全員に見える。行動力は使わない。<b>ひとつのセルの狙いは1ターンに1回</b>しか決めたり変えたりできない</li>
-          <li><b class="k-bad">攻撃</b>：狙っている相手のセルを選んで「攻撃」。そのセルを狙っている自分のセルの数を n とすると、<span class="k-pow">戦力 7−n</span>で<b>体力を n 減らす</b>（n は1〜6。行動力1）</li>
+          <li><b class="k-bad">攻撃</b>：狙っている相手のセルを選んで「攻撃」。<span class="k-pow">戦力2</span>で、そのセルを狙っている自分のセルの数 n だけ<b>体力を減らす</b>（n は1〜6。行動力1）。狙うマスを集めるほど強い</li>
         </ul>
       </section>
       <section class="r-sec">
@@ -283,11 +285,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=6"></script>
-<script src="shared/cpu.js?v=6"></script>
-<script src="shared/room.js?v=6"></script>
-<script src="sound.js?v=6"></script>
-<script src="board.js?v=6"></script>
-<script src="client.js?v=6"></script>
+<script src="shared/engine.js?v=7"></script>
+<script src="shared/cpu.js?v=7"></script>
+<script src="shared/room.js?v=7"></script>
+<script src="sound.js?v=7"></script>
+<script src="board.js?v=7"></script>
+<script src="client.js?v=7"></script>
 </body>
 </html>

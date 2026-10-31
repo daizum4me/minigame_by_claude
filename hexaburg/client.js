@@ -618,6 +618,16 @@
     const actHtml = !me ? '' : !me.alive ? '脱落' : `<span class="ap" title="行動力（${R.rt.apSeconds}秒に1回復・上限${max}）">行動力 ${apDots(me.ap || 0)}</span>`;
     if (meAct._html !== actHtml) { meAct.innerHTML = actHtml; meAct._html = actHtml; }
     $('#dock-tickbar').hidden = g.over;
+    // 生産：資源5を行動力1に変える（行動力は使わない）
+    const prodBtn = $('#btn-produce');
+    prodBtn.hidden = !me || !me.alive || g.over;
+    if (!prodBtn.hidden) {
+      const why = E.actionBlocked(g, app.me, 'produce');
+      const html = `生産<small>${TOKEN_SVG.resource}${R.produce.resource} → 行動力 +${R.produce.ap}</small>`;
+      if (prodBtn._html !== html) { prodBtn.innerHTML = html; prodBtn._html = html; }
+      prodBtn.disabled = !!why;
+      prodBtn.title = why || `資源${R.produce.resource}を行動力${R.produce.ap}に変える（行動力は使わない）`;
+    }
     // 行動完了：全員（切断中の人は押したものとみなす。CPU はやることがなくなると押す）がそろうと、待たずに次のターンへ
     const readyBtn = $('#btn-ready');
     readyBtn.hidden = !me || !me.alive || g.over;
@@ -739,10 +749,10 @@
   function playSounds(g, fresh) {
     if (!fresh.length) return;
     // 勝敗の音は、数え上げの演出の最後に鳴らす
-    const order = ['out', 'expand', 'heal'];
+    const order = ['out', 'expand', 'heal', 'produce'];
     const found = new Set(fresh.map(l => l.tone));
     const name = order.find(n => found.has(n));
-    if (name) window.HexSound.play(name);
+    if (name) window.HexSound.play(name === 'produce' ? 'heal' : name);
   }
 
   // ゲーム開始前の 3・2・1 のカウントダウン。数が変わるたびに音を鳴らし、0 で「スタート！」
@@ -879,7 +889,7 @@
     } else {
       const { n, cost } = E.attackInfo(g, app.me, key);
       list.push(n ? { type: 'attack', cost, kind: 'power', gain: `体力 −${n}（狙っている自分のセル ${n}・行動力1）`, why: why('attack', `戦力トークンが足りません（あと ${cost - me.power}）`) }
-        : { type: 'attack', cost: R.attack.base - 1, kind: 'power', gain: '自分のセルから狙うと攻撃できる', why: '隣の自分のセルから、まずこのセルを狙ってください' });
+        : { type: 'attack', cost: R.attack.cost, kind: 'power', gain: '自分のセルから狙うと攻撃できる', why: '隣の自分のセルから、まずこのセルを狙ってください' });
     }
     return { list };
   }
@@ -1033,6 +1043,7 @@
     $('#color-pick').onclick = e => { const b = e.target.closest('[data-color]'); if (b && !b.disabled) send({ type: 'color', color: b.dataset.color }); };
 
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
+    $('#btn-produce').onclick = () => send({ type: 'act', action: { type: 'produce' } });
     $('#btn-ready').onclick = () => { app.readyClickAt = Date.now(); send({ type: 'act', action: { type: 'ready' } }); };
     $('#set-ticks').onchange = e => send({ type: 'settings', ticks: Number(e.target.value) });
     document.querySelectorAll('#set-ticks option').forEach(o => { const n = Number(o.value); if (n) o.textContent = `${n}ターン（${ticksTime(n)}）`; });

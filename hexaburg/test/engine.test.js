@@ -69,7 +69,7 @@ test('拡張：隣接する空きマスに、資源1・行動力1。ない行動
   assert.ok(E.apply(g, a, { type: 'expand', q, r }).ok);
   assert.deepStrictEqual([P(g, a).resource, P(g, a).ap, g.board[E.key(q, r)].owner], [9, 2, a]);
   assert.strictEqual(E.apply(g, b, { type: 'expand', q, r }).ok, false);         // 相手のマスには置けない
-  for (const t of ['strengthen', 'destroy', 'fortify', 'produce']) assert.strictEqual(E.apply(g, a, { type: t, q, r }).ok, false);
+  for (const t of ['strengthen', 'destroy', 'fortify', 'develop']) assert.strictEqual(E.apply(g, a, { type: t, q, r }).ok, false);
   P(g, a).ap = 0;
   assert.match(E.actionBlocked(g, a, 'expand'), /行動力/);
   P(g, a).ap = 3; P(g, a).resource = 0;
@@ -161,15 +161,15 @@ test('狙い：自分のセルから隣の相手のセルを狙う（行動力�
   assert.strictEqual(g.board[mine[0]].aim, null);
 });
 
-test('攻撃：戦力 7−n で、狙っている自分のセルの数 n だけ体力を減らす（行動力1）。体力が0になると壊れて空きマスに戻り、狙いも消える', () => {
+test('攻撃：戦力 2 で、狙っている自分のセルの数 n だけ体力を減らす（行動力1）。体力が0になると壊れて空きマスに戻り、狙いも消える', () => {
   const { g, a, b, tk, mine } = battle();
   P(g, a).power = 30; P(g, a).ap = 5;
   assert.strictEqual(E.apply(g, a, { type: 'attack', ...Object.fromEntries(['q', 'r'].map((x, i) => [x, E.parseKey(tk)[i]])) }).ok, false);   // まだ狙っていない
   for (const k of mine) { const [q, r] = E.parseKey(k); assert.ok(E.apply(g, a, { type: 'aim', q, r, to: tk }).ok); }
-  assert.deepStrictEqual(E.attackInfo(g, a, tk), { n: mine.length, cost: 7 - mine.length });
+  assert.deepStrictEqual(E.attackInfo(g, a, tk), { n: mine.length, cost: 2 });
   const [tq, tr] = E.parseKey(tk);
   assert.ok(E.apply(g, a, { type: 'attack', q: tq, r: tr }).ok);
-  assert.deepStrictEqual([g.board[tk].hp, P(g, a).power, P(g, a).ap], [6 - mine.length, 30 - (7 - mine.length), 4]);
+  assert.deepStrictEqual([g.board[tk].hp, P(g, a).power, P(g, a).ap], [6 - mine.length, 28, 4]);
   assert.ok(E.apply(g, a, { type: 'attack', q: tq, r: tr }).ok);
   assert.deepStrictEqual([g.board[tk].owner, g.board[tk].hp], [null, 0]);              // 壊れて空きマスに
   assert.ok(mine.every(k => g.board[k].aim === null));                                 // 狙いも消える
@@ -177,15 +177,29 @@ test('攻撃：戦力 7−n で、狙っている自分のセルの数 n だけ�
   assert.strictEqual(g.hits.at(-1).victims[0], b);
 });
 
-test('攻撃は狙っているセルが多いほど安く強い（1つなら戦力6で −1、6つなら戦力1で −6）。戦力が足りなければできない', () => {
+test('攻撃は狙っているセルが1つでも戦力2（−1）。戦力が足りなければできない', () => {
   const { g, a, tk, mine } = battle(3);
   const [q, r] = E.parseKey(mine[0]);
   E.apply(g, a, { type: 'aim', q, r, to: tk });
-  assert.deepStrictEqual(E.attackInfo(g, a, tk), { n: 1, cost: 6 });
-  P(g, a).power = 5;
+  assert.deepStrictEqual(E.attackInfo(g, a, tk), { n: 1, cost: 2 });
+  P(g, a).power = 1;
   assert.ok(!E.targets(g, a, 'attack').includes(tk));
-  P(g, a).power = 6;
+  P(g, a).power = 2;
   assert.ok(E.targets(g, a, 'attack').includes(tk));
+});
+
+test('生産：資源5を行動力1に変える（行動力は使わない）。資源が足りないとき・行動力が満タンのときはできない', () => {
+  const { g, a } = rtGame();
+  P(g, a).ap = 0; P(g, a).resource = 12;
+  assert.ok(E.apply(g, a, { type: 'produce' }).ok);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).ap], [7, 1]);
+  P(g, a).resource = 4;
+  assert.match(E.apply(g, a, { type: 'produce' }).error, /資源/);
+  P(g, a).resource = 20; P(g, a).ap = 5;
+  assert.match(E.apply(g, a, { type: 'produce' }).error, /満タン/);
+  P(g, a).ap = 4;
+  assert.ok(E.apply(g, a, { type: 'produce' }).ok);
+  assert.strictEqual(P(g, a).ap, 5);
 });
 
 test('反撃：狙ってきている相手のセルが k マスなら、戦力 2k で、その全部の体力を k 減らす（行動力1）', () => {
@@ -255,7 +269,7 @@ test('コアが壊れたら脱落し、残りのセルは空きマスに。資�
   assert.ok(E.apply(g, a, { type: 'attack', q: bc.q, r: bc.r }).ok);
   assert.strictEqual(P(g, b).alive, false);
   assert.deepStrictEqual(E.cellsOf(g, b), []);
-  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [10 + 7, 50 - 36 + 4]);
+  assert.deepStrictEqual([P(g, a).resource, P(g, a).power], [10 + 7, 50 - 12 + 4]);
   const before = P(g, a).power;
   E.rtTick(g, NOB);
   assert.strictEqual(P(g, a).power, before + 3);

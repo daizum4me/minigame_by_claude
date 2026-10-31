@@ -36,8 +36,8 @@
     bonus: { chance: 0.25 },         // ターンごとに、セル1つにつき 25% で資源 +1、別に 25% で戦力 +1
     heal: 1,                         // 回復で戻る体力
     hp: 6,                              // セルの体力（0 になると壊れる）
-    // 攻撃：戦力 7 − n 個で、狙った相手のセルの体力を n 減らす（n はそのセルを狙っている自分のセルの数。1〜6）
-    attack: { base: 7, maxAimers: 6 },
+    attack: { cost: 2, maxAimers: 6 },   // 攻撃：戦力2で、狙っている自分のセルの数 n（最大6）だけ体力を減らす
+    produce: { resource: 5, ap: 1 },     // 生産：資源5を行動力1に変える（行動力は使わない）
     // 反撃：自分のセルを狙っている相手のセルが k マスなら、戦力 2k 個で、その全部の体力を k 減らす
     counter: { perAimer: 2 },
   };
@@ -48,7 +48,7 @@
   const dist = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[0] + a[1] - b[0] - b[1])) / 2;
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
-  const ACTION_NAMES = { expand: '拡張', heal: '回復', aim: '狙い', unaim: '狙いを外す', attack: '攻撃', counter: '反撃', ready: '行動完了' };
+  const ACTION_NAMES = { expand: '拡張', heal: '回復', aim: '狙い', unaim: '狙いを外す', attack: '攻撃', counter: '反撃', produce: '生産', ready: '行動完了' };
   const AP_ACTIONS = ['expand', 'heal', 'attack', 'counter'];   // 行動力を1使う行動（狙いは使わない）
 
   function shuffle(arr, rng) {
@@ -265,6 +265,10 @@
     if (AP_ACTIONS.includes(type) && (p.ap || 0) < 1) return `行動力が足りません（${RULES.rt.apSeconds}秒に1回復）`;
     if (type === 'expand' && p.resource < RULES.cost.expand) return '資源トークンが足りません';
     if (type === 'heal' && p.resource < RULES.cost.heal) return '資源トークンが足りません';
+    if (type === 'produce') {
+      if (p.resource < RULES.produce.resource) return `資源トークンが足りません（${RULES.produce.resource}必要）`;
+      if ((p.ap || 0) >= RULES.rt.apMax) return '行動力はもう満タンです';
+    }
     return '';
   }
 
@@ -273,10 +277,10 @@
     return Object.values(state.board).filter(c => c.owner && c.aim === k && (owner === undefined || c.owner === owner));
   }
 
-  // 攻撃：狙っている自分のセルの数 n（1〜6）と、かかる戦力（7 − n）
+  // 攻撃：狙っている自分のセルの数 n（1〜6）と、かかる戦力（いつも2）
   function attackInfo(state, id, k) {
     const n = Math.min(RULES.attack.maxAimers, aimersOf(state, k, id).length);
-    return { n, cost: RULES.attack.base - n };
+    return { n, cost: RULES.attack.cost };
   }
 
   // このターンに、そのセルの狙いを新しく決めたり変えたりできるか
@@ -306,6 +310,7 @@
    * 行動を実行する。state は書き換わる。
    * action: { type: 'expand' | 'heal' | 'attack' | 'counter', q, r }
    *         { type: 'aim', q, r, to }（自分のセル (q,r) から、隣の相手のセル to（キー）を狙う） / { type: 'unaim', q, r }
+   *         { type: 'produce' }（生産：資源5を行動力1に変える）
    *         { type: 'ready', on }（行動完了。全員がそろうと部屋が次のターンへ進める）
    */
   function apply(state, id, action) {
@@ -314,6 +319,12 @@
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
     // 行動完了：このターンはもう行動しない、という印（もう一度押すと取り消し）。ターンが変わると外れる
+    if (action.type === 'produce') {
+      p.resource -= RULES.produce.resource;
+      p.ap = Math.min(RULES.rt.apMax, (p.ap || 0) + RULES.produce.ap);
+      addLog(state, `${p.name} が生産（資源 −${RULES.produce.resource}・行動力 +${RULES.produce.ap}）`, 'produce');
+      return { ok: true };
+    }
     if (action.type === 'ready') {
       p.ready = action.on === undefined ? !p.ready : !!action.on;
       p.readyOff = !p.ready;   // 自分で外したら、このターンは自動では行動完了にしない
@@ -355,7 +366,7 @@
       cell.hp = Math.min(RULES.hp, cell.hp + RULES.heal);
       addLog(state, `${p.name} が${cell.core ? 'コア' : 'セル'}${cellLabel(cell)}を回復（体力 +${RULES.heal}）`, 'heal');
     } else if (action.type === 'attack') {
-      // 攻撃：戦力 7 − n で、体力を n 減らす（n は狙っている自分のセルの数）
+      // 攻撃：戦力 2 で、体力を n 減らす（n は狙っている自分のセルの数）
       const { n, cost } = attackInfo(state, id, k);
       const foe = playerById(state, cell.owner);
       p.power -= cost;

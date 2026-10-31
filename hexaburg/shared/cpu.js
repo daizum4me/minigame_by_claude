@@ -2,6 +2,7 @@
  * ヘキサブルグ — CPU の考え方
  * 人間と同じ公開情報（盤面・全員の資源）だけで、次の1手を決める。
  * 部屋が CPU ごとに1.5〜3.5秒のばらつきのある間隔で呼ぶ。拡張・狙い・攻撃・反撃・回復に点数を付けて一番高いものを選び、
+ * 行動力が足りなければ資源を生産にまわす。
  * よい行動がなければ何もしない（待つ）。
  *
  * decideRealtime(state, id, rng, level) → action（engine.apply に渡せる形）か null
@@ -57,12 +58,12 @@
       }).sort((a, b) => b.v - a.v)[0];
       out.push({ s: 4 + best.v * 0.3 + noise(), a: { type: 'aim', q: c.q, r: c.r, to: best.tk } });
     }
-    // 攻撃：狙っているセルが多いほど安く強い。壊せるなら大きく、コアなら最優先。1つだけの狙いでは高くつくので控える
+    // 攻撃：戦力2で、狙っている自分のセルの数だけ削る。多く狙うほど強い。壊せるなら大きく、コアなら最優先
     for (const k of E.targets(g, id, 'attack')) {
       const t = g.board[k];
       const { n, cost } = E.attackInfo(g, id, k);
       const kills = t.hp <= n;
-      let s = kills ? (t.core ? 40 : 9) : n >= 3 ? 3 + n : n === 2 ? 2.5 : -2;
+      let s = kills ? (t.core ? 40 : 9) : 1 + n * 1.2 + (t.core ? 1 : 0);
       if (me.power - cost < 5 && mostThreat(g, id) >= 2) s -= 2;   // 反撃する分の戦力は残したい
       out.push({ s: s + noise(), a: { type: 'attack', q: t.q, r: t.r } });
     }
@@ -99,8 +100,22 @@
     const lv = LEVELS[level] || LEVELS.normal;
     const me = playerById(g, id);
     if (!me || !me.alive || g.over) return null;
+    const best = pick(g, id, rng, lv);
+    if (best) return best.a;
+    // 行動力がないときは、資源が余っていれば生産（資源5 → 行動力1）して、やりたいことをする
+    if ((me.ap || 0) < 1 && !E.actionBlocked(g, id, 'produce')) {
+      const P = E.RULES.produce;
+      me.ap += P.ap; me.resource -= P.resource;
+      const next = pick(g, id, rng, lv);
+      me.ap -= P.ap; me.resource += P.resource;
+      if (next && next.a.type !== 'aim' && next.a.type !== 'unaim' && next.s > 3) return { type: 'produce' };
+    }
+    return null;
+  }
+
+  function pick(g, id, rng, lv) {
     const best = scoreExpands(g, id, rng, lv).concat(scoreBattle(g, id, rng, lv)).sort((a, b) => b.s - a.s)[0];
-    return best && best.s > 0 ? best.a : null;
+    return best && best.s > 0 ? best : null;
   }
 
   // 行動力が満タンだったとしても、もうやりたい行動がないか（ないなら行動完了にする）
