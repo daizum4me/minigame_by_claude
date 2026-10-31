@@ -434,13 +434,10 @@
     const geo = E.geometry(g.cols);
     const desc = it => it.t === 'b'
       ? `枝（高さ${geo.edges[it.e].h}）`
-      : `葉（${geo.cells[it.c].c + 1}列・${geo.cells[it.c].r + 1}行）`;
-    $('#plan').innerHTML = !live ? '' : Array.from({ length: R.ap }, (_, i) => {
-      const it = plan[i];
-      return it
-        ? `<li class="slot used${it.done ? ' done' : ''}"><b>${i + 1}</b><span class="grow">${desc(it)}</span><button data-confirm="${i}" title="この行動を確定／取り消し">${it.done ? '✓ 確定' : '確定'}</button><button data-remove="${i}" title="この行動を外す">✕</button></li>`
-        : `<li class="slot empty"><b>${i + 1}</b><span class="grow">空き</span></li>`;
-    }).join('');
+      : `${it.t === 'm' ? 'ヤドリギ' : '葉'}（${geo.cells[it.c].c + 1}列・${geo.cells[it.c].r + 1}行）`;
+    const used = plan.map((it, i) => `<li class="slot used${it.done ? ' done' : ''}"><b>${i + 1}</b><span class="grow">${desc(it)}${E.costOf(it) > 1 ? ` <small>行動力${E.costOf(it)}</small>` : ''}</span><button data-confirm="${i}" title="この行動を確定／取り消し">${it.done ? '✓ 確定' : '確定'}</button><button data-remove="${i}" title="この行動を外す">✕</button></li>`);
+    const emptyN = Math.max(0, R.ap - E.planCost(plan));
+    $('#plan').innerHTML = !live ? '' : used.join('') + Array.from({ length: emptyN }, () => `<li class="slot empty"><b>・</b><span class="grow">空き</span></li>`).join('');
     const btn = $('#btn-finish');
     btn.textContent = me && me.finished ? '✓ 確定ずみ（取り消す）' : '全て確定';
     btn.classList.toggle('on', !!(me && me.finished));
@@ -449,7 +446,8 @@
       : !me ? '観戦中です'
       : me.finished ? `確定ずみ。ほかの人を待っています（確定した人：${room.finishedCount}/${n}人）。時間まで、取り消して変更できます`
       : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動'
-        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '');
+        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '')
+        + (candidates && candidates.mistle && candidates.mistle.length ? '。点線のセルは「ヤドリギ」：他の人の枝に接するセルに、行動力2で葉を置けます（その枝が折れると一緒に消えます）' : '');
     $('#tickbar').hidden = g.over;
 
     renderScores(g);
@@ -563,6 +561,7 @@
   function onPick(c) {
     if (!app.room || !app.room.game || app.room.game.over) return;
     if (c.t === 'b') act({ type: 'addBranch', edge: c.key });
+    else if (c.t === 'm') act({ type: 'addMistletoe', cell: c.key });
     else act({ type: 'addLeaf', cell: c.key });
   }
 

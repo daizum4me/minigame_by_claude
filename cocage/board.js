@@ -292,6 +292,7 @@
         const inCell = r => {
           let best = r, hit = null;
           for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'l', key: ck }; } }
+          for (const ck of d.candidates.mistle || []) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'm', key: ck }; } }
           return hit;
         };
         out.cand = nearEdge(Math.max(4, this.S * 0.14)) || inCell(this.S * 0.68) || nearEdge(thr) || inCell(this.S * 0.87);
@@ -313,7 +314,7 @@
       const nearest = (type, lim) => {
         let best = -1, bestD = lim;
         me.plan.forEach((it, i) => {
-          if (it.t !== type) return;
+          if (it.t !== type && !(type === 'l' && it.t === 'm')) return;
           const dist = type === 'b' ? this.distToEdge(it.e, x, y) : this.distToCell(it.c, x, y);
           if (dist < bestD) { bestD = dist; best = i; }
         });
@@ -545,6 +546,18 @@
         }
         const cellXY = ck => { const c = geo.cells[ck]; return [this.px(c.x, dx), this.py(c.y)]; };
 
+        // ヤドリギの葉から、宿主の枝（他の人の枝）へ細い線
+        ctx.setLineDash([2, 3]); ctx.lineWidth = 1.4;
+        for (const [ck, lf] of Object.entries(g.leaves)) {
+          if (!lf.host || !g.edges[lf.host]) continue;
+          const [x, y] = cellXY(ck);
+          if (!inView(x) || !inViewY(y)) continue;
+          const [x1, y1, x2, y2] = this.edgePts(lf.host, dx);
+          ctx.strokeStyle = rgba(colors[lf.owner], 0.8);
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo((x1 + x2) / 2, (y1 + y2) / 2); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+
         // 葉
         for (const [ck, lf] of Object.entries(g.leaves)) {
           const [x, y] = cellXY(ck);
@@ -655,6 +668,15 @@
             ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill();
             ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
           }
+          // ヤドリギ：他の人の枝に接するセル（点線）
+          ctx.setLineDash([3, 4]);
+          for (const ck of d.candidates.mistle || []) {
+            const [x, y] = cellXY(ck);
+            if (!inView(x) || !inViewY(y)) continue;
+            this.hexPath(ctx, x, y, S * 0.78);
+            ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
+          }
+          ctx.setLineDash([]);
           if (hv && hv.cand) {
             if (hv.cand.t === 'b') { ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4.6; this.line(ctx, hv.cand.key, dx); }
             else {

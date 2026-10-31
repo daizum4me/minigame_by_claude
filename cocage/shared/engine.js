@@ -37,9 +37,18 @@
     score: { top: 1, bonusMax: 3, covered: 0.3, height: 0.1 },   // height：一番上の葉に 0.1 × 行番号（1〜18）を足す
     scarTurns: 3,            // 傷あと：枝が折れた根元の頂点からは、その持ち主は次の3ターン枝を伸ばせない
     trunkStart: 1,           // 最初から伸びている幹の辺の数（そこから毎ターン1辺ずつ伸びる）
+    mistletoeMinPlayers: 3,  // ヤドリギを使える人数（2人戦は全員とすでに関われるので使えない）
+    // 列の一番上の葉のボーナス「下にある他人の葉の数」に、ヤドリギの葉を最大いくつまで数えるか（人数別。数値ひとつでもよい）
+    // 人数が多いほど宿主が遠く・多くなってヤドリギが強くなるので、4〜5人は多めに数える（CPUどうしの対戦で釣り合う値）
+    mistletoeFeedMax: { 3: 1, 4: 2, 5: 2 },
+    mistletoeCost: 2,        // ヤドリギ（相手の枝を土台に、遠くへ葉を置く）の行動力。1ターンに1回まで
     leafOnTrunk: false,      // 幹に接するだけのセルに葉を置けるか（仕様では「自分の枝に接するセル」なので false）
   };
   const AP = RULES.ap;
+  // 行動の行動力：枝・葉は1、ヤドリギは RULES.mistletoeCost
+  const costOf = it => it.t === 'm' ? RULES.mistletoeCost : 1;
+  const planCost = plan => plan.reduce((a, it) => a + costOf(it), 0);
+  const feedMaxFor = n => { const f = RULES.mistletoeFeedMax; return typeof f === 'number' ? f : (f[n] !== undefined ? f[n] : f[5]); };
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -114,12 +123,14 @@
   }
 
   // 辺キー → その辺が支えている枝の数（その辺と子孫の辺の数）
+  //   ヤドリギの葉が寄生している辺には、その葉1枚ぶん（1本）が加わる
   function loads(state) {
-    const kids = {}, out = {};
+    const kids = {}, out = {}, extra = {};
     for (const [k, e] of Object.entries(state.edges)) if (e.parent) (kids[e.parent] = kids[e.parent] || []).push(k);
+    for (const lf of Object.values(state.leaves || {})) if (lf.host) extra[lf.host] = (extra[lf.host] || 0) + 1;
     const count = k => {
       if (out[k]) return out[k];
-      let n = 1;
+      let n = 1 + (extra[k] || 0);
       for (const c of kids[k] || []) n += count(c);
       return (out[k] = n);
     };
@@ -197,6 +208,8 @@
   // 葉の土台が残っているか：自分の枝（gone に入っていないもの）か、（許されていれば）自分の幹
   function leafAnchored(state, geo, ck, owner, gone) {
     const cell = geo.cells[ck];
+    const lf = state.leaves[ck];
+    if (lf && lf.host && state.edges[lf.host] && !(gone && gone.has(lf.host))) return true;   // ヤドリギ：宿主の枝が残っているあいだ
     if (cell.edges.some(k => state.edges[k] && state.edges[k].owner === owner && !(gone && gone.has(k)))) return true;
     if (!RULES.leafOnTrunk) return false;
     const p = playerById(state, owner), tr = geo.trunks[p.trunk];
@@ -216,6 +229,22 @@
     return ok ? null : '自分の枝に接するセルを選んでください';
   }
 
+  // ヤドリギを置けるか。置けるなら { host }（宿主にする他人の枝。いちばん低いもの）、だめなら理由の文字列
+  //   セルに他人の枝が接していて、自分の枝は接していないこと（自分の枝に接しているなら、ふつうの葉を置けるので）
+  function checkMistletoe(geo, state, net, ck, pendingLeaves) {
+    const c = geo.cells[ck];
+    if (state.players.length < RULES.mistletoeMinPlayers) return `ヤドリギは${RULES.mistletoeMinPlayers}人以上で使えます`;
+    if (!c) return 'そこにセルはありません';
+    if (state.leaves[ck] || pendingLeaves.has(ck)) return 'そのセルにはもう葉があります';
+    if (c.edges.some(ek => net.edges.has(ek))) return '自分の枝に接しているセルには、ふつうの葉を置けます';
+    let host = null;
+    for (const ek of c.edges) {
+      const e = state.edges[ek];
+      if (e && e.owner !== net.owner && (!host || e.h < state.edges[host].h)) host = ek;
+    }
+    return host ? { host } : '他の人の枝に接するセルを選んでください';
+  }
+
   // 今の計画を順に置いたと仮定したときの状態。plan のどれかがだめなら error と index
   function project(state, id, plan) {
     const geo = geometry(state.cols), p = playerById(state, id);
@@ -228,21 +257,27 @@
         if (typeof r === 'string') return { error: r, index: i };
         pendingEdges.add(it.e); net.edges.add(it.e);
         if (!net.v.has(r.to)) net.v.set(r.to, { l: r.l, edge: it.e });
+      } else if (it.t === 'm') {
+        if (plan.some((x, j) => j < i && x.t === 'm')) return { error: 'ヤドリギは1ターンに1回までです', index: i };
+        const r = checkMistletoe(geo, state, net, it.c, pendingLeaves);
+        if (typeof r === 'string') return { error: r, index: i };
+        pendingLeaves.add(it.c);
       } else {
         const r = checkLeaf(geo, state, net, it.c, pendingLeaves, p);
         if (r) return { error: r, index: i };
         pendingLeaves.add(it.c);
       }
     }
+    if (planCost(plan) > AP) return { error: `行動力は ${AP} までです`, index: plan.length - 1 };
     return { geo, net, pendingEdges, pendingLeaves };
   }
 
   // 次に置ける辺・セル（計画がいっぱいなら空）
   function candidates(state, id) {
     const p = playerById(state, id);
-    if (!p || state.over || p.plan.length >= AP) return { edges: [], cells: [] };
+    if (!p || state.over || planCost(p.plan) >= AP) return { edges: [], cells: [], mistle: [] };
     const pr = project(state, id, p.plan);
-    if (pr.error) return { edges: [], cells: [] };
+    if (pr.error) return { edges: [], cells: [], mistle: [] };
     const { geo, net, pendingEdges, pendingLeaves } = pr;
     const edges = [], cells = new Set();
     for (const v of net.v.keys()) {
@@ -255,7 +290,20 @@
     for (const ek of bases) {
       for (const ck of geo.edges[ek].cells) if (!checkLeaf(geo, state, net, ck, pendingLeaves, p)) cells.add(ck);
     }
-    return { edges: [...new Set(edges)], cells: [...cells] };
+    // ヤドリギ：行動力が足りて、まだ今回の計画にないとき、他人の枝に接するセル
+    const mistle = [];
+    if (state.players.length >= RULES.mistletoeMinPlayers && planCost(p.plan) + RULES.mistletoeCost <= AP && !p.plan.some(x => x.t === 'm')) {
+      const seen = new Set();
+      for (const [ek, e] of Object.entries(state.edges)) {
+        if (e.owner === id) continue;
+        for (const ck of geo.edges[ek].cells) {
+          if (seen.has(ck)) continue;
+          seen.add(ck);
+          if (typeof checkMistletoe(geo, state, net, ck, pendingLeaves) !== 'string') mistle.push(ck);
+        }
+      }
+    }
+    return { edges: [...new Set(edges)], cells: [...cells], mistle };
   }
 
   // ---------- 行動 ----------
@@ -266,6 +314,7 @@
    * action:
    *   { type: 'addBranch', edge }  枝を計画に加える（行動力1）
    *   { type: 'addLeaf', cell }    葉を計画に加える（行動力1）
+   *   { type: 'addMistletoe', cell }  ヤドリギ（他人の枝に接するセルに葉を置く。行動力 RULES.mistletoeCost・1ターンに1回）
    *   { type: 'remove', index }    計画から外す
    *   { type: 'confirm', index, on }  1つだけ確定／取り消し
    *   { type: 'finish', on }       すべて確定して待つ／取り消す
@@ -276,9 +325,10 @@
     if (state.over) return fail('ゲームは終わっています');
     const p = playerById(state, id);
     if (!p) return fail('参加していません');
-    if (action.type === 'addBranch' || action.type === 'addLeaf') {
-      if (p.plan.length >= AP) return fail(`行動力は ${AP} までです`);
-      const it = action.type === 'addBranch' ? { t: 'b', e: String(action.edge) } : { t: 'l', c: String(action.cell) };
+    if (action.type === 'addBranch' || action.type === 'addLeaf' || action.type === 'addMistletoe') {
+      const it = action.type === 'addBranch' ? { t: 'b', e: String(action.edge) }
+        : action.type === 'addMistletoe' ? { t: 'm', c: String(action.cell) } : { t: 'l', c: String(action.cell) };
+      if (planCost(p.plan) + costOf(it) > AP) return fail(`行動力は ${AP} までです`);
       const pr = project(state, id, p.plan.concat([it]));
       if (pr.error) return fail(pr.error);
       p.plan.push(it);
@@ -302,7 +352,7 @@
       const it = p.plan[Number(action.index)];
       if (!it) return fail('その行動はありません');
       it.done = action.on === undefined ? !it.done : !!action.on;
-      p.finished = p.plan.length >= AP && p.plan.every(x => x.done);
+      p.finished = planCost(p.plan) >= AP && p.plan.every(x => x.done);
       return { ok: true };
     }
     if (action.type === 'finish') {
@@ -320,14 +370,16 @@
   //   一番上の葉：1 + min(3, 下にある他人の葉の数)
   //   ほかの葉：その人の、その列で一番上の葉（上に他人の葉がある）だけが 0.3。同じ人の2枚目以降は 0
   //   例（上から）：A=2・B=0.3・A=0・A=0・A=0
-  function scoreColumn(list) {
+  function scoreColumn(list, nPlayers) {
     const order = list.map((x, i) => i).sort((a, b) => list[b].r - list[a].r);
     const pts = list.map(() => 0);
     const seen = new Set();
     order.forEach((idx, n) => {
       const owner = list[idx].owner;
       if (n === 0) {
-        const below = order.slice(1).filter(j => list[j].owner !== owner).length;
+        const others = order.slice(1).filter(j => list[j].owner !== owner);
+        const mist = others.filter(j => list[j].mist).length;
+        const below = others.length - mist + Math.min(mist, feedMaxFor(nPlayers));
         pts[idx] = RULES.score.top + Math.min(RULES.score.bonusMax, below) + RULES.score.height * (list[idx].r + 1);
       } else if (!seen.has(owner)) {
         pts[idx] = RULES.score.covered;
@@ -342,11 +394,11 @@
     const byCol = {};
     for (const [ck, lf] of Object.entries(state.leaves)) {
       const [c, r] = ck.split(',').map(Number);
-      (byCol[c] = byCol[c] || []).push({ ck, r, owner: lf.owner });
+      (byCol[c] = byCol[c] || []).push({ ck, r, owner: lf.owner, mist: !!lf.host });
     }
     const points = {}, tops = {};
     for (const [c, list] of Object.entries(byCol)) {
-      const pts = scoreColumn(list);
+      const pts = scoreColumn(list, state.players ? state.players.length : 5);
       let top = 0;
       list.forEach((x, i) => { points[x.ck] = pts[i]; if (x.r > list[top].r) top = i; });
       tops[c] = { cell: list[top].ck, owner: list[top].owner };
@@ -431,6 +483,10 @@
             if (!net.v.has(r.to)) net.v.set(r.to, { l: r.l, edge: a.it.e });
             info.placedBranches++;
           }
+        } else if (ok && a.it.t === 'm') {
+          const r = checkMistletoe(geo, state, net, a.it.c, none);
+          if (typeof r === 'string') ok = false;
+          else { state.leaves[a.it.c] = { owner: p.id, round: turn, host: r.host }; info.placedLeaves++; info.mistletoe = (info.mistletoe || 0) + 1; }
         } else if (ok) {
           if (checkLeaf(geo, state, net, a.it.c, none, p)) ok = false;
           else { state.leaves[a.it.c] = { owner: p.id, round: turn }; info.placedLeaves++; }
@@ -502,7 +558,7 @@
   const allFinished = (state, skip) => state.players.every(p => p.finished || (skip && skip(p.id)));
 
   return {
-    RULES, geometry, breakProb, breakParts, loads, createGame, apply, project, candidates,
+    RULES, geometry, breakProb, breakParts, loads, costOf, planCost, checkMistletoe, feedMaxFor, createGame, apply, project, candidates,
     resolveTurn, scoreColumn, scoreBoard, edgeStats, subtree, pathTo, ownNet, allFinished,
     playerById, edgeKeyOf,
   };

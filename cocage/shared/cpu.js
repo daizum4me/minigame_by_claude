@@ -13,17 +13,18 @@
 
   // noise：点数のゆらぎ（大きいほど気まぐれ）
   const LEVELS = { weak: { noise: 1.2 }, normal: { noise: 0.3 }, strong: { noise: 0.05 } };
-  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0, AHEAD_W = 0.3, ATTACK = 0.8;   // 葉を枝より優先する（枝は葉を置くための手段）
+  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0, AHEAD_W = 0.3, ATTACK = 0.8, MISTLE_W = 1.0;   // 葉を枝より優先する（枝は葉を置くための手段）
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
 
   // 葉を置いたときの価値：自分の得点の増え分 − 相手の増え分（ATTACK 倍。相手の点を奪う手を重く見る）。折れずに残る見込みと残りターンを掛ける
-  function leafValue(state, geo, me, ck, extraLeaves, surv, horizon) {
+  function leafValue(state, geo, me, ck, extraLeaves, surv, horizon, isMist) {
     const c = geo.cells[ck];
     const list = [];
-    for (const [k, lf] of Object.entries(state.leaves)) if (k.split(',')[0] === String(c.c)) list.push({ k, r: +k.split(',')[1], owner: lf.owner });
+    for (const [k, lf] of Object.entries(state.leaves)) if (k.split(',')[0] === String(c.c)) list.push({ k, r: +k.split(',')[1], owner: lf.owner, mist: !!lf.host });
     for (const k of extraLeaves) if (k.split(',')[0] === String(c.c)) list.push({ k, r: +k.split(',')[1], owner: me });
-    const before = E.scoreColumn(list);
-    const after = E.scoreColumn(list.concat([{ k: ck, r: c.r, owner: me }]));
+    const np = state.players.length;
+    const before = E.scoreColumn(list, np);
+    const after = E.scoreColumn(list.concat([{ k: ck, r: c.r, owner: me, mist: !!isMist }]), np);
     let mine = after[after.length - 1], others = 0;
     list.forEach((x, i) => {
       const d = after[i] - before[i];
@@ -72,7 +73,7 @@
     rng = rng || Math.random;
     const lv = LEVELS[level] || LEVELS.normal;
     const p = E.playerById(state, id);
-    if (!p || state.over || p.plan.length >= E.RULES.ap) return null;
+    if (!p || state.over || E.planCost(p.plan) >= E.RULES.ap) return null;
     const geo = E.geometry(state.cols);
     const pr = E.project(state, id, p.plan);
     if (pr.error) return null;
@@ -106,6 +107,15 @@
       }
       const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon) * LEAF_BIAS + insurance(state, geo, id, ck, ctx, surv, horizon);
       consider(v + (v > 0 ? 0.3 : 0) + noise(), { type: 'addLeaf', cell: ck });
+    }
+    // ヤドリギ：他人の枝に接するセルに葉を置く（行動力2）。宿主の枝が折れると一緒に消えるので、宿主の残りやすさで割り引く。
+    // 行動力あたりの価値で、ふつうの葉・枝と比べる
+    for (const ck of cand.mistle || []) {
+      const r = E.checkMistletoe(geo, state, net, ck, pr.pendingLeaves);
+      if (typeof r === 'string') continue;
+      const surv = survival(ctx, r.host, 1, horizon / 2);
+      const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon, true) * LEAF_BIAS * MISTLE_W / E.RULES.mistletoeCost;
+      consider(v + (v > 0 ? 0.3 : 0) + noise(), { type: 'addMistletoe', cell: ck });
     }
     // 枝：新しい辺に接するセルに葉を置く価値（の一部）。高い・根本が重いほど折れやすいので割り引く。
     // すでに自分の枝に接している（もう葉を置ける）セルは、枝を足しても増えないので数えない。
