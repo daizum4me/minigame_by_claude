@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを壊し合う2〜12人のリアルタイム陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=58">
+<link rel="stylesheet" href="style.css?v=59">
 </head>
 <body>
 
@@ -118,8 +118,9 @@
       <button class="tool" data-open="settings" title="設定">⚙</button>
     </div>
     <div id="floaters" class="floaters" aria-hidden="true"></div>
+    <div id="countdown" class="countdown" hidden aria-live="polite"></div>
     <div id="tooltip" class="tooltip" hidden></div>
-    <!-- 自分の情報と、生産・手番終了のボタン（盤面の下に浮かせる） -->
+    <!-- 自分の情報（盤面の下に浮かせる） -->
     <section id="dock" class="dock me">
       <div class="me-head">
         <span id="me-swatch"></span>
@@ -128,7 +129,6 @@
       </div>
       <div class="tickbar" id="dock-tickbar" hidden title="次のターンまで" aria-label="次のターンまで"><i></i></div>
       <div id="me-tokens" class="tokens"></div>
-      <div id="actions" class="actions"></div>
       <p id="hint" class="hint"></p>
     </section>
   </section>
@@ -173,11 +173,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=58"></script>
-<script src="shared/cpu.js?v=58"></script>
-<script src="shared/room.js?v=58"></script>
-<script src="sound.js?v=58"></script>
-<script src="board.js?v=58"></script>
-<script src="client.js?v=58"></script>
+<script src="shared/engine.js?v=59"></script>
+<script src="shared/cpu.js?v=59"></script>
+<script src="shared/room.js?v=59"></script>
+<script src="sound.js?v=59"></script>
+<script src="board.js?v=59"></script>
+<script src="client.js?v=59"></script>
 </body>
 </html>

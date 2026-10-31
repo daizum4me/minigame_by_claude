@@ -15,6 +15,7 @@
   const COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'cyan', 'pink', 'lime', 'brown', 'white', 'indigo'];
   const LOG_SEND = 80;      // 配信するログの件数
   const CPU_RT_MS = 2500;   // CPU が考える間隔
+  const COUNTDOWN_MS = 3000; // ゲーム開始前のカウントダウン（このあいだは行動できず、時間も進まない）
   const CHAT_KEEP = 30;         // 残して配信するチャットの件数
   const CHAT_LEN = 80;          // チャット1件の文字数の上限
   const CHAT_GAP_MS = 800;      // 続けて送れる間隔（連投よけ）
@@ -49,6 +50,7 @@
       this.timers = {};         // rtTick / rtRegen / cpu
       this.tickDeadline = 0;
       this.regenDeadline = 0;
+      this.countdownUntil = 0;  // ゲーム開始前のカウントダウンが終わる時刻
       this.closed = false;
     }
 
@@ -176,11 +178,14 @@
             return err(e.message);
           }
           this.phase = 'game';
+          this.countdownUntil = this.now() + COUNTDOWN_MS;
+          this.timer('countdown', () => { this.countdownUntil = 0; this.changed(); }, COUNTDOWN_MS);
           this.changed();
           return;
         }
         case 'act': {
           if (this.phase !== 'game' || !this.game) return;
+          if (this.countdownUntil) return err('まだ始まっていません');
           const r = E.apply(this.game, id, msg.action);
           if (!r.ok) return err(r.error);
           this.changed();
@@ -232,9 +237,11 @@
       const g = this.game;
       const now = this.now();
       if (!g || this.phase !== 'game' || g.over) {
-        ['rtTick', 'rtRegen'].forEach(n => this.stop(n));
+        ['rtTick', 'rtRegen', 'countdown'].forEach(n => this.stop(n));
+        this.countdownUntil = 0;
         return;
       }
+      if (this.countdownUntil) return;   // カウントダウンが終わってから時間を進める
       const rt = E.RULES.rt;
       if (!this.timers.rtTick) {
         this.tickDeadline = now + rt.tickSeconds * 1000;
@@ -249,7 +256,7 @@
     // CPU は一定の間隔で考えて、行動力があれば1つずつ動く
     checkCpu() {
       const g = this.game;
-      const any = g && this.phase === 'game' && !g.over && this.players.some(p => p.cpu && g.players.some(x => x.id === p.id && x.alive));
+      const any = g && this.phase === 'game' && !g.over && !this.countdownUntil && this.players.some(p => p.cpu && g.players.some(x => x.id === p.id && x.alive));
       if (!any) { this.stop('cpu'); return; }
       if (!this.timers.cpu) this.timer('cpu', () => this.cpuActRealtime(), CPU_RT_MS);
     }
@@ -287,7 +294,8 @@
         hostId: this.hostId,
         settings: this.settings,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, connected: p.connected, cpu: !!p.cpu, level: p.cpu ? p.level : undefined })),
-        tickLeftMs: live ? Math.max(0, this.tickDeadline - now) : 0,
+        countdownMs: live && this.countdownUntil ? Math.max(0, this.countdownUntil - now) : 0,
+        tickLeftMs: live && !this.countdownUntil ? Math.max(0, this.tickDeadline - now) : 0,
         regenLeftMs: live ? Math.max(0, this.regenDeadline - now) : 0,
         chat: this.chat,
         game,
@@ -305,5 +313,5 @@
     }
   }
 
-  return { Room, COLORS, CHAT_KEEP, CHAT_LEN };
+  return { Room, COLORS, CHAT_KEEP, CHAT_LEN, COUNTDOWN_MS };
 });

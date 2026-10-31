@@ -61,6 +61,16 @@
   }
 
   const sounds = {
+    round() {       // ターンが始まった：低めの2音
+      tone({ freq: 392, dur: 0.22, vol: 0.1, type: 'triangle' });
+      tone({ freq: 523, t: 0.14, dur: 0.34, vol: 0.1, type: 'triangle' });
+    },
+    count() {       // 開始のカウントダウン（3・2・1）：ぴっ
+      tone({ freq: 660, dur: 0.14, vol: 0.12, type: 'square' });
+    },
+    go() {          // 開始：ぴーっ（高く長め）
+      tone({ freq: 1320, dur: 0.5, vol: 0.12, type: 'square' });
+    },
     expand() {      // 拡張：ぽん
       tone({ freq: 420, freqEnd: 760, dur: 0.12, vol: 0.16 });
     },

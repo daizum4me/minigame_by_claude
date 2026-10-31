@@ -201,7 +201,6 @@ test('だれでもいつでも行動できる。行動力は5秒に1回復（上
   P(g, a).ap = 0;
   assert.match(E.actionBlocked(g, a, 'strengthen'), /行動力/);
   assert.match(E.actionBlocked(g, a, 'destroy'), /行動力/);
-  assert.strictEqual(E.actionBlocked(g, a, 'produce'), '');            // 生産は行動力を使わない
   assert.strictEqual(E.actionBlocked(g, a, 'fortify'), '');            // 防御も使わない
   for (let i = 0; i < 8; i++) E.rtRegen(g);
   assert.strictEqual(P(g, a).ap, 5);
@@ -297,13 +296,10 @@ test('鉱山マス：拡張したとき・強化したときに戦力トーク�
   assert.strictEqual(P(g, a).power, 5);
 });
 
-test('生産：資源2で戦力トークン +1。行動力を使わず、ログに出ない', () => {
+test('生産（資源で戦力を作る）はない', () => {
   const { g, a } = rtGame();
-  P(g, a).ap = 0;
-  const n = g.log.length;
-  assert.ok(E.apply(g, a, { type: 'produce' }).ok);
-  assert.deepStrictEqual([P(g, a).resource, P(g, a).power, g.log.length], [1, 3, n]);
   assert.strictEqual(E.apply(g, a, { type: 'produce' }).ok, false);
+  assert.strictEqual(P(g, a).power, 2);
 });
 
 test('攻撃は行動力1と戦力トークン1個ですぐ決まる。強化済のセル（拠点）の隣だけ。防御があれば防御が1減るだけで、0のときに壊して空きマスに戻す', () => {
@@ -389,7 +385,7 @@ test('橋：河川マスへの拡張は資源3。強化できる。攻撃で壊�
   assert.deepStrictEqual([g.board[rk].owner, g.board[rk].terrain, g.board[rk].strong], [null, 'river', false]);
 });
 
-test('コアを壊すと脱落し、壊した人が残りのセル・トークンをまるごと受け継ぐ（コアのマスは空きマスに）。最後の1人が勝つ', () => {
+test('コアを壊すと脱落し、残りのセルは空きマスに戻る（だれのものにもならない）。トークンは壊した人が受け継ぐ。最後の1人が勝つ', () => {
   const g = newGame(3);
   const [a, b, c] = g.players.map(p => p.id);
   const [bq, br] = E.parseKey(P(g, b).core);
@@ -400,7 +396,7 @@ test('コアを壊すと脱落し、壊した人が残りのセル・トーク�
   P(g, b).resource = 7; P(g, b).food = 4;
   assert.ok(E.apply(g, a, { type: 'destroy', q: bq, r: br }).ok);
   assert.strictEqual(P(g, b).alive, false);
-  assert.deepStrictEqual([g.board[E.key(bq, br)].owner, g.board[E.key(bq, br)].core, g.board[E.key(xq, xr)].owner, g.board[E.key(xq, xr)].strong], [null, false, a, true]);
+  assert.deepStrictEqual([g.board[E.key(bq, br)].owner, g.board[E.key(bq, br)].core, g.board[E.key(xq, xr)].owner, g.board[E.key(xq, xr)].strong], [null, false, null, false]);
   assert.deepStrictEqual([P(g, a).resource, P(g, a).power, P(g, a).food], [3 + 7, 1 + 2, 4]);
   assert.ok(!g.over);
   E.forfeit(g, c);
@@ -416,8 +412,9 @@ test('途中で脱落させる（切断）：セルは空きマスに戻る', ()
   assert.deepStrictEqual(E.cellsOf(g, b), []);
   assert.strictEqual(g.board[P(g, b).core].owner, null);
   assert.ok(!g.over);
-  assert.strictEqual(E.apply(g, b, { type: 'produce' }).ok, false);
-  assert.ok(E.apply(g, a, { type: 'produce' }).ok);
+  const [bq, br] = E.parseKey(P(g, b).core), [aq, ar] = E.parseKey(P(g, a).core);
+  assert.strictEqual(E.apply(g, b, { type: 'fortify', q: bq, r: br }).ok, false);
+  assert.ok(E.apply(g, a, { type: 'fortify', q: aq, r: ar }).ok);
 });
 
 test('勝敗はセルの総数ではなく、つながっている一番大きなかたまりで決まる。同じなら同率優勝', () => {
@@ -435,14 +432,14 @@ test('勝敗はセルの総数ではなく、つながっている一番大き�
   assert.deepStrictEqual(h.g.winners.sort(), [h.a, h.b].sort());
 });
 
-test('イベント：ターン4〜8回ごとに起き、4ターンのあいだ続く。効果（不作・豊作・枯渇・発見・豊漁・洪水・祭事・疫病）', () => {
+test('イベント：ターン4〜8回ごとに起き、1ターンのあいだ続く。効果（不作・豊作・枯渇・発見・豊漁・洪水・祭事・疫病）', () => {
   const g = E.createGame(PLAYERS.slice(0, 2), seeded(5));
   let seen = 0;
   for (let i = 0; i < 30 && !g.over; i++) {
     E.rtTick(g);
-    if (g.event) { seen++; assert.ok(g.round < g.eventUntil); }
+    if (g.event) { seen++; assert.strictEqual(g.eventUntil, g.round + 1); }
   }
-  assert.ok(seen >= 4);
+  assert.ok(seen >= 3);
   const { g: h, a } = rtGame();
   const base = [E.income(h, a), E.foodMade(h, a)];
   const at = ev => { h.event = ev; return [E.income(h, a), E.foodMade(h, a)]; };

@@ -106,6 +106,7 @@
         const [q, r] = E.parseKey(k);
         let farm = foodLeft < 0 ? 5 : foodLeft < 2 ? 3.5 : foodLeft < 4 ? 1.8 : 0.4;
         let factory = foodLeft < 2 ? 0.5 : 4 - E.powerMade(g, id) * 0.4;   // 工場は毎ターン戦力 +1。多すぎると使いきれない
+        if (danger > 0 && me.power < 3) factory += 1;                        // コアの近くに相手がいれば、守るための戦力がほしい
         if (late) { farm -= 1.5; factory -= 2; }                              // 終盤は元が取れない
         out.push({ s: farm + noise(), a: { type: 'develop', q, r, to: 'farm' } });
         out.push({ s: factory + noise(), a: { type: 'develop', q, r, to: 'factory' } });
@@ -125,18 +126,6 @@
         if (E.dist([c.q, c.r], E.parseKey(me.core)) <= 1) s += 3;
         out.push({ s: s + noise() + (lv.bias.destroy || 0), a: { type: 'destroy', q: c.q, r: c.r } });
       }
-    }
-    if (!E.actionBlocked(g, id, 'produce')) {
-      // 生産（戦力トークン）：攻めるにも守るにも使う
-      const front = frontier(g, id) > 0;
-      let s = me.power === 0 && front ? 3.5 : me.power < 2 && front ? 1.2 : 0.1;
-      // 自分のコアの近くに相手がいれば、守るためにためる
-      if (danger > 0) s = Math.max(s, 5.5 - me.power * 1.3 + danger * 0.5);
-      else if (me.power <= 1 && g.round >= 3) s = Math.max(s, 1.8);
-      // 相手のコアの隣に拠点があるなら、コアを削りきれそうな数までためる
-      const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.adjacentToStrong(g, id, q, r); });
-      if (coreFoe && me.power < 4) s = Math.max(s, 4);
-      out.push({ s: s + noise(), a: { type: 'produce' } });
     }
     return out;
   }
