@@ -1,11 +1,13 @@
 /*
  * Cocage — 盤面の描画（canvas）と操作
- * 暗い背景に、六角形のセルと細い線だけで描く（アニメーションは、点数を稼いだ葉から数字がこぼれる演出だけ）。
+ * 暗い背景に、六角形のセルと細い線だけで描く。動くのは、点数を稼いだ葉から数字がこぼれる演出と、そのあとの枝が折れる演出だけ。
  * 数値は六角形の外接円の半径 S（= 2k）を基準にする。座標は engine.js と同じ整数座標（1 = k）。
- * 盤面は左右がつながった横ループ。ドラッグで回せる（pan）。
+ * 盤面は左右がつながった横ループ。ホイールで拡縮、ドラッグで移動（横はループ）。ピンチでも拡縮できる。
  *
- * new CocageBoard(canvas, { onHover(info|null), onPick({ t:'b'|'l', key }) })
- * setData({ game, me, mode, overlay, colors, candidates })
+ * new CocageBoard(canvas, { onHover(info|null, x, y), onPick({ t:'b'|'l', key }), onCancel(index) })
+ *   onCancel：右クリックで、置いた計画の何番目か（-1 はどこにも当たらなかった）
+ * setData({ game, me, overlay, colors, candidates })
+ * playTurn(items, lastTurn)：ターンが解決されたときに呼ぶ。数字がこぼれ、そのあとに枝が折れる
  */
 (function () {
   'use strict';
@@ -15,20 +17,33 @@
   const MARGIN = 14;           // 台のふちとセルの余白
   const LABEL_H = 34;          // 盤面の下の、幹の名前の置き場
   const PART_MS = 1300;        // こぼれる数字が消えるまで
+  const BREAK_MS = 1500;       // 枝が折れる演出の長さ（数字がこぼれたあとに始まる）
+  const EDGE_MS = 800;         // 1本の枝が折れる時間
   const TOP_RESERVE = 46;      // 上のバー（ターン・表示切り替え）の分
+  const ZOOM_MAX = 6;
 
-  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', trunkGray: '#8A8880' };
+  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880' };
   const FONT = '"Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif';
 
   const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
   const rgba = (c, a) => { const [r, g, b] = hex(c); return `rgba(${r},${g},${b},${a})`; };
   const lighten = (c, f) => { const [r, g, b] = hex(c); const m = v => Math.round(v + (255 - v) * f); return `rgb(${m(r)},${m(g)},${m(b)})`; };
   const mix = (c1, c2, t) => { const a = hex(c1), b = hex(c2); return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`; };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // 緑 → 黄 → 赤
   function heat(t) {
-    t = Math.max(0, Math.min(1, t));
+    t = clamp(t, 0, 1);
     return t < 0.5 ? mix('#7BD39A', '#FFD36B', t / 0.5) : mix('#FFD36B', '#FF6E64', (t - 0.5) / 0.5);
+  }
+
+  // キーから、いつも同じになる乱数（折れた枝のかけらの飛び方）
+  function rnd(key, i) {
+    let h = 0;
+    for (let j = 0; j < key.length; j++) h = (h * 31 + key.charCodeAt(j)) >>> 0;
+    const x = Math.sin(h * 12.9898 + i * 78.233) * 43758.5453;
+    return x - Math.floor(x);
   }
 
   class CocageBoard {
@@ -37,23 +52,34 @@
       this.ctx = canvas.getContext('2d');
       this.h = handlers || {};
       this.data = null;
-      this.pan = 0;               // 回転（x の単位）
+      this.pan = 0;               // 横の回転（x の単位。ループ）
+      this.panY = 0;              // 縦の移動（px。拡大して盤面が縦にはみ出すときだけ）
+      this.zoom = 1;
       this.panInit = false;
       this.k = 8;
       this.hover = null;          // { edge, cand }
       this.drag = null;
+      this.pointers = new Map();
+      this.pinch = null;
       this.raf = 0;
       this.dpr = 1;
       this.parts = [];            // こぼれる数字
-      canvas.view = this;   // テストや調べもの用
+      this.fx = null;             // 枝が折れる演出 { breakAt, lt }
+      canvas.view = this;         // テストや調べもの用
       const ro = new ResizeObserver(() => this.resize());
       ro.observe(canvas.parentElement || canvas);
       canvas.addEventListener('pointerdown', e => this.onDown(e));
       canvas.addEventListener('pointermove', e => this.onMove(e));
       canvas.addEventListener('pointerup', e => this.onUp(e));
-      canvas.addEventListener('pointercancel', () => { this.drag = null; });
+      canvas.addEventListener('pointercancel', e => { this.pointers.delete(e.pointerId); this.drag = null; this.pinch = null; });
       canvas.addEventListener('pointerleave', () => { if (!this.drag) this.setHover(null); });
-      canvas.addEventListener('wheel', e => { e.preventDefault(); this.pan += (e.deltaX || e.deltaY) / this.k * 0.5; this.hover = null; this.redraw(); }, { passive: false });
+      canvas.addEventListener('wheel', e => this.onWheel(e), { passive: false });
+      canvas.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        if (!this.data || !this.geo) return;
+        const [x, y] = this.local(e);
+        if (this.h.onCancel) this.h.onCancel(this.planHit(x, y));
+      });
       this.resize();
     }
 
@@ -63,9 +89,8 @@
       if (d && d.game) {
         this.geo = E.geometry(d.game.cols);
         this.W = 3 * d.game.cols;
-        if (!prev || !prev.game || prev.game.cols !== d.game.cols || !this.panInit) { this.centerOn(d.me); this.panInit = true; }
+        if (!prev || !prev.game || prev.game.cols !== d.game.cols || !this.panInit) { this.zoom = 1; this.panY = 0; this.layout(); this.centerOn(d.me); this.panInit = true; }
         this.score = E.scoreBoard(d.game);
-        this.stats = null;
       }
       this.layout();
       this.redraw();
@@ -77,10 +102,20 @@
       if (!g) return;
       const p = g.players.find(x => x.id === id) || g.players[0];
       const col = E.geometry(g.cols).trunks[p.trunk].col;
-      this.pan = this.W / 2 - (3 * col + 1.5);
+      this.setPan((this.cw / 2 - this.left) / this.k - (3 * col + 1.5));   // 幹の真ん中が画面の中央に来る
       this.hover = null;
       this.redraw();
     }
+
+    // 全体が見えるところ（拡大を戻す）
+    fit() {
+      this.zoom = 1;
+      this.panY = 0;
+      this.layout();
+      this.centerOn(this.data && this.data.me);
+    }
+
+    setPan(v) { this.pan = this.W ? ((v % this.W) + this.W) % this.W : v; }
 
     resize() {
       const r = (this.canvas.parentElement || this.canvas).getBoundingClientRect();
@@ -95,25 +130,51 @@
       this.redraw();
     }
 
-    // 台の大きさとセルの大きさ（幅と高さの両方に収まるように）
+    // 台の大きさとセルの大きさ。拡大していないときは、幅と高さの両方に収まる大きさ
     layout() {
       if (!this.data || !this.data.game) return;
-      const aw = this.cw - 16, ah = this.ch - TOP_RESERVE - 8;
-      const kx = (aw - 2 * MARGIN) / this.W;
-      const ky = (ah - 2 * MARGIN - LABEL_H) / (37 * SQRT3);
-      this.k = Math.max(2.5, Math.min(kx, ky, 20));
+      const vw = this.cw - 16;
+      this.availTop = TOP_RESERVE;
+      this.availH = this.ch - TOP_RESERVE - 8;
+      const kx = (vw - 2 * MARGIN) / this.W;
+      const ky = (this.availH - 2 * MARGIN - LABEL_H) / (37 * SQRT3);
+      this.k0 = Math.max(2.5, Math.min(kx, ky, 20));
+      this.k = this.k0 * this.zoom;
       this.S = this.k * 2;
       this.hu = SQRT3 * this.k;                       // 高さの単位
       this.boardW = this.W * this.k + 2 * MARGIN;
       this.boardH = 37 * this.hu + 2 * MARGIN + LABEL_H;
-      this.bx = Math.round((this.cw - this.boardW) / 2);
-      this.by = TOP_RESERVE + Math.max(0, Math.round((this.ch - TOP_RESERVE - 8 - this.boardH) / 2));
-      this.left = this.bx + MARGIN;                   // x = 0 の位置
+      this.clipW = Math.min(this.boardW, vw);
+      this.bx = Math.round((this.cw - this.clipW) / 2);
+      if (this.boardH <= this.availH + 0.5) {
+        this.panY = 0;
+        this.by = this.availTop + Math.round((this.availH - this.boardH) / 2);
+      } else {
+        this.panY = clamp(this.panY, this.availH - this.boardH, 0);
+        this.by = this.availTop + this.panY;
+      }
+      this.left = this.bx + MARGIN;                   // x = 0 の位置（pan を足す）
     }
 
     px(x, dx) { return this.left + (x + this.pan + dx) * this.k; }
     py(y) { return this.by + MARGIN + (36 - y) * this.hu; }
     wrapD(d) { return d > this.W / 2 ? d - this.W : d < -this.W / 2 ? d + this.W : d; }
+
+    // 画面の点 (mx, my) を動かさずに、拡大率を factor 倍する
+    zoomAt(mx, my, factor) {
+      if (!this.data || !this.data.game) return;
+      const xu = (mx - this.left) / this.k - this.pan;
+      const yu = 36 - (my - (this.by + MARGIN)) / this.hu;
+      this.zoom = clamp(this.zoom * factor, 1, ZOOM_MAX);
+      this.layout();
+      this.setPan((mx - this.left) / this.k - xu);
+      if (this.boardH > this.availH + 0.5) {
+        this.panY = my - MARGIN - (36 - yu) * this.hu - this.availTop;
+        this.layout();
+      }
+      this.hover = null;
+      this.redraw();
+    }
 
     // ---------- 操作 ----------
 
@@ -122,29 +183,62 @@
       return [e.clientX - r.left, e.clientY - r.top];
     }
 
-    onDown(e) {
-      if (!this.data) return;
+    onWheel(e) {
+      e.preventDefault();
+      if (!this.data || !this.data.game) return;
       const [x, y] = this.local(e);
-      this.drag = { x0: x, y0: y, px: x, pan0: this.pan, moved: false, id: e.pointerId };
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && e.deltaX) {   // 横スクロール：回す
+        this.setPan(this.pan - e.deltaX / this.k);
+        this.hover = null; this.redraw();
+        return;
+      }
+      const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 0.5 : 0.0016;
+      this.zoomAt(x, y, Math.exp(-e.deltaY * unit));
+      this.setHover(null);
+    }
+
+    onDown(e) {
+      if (!this.data || e.button > 0) return;     // 右クリックは取り消し（contextmenu）で扱う
+      const [x, y] = this.local(e);
+      this.pointers.set(e.pointerId, { x, y });
       try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* 無視 */ }
+      if (this.pointers.size === 2) {
+        const [a, b] = [...this.pointers.values()];
+        this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+        this.drag = null;
+        return;
+      }
+      this.drag = { x0: x, y0: y, pan0: this.pan, panY0: this.panY, moved: false };
     }
 
     onMove(e) {
       const [x, y] = this.local(e);
+      if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x, y });
+      if (this.pinch && this.pointers.size >= 2) {
+        const [a, b] = [...this.pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        this.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / this.pinch.d);
+        this.pinch.d = d;
+        return;
+      }
       const d = this.drag;
       if (d) {
         if (!d.moved && Math.hypot(x - d.x0, y - d.y0) > 6) d.moved = true;
         if (d.moved) {
-          this.pan = d.pan0 + (x - d.x0) / this.k;
+          this.setPan(d.pan0 + (x - d.x0) / this.k);
+          this.panY = d.panY0 + (y - d.y0);
+          this.layout();
           this.setHover(null);
           this.redraw();
         }
         return;
       }
-      this.setHover(this.hit(x, y), x, y);
+      if (this.pointers.size === 0) this.setHover(this.hit(x, y), x, y);
     }
 
     onUp(e) {
+      this.pointers.delete(e.pointerId);
+      if (this.pinch) { if (this.pointers.size < 2) this.pinch = null; this.drag = null; return; }
       const d = this.drag;
       this.drag = null;
       if (!d || d.moved) return;
@@ -171,7 +265,7 @@
         const dx = m * this.W;
         const x1 = this.px(a.x, dx), y1 = this.py(a.y), x2 = this.px(bxu, dx), y2 = this.py(b.y);
         const vx = x2 - x1, vy = y2 - y1, L2 = vx * vx + vy * vy || 1;
-        const t = Math.max(0, Math.min(1, ((x - x1) * vx + (y - y1) * vy) / L2));
+        const t = clamp(((x - x1) * vx + (y - y1) * vy) / L2, 0, 1);
         best = Math.min(best, Math.hypot(x - (x1 + t * vx), y - (y1 + t * vy)));
       }
       return best;
@@ -184,18 +278,19 @@
       return best;
     }
 
-    // 点にあるもの：置ける辺・セル（cand）と、合わせると折れやすさを見られる辺（edge）
+    // 点にあるもの：置ける辺・セル（cand。辺が近ければ枝、そうでなければ葉）と、合わせると折れやすさを見られる辺（edge）
     hit(x, y) {
       const d = this.data;
       if (!d || !d.game || !this.geo) return null;
       const thr = Math.max(7, this.S * 0.3);
       const out = { edge: null, cand: null };
-      if (d.mode === 'b' && d.candidates) {
+      if (d.candidates) {
         let best = thr;
         for (const ek of d.candidates.edges) { const dist = this.distToEdge(ek, x, y); if (dist < best) { best = dist; out.cand = { t: 'b', key: ek }; } }
-      } else if (d.mode === 'l' && d.candidates) {
-        let best = this.S * 0.87;
-        for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; out.cand = { t: 'l', key: ck }; } }
+        if (!out.cand) {
+          best = this.S * 0.87;
+          for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; out.cand = { t: 'l', key: ck }; } }
+        }
       }
       let best = thr;
       const g = d.game;
@@ -205,6 +300,36 @@
         for (let i = 1; i <= p.trunkLen; i++) { const dist = this.distToEdge(tr.edges[i], x, y); if (dist < best) { best = dist; out.edge = tr.edges[i]; } }
       }
       return out.edge || out.cand ? out : null;
+    }
+
+    // 点にある、自分の計画（何番目か。なければ -1）
+    planHit(x, y) {
+      const g = this.data.game, me = g.players.find(p => p.id === this.data.me);
+      if (!me) return -1;
+      const thr = Math.max(8, this.S * 0.35);
+      let best = -1, bestD = Infinity;
+      me.plan.forEach((it, i) => {
+        const dist = it.t === 'b' ? this.distToEdge(it.e, x, y) : Math.max(0, this.distToCell(it.c, x, y) - this.S * 0.4);
+        const lim = it.t === 'b' ? thr : this.S * 0.5;
+        if (dist < lim && dist < bestD) { bestD = dist; best = i; }
+      });
+      return best;
+    }
+
+    // ---------- 演出 ----------
+
+    // ターンが解決された：点数を稼いだ葉から数字が1つこぼれ、そのあとで枝が折れる
+    playTurn(items, lt) {
+      if (reduced()) { this.fx = null; this.redraw(); return; }
+      const now = performance.now();
+      for (const it of items) {
+        this.parts.push({
+          cell: it.cell, color: it.color, text: String(Math.round(it.pts * 10) / 10), t0: now,
+          vx: (Math.random() - 0.5) * 3.2, vy: -(2.6 + Math.random() * 1.6),   // 1 = セルの半径あたり / 秒
+        });
+      }
+      this.fx = lt && (lt.removed.length || (lt.removedLeafList || []).length) ? { breakAt: now + PART_MS, lt } : null;
+      this.redraw();
     }
 
     // ---------- 描画 ----------
@@ -235,22 +360,6 @@
       ctx.restore();
     }
 
-    // 点数を稼いだ葉から、数字がこぼれる演出：items = [{ cell, pts, color }]
-    spill(items) {
-      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      const now = performance.now();
-      for (const it of items) {
-        const n = Math.min(5, Math.ceil(it.pts) + 1);
-        for (let i = 0; i < n; i++) {
-          this.parts.push({
-            cell: it.cell, color: it.color, text: String(Math.round(it.pts * 10) / 10), t0: now + i * 70,
-            vx: (Math.random() - 0.5) * 6, vy: -(2.4 + Math.random() * 2.6),   // 1 = セルの半径あたり / 秒
-          });
-        }
-      }
-      this.redraw();
-    }
-
     // 辺の端の座標（ループのつなぎ目をまたぐ辺も、短いほうでつなぐ）
     edgePts(ek, dx) {
       const e = this.geo.edges[ek];
@@ -277,6 +386,96 @@
       return { vals, max };
     }
 
+    // 葉を描く（得点の輪や数字はつけない）
+    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      this.hexPath(ctx, x, y, this.S * 0.78 * scale);
+      ctx.fillStyle = rgba(color, 0.45);
+      ctx.fill();
+      ctx.lineWidth = lw || 2;
+      ctx.strokeStyle = stroke || color;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 枝が折れる演出：t = 折れ始めてからの時間（ms）。折れた枝はかけらになって落ち、折れた場所に×と「折れた！」が出る
+    drawBreak(ctx, dx, t, colors, inView) {
+      const lt = this.data.game.lastTurn, S = this.S;
+      const base = Math.min(...lt.removed.map(r => r.l), 99);
+      for (const r of lt.removed) {
+        const delay = r.primary ? 0 : 140 + 80 * Math.min(5, r.l - base);
+        const u = (t - delay) / EDGE_MS;
+        const [x1, y1, x2, y2] = this.edgePts(r.key, dx);
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        if (!inView(mx)) continue;
+        ctx.setLineDash([]);
+        if (u < 0) { ctx.strokeStyle = colors[r.owner]; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); continue; }
+        if (u < 0.25) {
+          // ぴかっと光る（白く太く、赤くにじむ）
+          ctx.save();
+          ctx.shadowColor = COL.hot; ctx.shadowBlur = S * 1.3;
+          ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3 + 4 * (u / 0.25);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.restore();
+        } else if (u < 1) {
+          // 3つに割れて、落ちながら消える
+          const v = (u - 0.25) / 0.75;
+          ctx.lineWidth = 3;
+          for (let i = 0; i < 3; i++) {
+            const a0 = i / 3, a1 = (i + 1) / 3;
+            const cx = x1 + (x2 - x1) * (a0 + a1) / 2, cy = y1 + (y2 - y1) * (a0 + a1) / 2;
+            const ox = (rnd(r.key, i) - 0.5) * S * 1.8 * v, oy = (rnd(r.key, i + 5) * 0.6 + 0.2) * S * 1.2 * v + v * v * S * 2.4;
+            const ang = (rnd(r.key, i + 9) - 0.5) * 2.4 * v;
+            const hx = (x2 - x1) / 6, hy = (y2 - y1) / 6;
+            const c = Math.cos(ang), s2 = Math.sin(ang);
+            ctx.strokeStyle = COL.broken;
+            ctx.globalAlpha = Math.max(0, 1 - Math.pow(v, 1.6));
+            ctx.beginPath();
+            ctx.moveTo(cx + ox - (hx * c - hy * s2), cy + oy - (hx * s2 + hy * c));
+            ctx.lineTo(cx + ox + (hx * c - hy * s2), cy + oy + (hx * s2 + hy * c));
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+        }
+        if (r.primary && u >= 0 && u < 1.2) {
+          // 折れたところに、広がる赤い輪・×・「折れた！」（読みやすいように、暗い台の上に出す）
+          const pop = clamp(u * 5, 0, 1), fade = u < 0.7 ? 1 : clamp(1 - (u - 0.7) / 0.5, 0, 1);
+          const size = (5 + 7 * pop) * Math.max(1, S / 16);
+          ctx.save();
+          ctx.globalAlpha = fade * (1 - clamp(u, 0, 1) * 0.5);
+          ctx.strokeStyle = COL.hot; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(mx, my, S * (0.4 + 1.8 * clamp(u * 1.6, 0, 1)), 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = fade;
+          ctx.lineWidth = 3.8;
+          ctx.beginPath();
+          ctx.moveTo(mx - size, my - size); ctx.lineTo(mx + size, my + size);
+          ctx.moveTo(mx + size, my - size); ctx.lineTo(mx - size, my + size);
+          ctx.stroke();
+          const fs = Math.max(13, S * 0.95), ty = my - size - S * 0.9 - u * S * 0.5;
+          ctx.font = `800 ${fs}px ${FONT}`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          const tw = ctx.measureText('折れた！').width + fs * 0.9;
+          ctx.fillStyle = 'rgba(17,17,16,0.82)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(mx - tw / 2, ty - fs * 0.75, tw, fs * 1.5, fs * 0.45); else ctx.rect(mx - tw / 2, ty - fs * 0.75, tw, fs * 1.5);
+          ctx.fill();
+          ctx.fillStyle = COL.broken;
+          ctx.fillText('折れた！', mx, ty + fs * 0.04);
+          ctx.restore();
+        }
+      }
+      // 一緒に消える葉：縮みながら赤くなって消える
+      for (const lf of lt.removedLeafList || []) {
+        const c = this.geo.cells[lf.cell];
+        const x = this.px(c.x, dx), y = this.py(c.y);
+        if (!inView(x)) continue;
+        const w = clamp((t - 200) / 800, 0, 1);
+        if (w >= 1) continue;
+        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4);
+      }
+    }
+
     draw() {
       const ctx = this.ctx, d = this.data;
       if (!this.dpr) return;
@@ -284,19 +483,20 @@
       ctx.fillStyle = COL.page;
       ctx.fillRect(0, 0, this.cw, this.ch);
       if (!d || !d.game || !this.geo) return;
-      const g = d.game, geo = this.geo, S = this.S, k = this.k;
+      const g = d.game, geo = this.geo, S = this.S;
       const colors = d.colors;
+      const nowT = performance.now();
 
       // 台（角丸16）
       ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(this.bx, this.by, this.boardW, this.boardH, 16); else ctx.rect(this.bx, this.by, this.boardW, this.boardH);
+      if (ctx.roundRect) ctx.roundRect(this.bx, this.by, this.clipW, this.boardH, 16); else ctx.rect(this.bx, this.by, this.clipW, this.boardH);
       ctx.fillStyle = COL.frame;
       ctx.fill();
 
       // 台の中だけに描く（左右のつなぎ目の向こう側は、反対側が見える）
       ctx.save();
       ctx.beginPath();
-      ctx.rect(this.bx + 1, this.by + 1, this.boardW - 2, this.boardH - 2);
+      ctx.rect(this.bx + 1, this.by + 1, this.clipW - 2, this.boardH - 2);
       ctx.clip();
 
       const overlay = d.overlay || 'normal';
@@ -306,32 +506,39 @@
       const hoverEdge = this.hover && this.hover.edge;
       const plan = (g.players.find(p => p.id === d.me) || {}).plan || [];
 
+      // 枝が折れる演出の段階：pre（数字がこぼれているあいだ。まだ折れていないように見せる）→ anim → 静止（赤い点線）
+      const lt = g.lastTurn;
+      const fresh = lt && lt.turn === g.round;
+      let phase = 'static', bt = 0;
+      if (this.fx && (!fresh || this.fx.lt.turn !== lt.turn)) this.fx = null;
+      if (this.fx) {
+        if (nowT < this.fx.breakAt) phase = 'pre';
+        else if (nowT < this.fx.breakAt + BREAK_MS) { phase = 'anim'; bt = nowT - this.fx.breakAt; }
+        else this.fx = null;
+      }
+
       for (const dx of [-this.W, 0, this.W]) {
+        const inView = x => x > this.bx - S * 2 && x < this.bx + this.clipW + S * 2;
+        const inViewY = y => y > -S * 2 && y < this.ch + S * 2;
         // セル
         ctx.lineWidth = 1;
         ctx.strokeStyle = COL.edge;
         ctx.fillStyle = COL.cell;
         for (const c of Object.values(geo.cells)) {
-          const cx = this.px(c.x, dx);
-          if (cx < this.bx - S || cx > this.bx + this.boardW + S) continue;
-          this.hexPath(ctx, cx, this.py(c.y), S);
+          const cx = this.px(c.x, dx), cy = this.py(c.y);
+          if (!inView(cx) || !inViewY(cy)) continue;
+          this.hexPath(ctx, cx, cy, S);
           ctx.fill(); ctx.stroke();
         }
         const cellXY = ck => { const c = geo.cells[ck]; return [this.px(c.x, dx), this.py(c.y)]; };
-        const inView = x => x > this.bx - S * 2 && x < this.bx + this.boardW + S * 2;
 
         // 葉
         for (const [ck, lf] of Object.entries(g.leaves)) {
           const [x, y] = cellXY(ck);
-          if (!inView(x)) continue;
+          if (!inView(x) || !inViewY(y)) continue;
           const color = colors[lf.owner];
-          const fresh = g.round > 0 && lf.round === g.round;
-          this.hexPath(ctx, x, y, S * 0.78);
-          ctx.fillStyle = rgba(color, 0.45);
-          ctx.fill();
-          ctx.lineWidth = fresh ? 2.4 : 2;
-          ctx.strokeStyle = fresh ? '#FFFFFF' : color;
-          ctx.stroke();
+          const isNew = g.round > 0 && lf.round === g.round;
+          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2);
           if (topCells.has(ck)) {
             this.hexPath(ctx, x, y, S * 0.67);
             ctx.lineWidth = S * 0.2;
@@ -342,6 +549,11 @@
           }
           // 点数を稼いでいる葉すべてに、点数（自分の明るい色）
           if (points[ck] > 0) this.scoreText(ctx, String(Math.round(points[ck] * 10) / 10), x, y + S * 0.03, color, S * 0.4, 1);
+        }
+        // 折れる前（数字がこぼれているあいだ）は、これから折れる葉も残して見せる
+        if (phase === 'pre') for (const lf of lt.removedLeafList || []) {
+          const [x, y] = cellXY(lf.cell);
+          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2);
         }
 
         // 幹（根から今の長さまで）。次に伸びる1辺は点線
@@ -368,14 +580,21 @@
           this.line(ctx, ek, dx);
         }
 
-        // 折れた枝（折れたターンだけ）
-        const lt = g.lastTurn;
-        if (lt && lt.turn === g.round) {
-          ctx.strokeStyle = COL.broken;
-          ctx.lineWidth = 3;
-          ctx.setLineDash([3, 4]);
-          for (const r of lt.removed) this.line(ctx, r.key, dx);
-          ctx.setLineDash([]);
+        // 折れた枝
+        if (fresh) {
+          if (phase === 'pre') {
+            ctx.lineWidth = 2.4; ctx.setLineDash([]);
+            for (const r of lt.removed) { ctx.strokeStyle = colors[r.owner]; this.line(ctx, r.key, dx); }
+          } else if (phase === 'anim') {
+            this.drawBreak(ctx, dx, bt, colors, inView);
+          } else {
+            // 折れたターンのあいだ、赤い点線で残す
+            ctx.strokeStyle = COL.broken;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([3, 4]);
+            for (const r of lt.removed) this.line(ctx, r.key, dx);
+            ctx.setLineDash([]);
+          }
           // 抽選に負けた行動：その場所に×
           for (const l of lt.lost) {
             let x, y;
@@ -390,17 +609,27 @@
           }
         }
 
-        // 置ける場所
-        const me = d.me, mycol = colors[me] || '#FFFFFF';
-        if (d.candidates && d.mode === 'b') {
-          ctx.lineWidth = 2; ctx.setLineDash([2, 4]); ctx.strokeStyle = rgba(mycol, 0.8);
+        // 今置けるところ：白いハイライト（辺は枝、セルは葉）
+        const mycol = colors[d.me] || '#FFFFFF';
+        const hv = this.hover;
+        if (d.candidates) {
+          ctx.setLineDash([]);
+          ctx.lineWidth = 3.4; ctx.strokeStyle = 'rgba(255,255,255,0.62)';
           for (const ek of d.candidates.edges) this.line(ctx, ek, dx);
-          ctx.setLineDash([]);
-        }
-        if (d.candidates && d.mode === 'l') {
-          ctx.lineWidth = 1.6; ctx.setLineDash([3, 3]); ctx.strokeStyle = rgba(mycol, 0.75);
-          for (const ck of d.candidates.cells) { const [x, y] = cellXY(ck); if (inView(x)) { this.hexPath(ctx, x, y, S * 0.78); ctx.stroke(); } }
-          ctx.setLineDash([]);
+          for (const ck of d.candidates.cells) {
+            const [x, y] = cellXY(ck);
+            if (!inView(x) || !inViewY(y)) continue;
+            this.hexPath(ctx, x, y, S * 0.78);
+            ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill();
+            ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
+          }
+          if (hv && hv.cand) {
+            if (hv.cand.t === 'b') { ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4.6; this.line(ctx, hv.cand.key, dx); }
+            else {
+              const [x, y] = cellXY(hv.cand.key);
+              if (inView(x)) { this.hexPath(ctx, x, y, S * 0.78); ctx.fillStyle = 'rgba(255,255,255,0.26)'; ctx.fill(); ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.6; ctx.stroke(); }
+            }
+          }
         }
         // 自分の計画（ほかの人には見えない）
         plan.forEach((it, i) => {
@@ -423,13 +652,7 @@
             ctx.fillText(String(i + 1), x, y);
           }
         });
-        // 合わせているもの
-        const hv = this.hover;
-        if (hv && hv.cand) {
-          ctx.setLineDash([]);
-          if (hv.cand.t === 'b') { ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3.6; this.line(ctx, hv.cand.key, dx); }
-          else { const [x, y] = cellXY(hv.cand.key); if (inView(x)) { this.hexPath(ctx, x, y, S * 0.78); ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fill(); ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2.4; ctx.stroke(); } }
-        }
+        // 合わせている枝（折れやすさを見ている）
         if (hoverEdge) {
           ctx.setLineDash([]);
           ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3.6;
@@ -437,7 +660,6 @@
         }
 
         // こぼれる数字：上へはじけてから、重力で落ちながら消える
-        const nowT = performance.now();
         for (const q of this.parts) {
           const age = (nowT - q.t0) / PART_MS;
           if (age <= 0 || age >= 1 || !geo.cells[q.cell]) continue;
@@ -461,10 +683,9 @@
         });
       }
       ctx.restore();
-      // こぼれる数字が残っているあいだは描き続ける
-      const nowT = performance.now();
+      // 演出が残っているあいだは描き続ける
       this.parts = this.parts.filter(q => nowT - q.t0 < PART_MS);
-      if (this.parts.length) this.redraw();
+      if (this.parts.length || this.fx) this.redraw();
     }
   }
 

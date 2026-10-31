@@ -228,12 +228,14 @@ test('葉は、ほかの枝にも支えられていれば残る（支えがす�
   assert.strictEqual(g.leaves[cell], undefined);
 });
 
-test('得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。上に他人の葉がある葉は 0.3、上が自分の葉だけなら 0', () => {
+test('得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。ほかは、その人の一番上の葉（上に他人の葉がある）だけが 0.3、同じ人の2枚目以降は 0', () => {
   const s = list => E.scoreColumn(list.map(([r, owner]) => ({ r, owner })));
   assert.deepStrictEqual(s([[5, 'a']]), [1]);                                     // 自分だけでも 1 点
   assert.deepStrictEqual(s([[5, 'a'], [2, 'b']]), [2, 0.3]);                      // 上が a：1+1。下の b は覆われている
   assert.deepStrictEqual(s([[5, 'a'], [2, 'a']]), [1, 0]);                        // 下も自分の葉：他人ではないので +0、上が自分だけなので 0
-  assert.deepStrictEqual(s([[9, 'a'], [8, 'b'], [7, 'a'], [6, 'c'], [5, 'd']]), [4, 0.3, 0.3, 0.3, 0.3]);   // 下の他人は4枚でも上限3
+  assert.deepStrictEqual(s([[9, 'a'], [8, 'b'], [7, 'a'], [6, 'c'], [5, 'd']]), [4, 0.3, 0, 0.3, 0.3]);   // 下の他人は4枚でも上限3。a の2枚目は 0
+  assert.deepStrictEqual(s([[9, 'a'], [8, 'b'], [7, 'a'], [6, 'a'], [5, 'a']]), [2, 0.3, 0, 0, 0]);          // 上から □■□□□ = 2・0.3・0・0・0
+  assert.deepStrictEqual(s([[9, 'a'], [8, 'b'], [7, 'b'], [6, 'b']]), [4, 0.3, 0, 0]);                       // b の2枚目以降も 0
   assert.deepStrictEqual(s([[9, 'a'], [8, 'a'], [7, 'b']]), [2, 0, 0.3]);         // 上が自分の葉と他人の葉
   assert.deepStrictEqual(s([[3, 'b'], [8, 'a'], [5, 'c']]), [0.3, 3, 0.3]);       // 並びは順不同でよい
 });
@@ -256,8 +258,9 @@ test('光合成：ターンの終わりに列ごとに得点が入り、合計�
   mk(colCells[6], 'b');
   const info2 = E.resolveTurn(g, NEVER);
   assert.strictEqual(info2.topChanges, 1);
-  assert.deepStrictEqual([P(g, 'a').gain, P(g, 'b').gain], [0.3, 2.3]);   // b：一番上（下の他人は a の1枚）→ 2、下の葉も a の葉に覆われて 0.3。a は 0.3
+  assert.deepStrictEqual([P(g, 'a').gain, P(g, 'b').gain], [0.3, 2]);     // b：一番上（下の他人は a の1枚）→ 2、b の下の葉は 2枚目なので 0。a は 0.3
   assert.deepStrictEqual(P(g, 'a').history, [0, 2, 2.3]);
+  assert.deepStrictEqual(P(g, 'b').history, [0, 0.3, 2.3]);
 });
 
 test('ターンの解決で計画と確定はクリアされる。勝者は合計点が最高の人（同点は全員）', () => {
