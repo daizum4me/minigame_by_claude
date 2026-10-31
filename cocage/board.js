@@ -1,6 +1,6 @@
 /*
  * Cocage — 盤面の描画（canvas）と操作
- * 暗い背景に、六角形のセルと細い線だけで描く（点滅・アニメーションは使わない）。
+ * 暗い背景に、六角形のセルと細い線だけで描く（アニメーションは、点数を稼いだ葉から数字がこぼれる演出だけ）。
  * 数値は六角形の外接円の半径 S（= 2k）を基準にする。座標は engine.js と同じ整数座標（1 = k）。
  * 盤面は左右がつながった横ループ。ドラッグで回せる（pan）。
  *
@@ -14,6 +14,7 @@
   const SQRT3 = Math.sqrt(3);
   const MARGIN = 14;           // 台のふちとセルの余白
   const LABEL_H = 34;          // 盤面の下の、幹の名前の置き場
+  const PART_MS = 1300;        // こぼれる数字が消えるまで
   const TOP_RESERVE = 46;      // 上のバー（ターン・表示切り替え）の分
 
   const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', trunkGray: '#8A8880' };
@@ -43,6 +44,7 @@
       this.drag = null;
       this.raf = 0;
       this.dpr = 1;
+      this.parts = [];            // こぼれる数字
       canvas.view = this;   // テストや調べもの用
       const ro = new ResizeObserver(() => this.resize());
       ro.observe(canvas.parentElement || canvas);
@@ -222,6 +224,37 @@
       ctx.closePath();
     }
 
+    // 数字（明るい色・暗い縁つき）
+    scoreText(ctx, text, x, y, color, size, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `800 ${Math.max(7, size)}px ${FONT}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(2, size * 0.28);
+      ctx.strokeStyle = 'rgba(17,17,16,0.85)';
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = lighten(color, 0.55);
+      ctx.fillText(text, x, y);
+      ctx.restore();
+    }
+
+    // 点数を稼いだ葉から、数字がこぼれる演出：items = [{ cell, pts, color }]
+    spill(items) {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const now = performance.now();
+      for (const it of items) {
+        const n = Math.min(5, Math.ceil(it.pts) + 1);
+        for (let i = 0; i < n; i++) {
+          this.parts.push({
+            cell: it.cell, color: it.color, text: String(Math.round(it.pts * 10) / 10), t0: now + i * 70,
+            vx: (Math.random() - 0.5) * 6, vy: -(2.4 + Math.random() * 2.6),   // 1 = セルの半径あたり / 秒
+          });
+        }
+      }
+      this.redraw();
+    }
+
     // 辺の端の座標（ループのつなぎ目をまたぐ辺も、短いほうでつなぐ）
     edgePts(ek, dx) {
       const e = this.geo.edges[ek];
@@ -310,11 +343,9 @@
             ctx.globalAlpha = 0.6;
             ctx.stroke();
             ctx.globalAlpha = 1;
-            ctx.fillStyle = '#000000';
-            ctx.font = `800 ${Math.max(8, S * 0.62)}px ${FONT}`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(String(Math.round(points[ck] * 10) / 10), x, y + S * 0.03);
           }
+          // 点数を稼いでいる葉すべてに、点数（自分の明るい色。輪の上でも読めるように縁をつける）
+          if (points[ck] > 0) this.scoreText(ctx, String(Math.round(points[ck] * 10) / 10), x, y + S * 0.03, color, S * 0.4, 1);
         }
 
         // 幹（根から今の長さまで）。次に伸びる1辺は点線
@@ -409,6 +440,18 @@
           this.line(ctx, hoverEdge, dx);
         }
 
+        // こぼれる数字：上へはじけてから、重力で落ちながら消える
+        const nowT = performance.now();
+        for (const q of this.parts) {
+          const age = (nowT - q.t0) / PART_MS;
+          if (age <= 0 || age >= 1 || !geo.cells[q.cell]) continue;
+          const [cx, cy] = cellXY(q.cell);
+          if (!inView(cx)) continue;
+          const t = age * PART_MS / 1000;
+          const x = cx + q.vx * S * t, y = cy + (q.vy * t + 5 * t * t) * S;
+          this.scoreText(ctx, q.text, x, y, q.color, Math.max(10, S * 0.5), Math.min(1, (1 - age) * 1.6));
+        }
+
         // 幹の名前（真下）
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         g.players.forEach(p => {
@@ -422,6 +465,10 @@
         });
       }
       ctx.restore();
+      // こぼれる数字が残っているあいだは描き続ける
+      const nowT = performance.now();
+      this.parts = this.parts.filter(q => nowT - q.t0 < PART_MS);
+      if (this.parts.length) this.redraw();
     }
   }
 

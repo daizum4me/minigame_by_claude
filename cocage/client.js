@@ -410,6 +410,12 @@
     const live = !g.over && !!me;
     const candidates = live && !me.finished ? E.candidates(g, app.me) : null;
     boardView().setData({ game: g, me: app.me, mode: app.mode, overlay: app.overlay, colors, candidates });
+    // 新しいターンが解決されたら、点数を稼いだ葉から数字をこぼす（最初に画面を開いたときは出さない）
+    if (app.lastRound != null && g.round > app.lastRound) {
+      const { points } = E.scoreBoard(g);
+      board.spill(Object.entries(points).filter(([, v]) => v > 0).map(([ck, v]) => ({ cell: ck, pts: v, color: colors[g.leaves[ck].owner] })));
+    }
+    app.lastRound = g.round;
 
     // 上のバーとオーバーレイ
     $('#hud-round').textContent = g.over ? '終了' : `${g.round + 1} / ${g.turns}`;
