@@ -18,11 +18,11 @@
     minPlayers: 2,
     maxPlayers: 12,
     rt: {
-      tickSeconds: 20,                      // 1ターンの長さ（秒）
-      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・発展・攻撃で1使う（防御は使わない）
+      tickSeconds: 30,                      // 1ターンの長さ（秒）
+      apSeconds: 5, apMax: 5, apStart: 0,   // 行動力：5秒に1回復・上限5・最初は0。拡張・強化・発展・攻撃で1使う（防御は使わない）
       defMax: 6,                            // セルの防御の上限（六角形の辺の数）
-      ticks: [[4, 28], [8, 24], [12, 20]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
-      ticksRange: [10, 80],
+      ticks: [[4, 18], [8, 16], [12, 14]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
+      ticksRange: [8, 40],
       eventEvery: [4, 8],                   // イベントはターン4〜8回ごとに起き、1ターンのあいだ続く
       eventLength: 1,
     },
@@ -40,10 +40,10 @@
     farmFood: 1,                        // 農地（発展で作る）：ターンごとに食料 +1（強化の +1 とは別）
     factoryPower: 1,                    // 工場（発展で作る）：ターンごとに戦力トークン +1
     forestResource: 1,                  // 森林マス：このセルがあるとターンごとに資源 +1（強化の +1 とは別）
-    startResource: 3,
+    startResource: 10,
     startPower: 2,                      // 最初に戦力トークンを2個配る
     // 発展：自分の平原のセル（コア以外）を農地か工場に。農地にする
-    cost: { expand: 1, bridge: 3, strengthen: 2, develop: 2 },
+    cost: { expand: 2, bridge: 5, strengthen: 4, develop: 4 },
     // ターンごとの資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
     // 食料：ターンごとに、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。

@@ -7,7 +7,7 @@
 <meta name="description" content="ヘキサゴニア — 六角形のマスでセルを広げ、強化し、相手のセルを壊し合う2〜12人のリアルタイム陣取りゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,4 90,27 90,73 50,96 10,73 10,27%22 fill=%22%234C8EDA%22 fill-opacity=%22.7%22 stroke=%22%239CC3F0%22 stroke-width=%226%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22%234C8EDA%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため、新旧のファイルが混ざらないように） -->
-<link rel="stylesheet" href="style.css?v=59">
+<link rel="stylesheet" href="style.css?v=60">
 </head>
 <body>
 
@@ -87,8 +87,8 @@
     <h3>ターン数 <span id="ticks-note" class="muted"></span></h3>
     <select id="set-ticks" class="select" aria-label="ターン数">
       <option value="0">自動（人数に合わせる）</option>
-      <option value="20">20ターン</option><option value="24">24ターン</option><option value="28">28ターン</option><option value="32">32ターン</option>
-      <option value="40">40ターン</option><option value="48">48ターン</option><option value="60">60ターン</option>
+      <option value="10">10ターン</option><option value="12">12ターン</option><option value="14">14ターン</option><option value="16">16ターン</option>
+      <option value="18">18ターン</option><option value="20">20ターン</option><option value="24">24ターン</option><option value="30">30ターン</option>
     </select>
 
     <h3>自分の陣営色</h3>
@@ -173,11 +173,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="banner top-banner" hidden>接続が切れました。再接続しています…</div>
 
-<script src="shared/engine.js?v=59"></script>
-<script src="shared/cpu.js?v=59"></script>
-<script src="shared/room.js?v=59"></script>
-<script src="sound.js?v=59"></script>
-<script src="board.js?v=59"></script>
-<script src="client.js?v=59"></script>
+<script src="shared/engine.js?v=60"></script>
+<script src="shared/cpu.js?v=60"></script>
+<script src="shared/room.js?v=60"></script>
+<script src="sound.js?v=60"></script>
+<script src="board.js?v=60"></script>
+<script src="client.js?v=60"></script>
 </body>
 </html>

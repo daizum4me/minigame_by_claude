@@ -146,13 +146,13 @@ test('ゲーム開始の前に3秒のカウントダウン。そのあいだは�
   room.join('t2', 'B');
   room.handle(h, { type: 'start' });
   assert.deepStrictEqual([last(h).room.countdownMs, last(h).room.tickLeftMs], [3000, 0]);
-  assert.ok(!timers.some(t => t.ms === 20000));
+  assert.ok(!timers.some(t => t.ms === 30000));
   const me = room.game.players.find(p => p.id === h);
   const [q, r] = E.parseKey(me.core);
   room.handle(h, { type: 'act', action: { type: 'fortify', q, r } });
   assert.match(inbox[h].at(-1).text, /まだ始まっていません/);
   fire(3000);
-  assert.deepStrictEqual([last(h).room.countdownMs, last(h).room.tickLeftMs], [0, 20000]);
+  assert.deepStrictEqual([last(h).room.countdownMs, last(h).room.tickLeftMs], [0, 30000]);
   room.handle(h, { type: 'act', action: { type: 'fortify', q, r } });
   assert.strictEqual(room.game.board[me.core].def, 1);
 });
@@ -169,11 +169,11 @@ test('行動はホストが検証して全員に配信。だれでもいつで�
   assert.ok(!('turnLeftMs' in last(h).room));
 });
 
-test('20秒ごとにターンが進み、5秒ごとに行動力が回復。ターン数はホストが設定できる', () => {
+test('30秒ごとにターンが進み、5秒ごとに行動力が回復。ターン数はホストが設定できる', () => {
   const { room, inbox, last, fire, timers } = makeRoom();
   const h = room.join('t1', 'A').id;
   const g = room.join('t2', 'B').id;
-  room.handle(h, { type: 'settings', ticks: 9 });
+  room.handle(h, { type: 'settings', ticks: 7 });
   assert.strictEqual(inbox[h].at(-1).type, 'error');
   room.handle(g, { type: 'settings', ticks: 12 });   // ホスト以外は変えられない
   assert.strictEqual(room.settings.ticks, 0);
@@ -183,14 +183,14 @@ test('20秒ごとにターンが進み、5秒ごとに行動力が回復。タ�
   fire(3000);
   const gm = room.game;
   assert.deepStrictEqual([gm.mode, gm.rounds], ['realtime', 12]);
-  assert.strictEqual(last(h).room.tickLeftMs, 20000);
+  assert.strictEqual(last(h).room.tickLeftMs, 30000);
   const me = gm.players.find(p => p.id === h);
   me.ap = 0;
   fire(5000);
   assert.strictEqual(me.ap, 1);
-  fire(20000);
+  fire(30000);
   assert.strictEqual(gm.round, 1);
-  assert.ok(timers.some(t => t.ms === 20000) && timers.some(t => t.ms === 5000));   // 次のターン・回復も予約される
+  assert.ok(timers.some(t => t.ms === 30000) && timers.some(t => t.ms === 5000));   // 次のターン・回復も予約される
 });
 
 test('CPU は2.5秒ごとに考えて動く', () => {

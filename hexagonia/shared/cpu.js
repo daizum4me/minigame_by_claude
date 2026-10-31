@@ -18,8 +18,8 @@
   // bias：行動の種類ごとの点数の上乗せ
   const LEVELS = {
     weak: { noise: 4, endBelow: 1.5, bias: {} },
-    normal: { noise: 0.6, endBelow: 0.5, bias: {} },
-    strong: { noise: 0.15, endBelow: 0.5, bias: { strengthen: 1.5, expand: -0.5 } },
+    normal: { noise: 0.6, endBelow: 0.5, bias: { strengthen: 1, expand: -0.3 } },
+    strong: { noise: 0.3, endBelow: 0.5, bias: { strengthen: 1, expand: -0.3 } },
   };
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };   // ロビーで選べる強さ
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
