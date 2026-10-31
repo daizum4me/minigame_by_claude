@@ -230,8 +230,8 @@ test('ターンの終わりに全員いっせいに資源（強化済+1・コア
   assert.strictEqual(g.round, 1);
   assert.deepStrictEqual([g.tickInfo[a].resource, P(g, a).resource], [3 + 1 + 1, 15]);
   assert.strictEqual(g.tickInfo[b].resource, 2);
-  // 食料：コア +6・強化済のセル（コアも）+1、セル1つにつき1を食べる
-  assert.deepStrictEqual([g.tickInfo[a].made, g.tickInfo[a].eaten, P(g, a).food], [8, 3, 5]);
+  // 食料：コア +6（強化しても増えない）、セル1つにつき1を食べる
+  assert.deepStrictEqual([g.tickInfo[a].made, g.tickInfo[a].eaten, P(g, a).food], [6, 3, 3]);
   for (let i = 1; i < g.rounds; i++) E.rtTick(g);
   assert.ok(g.over);
   assert.match(g.endReason, /ターン終了/);
@@ -256,7 +256,7 @@ test('食料が足りなければ、ターンの終わりに自動でセルを�
   assert.deepStrictEqual(E.suggestAbandon(h.g, h.a, 1), ['0,0']);
 });
 
-test('発展：資源4・行動力1で、自分の平原のセル（コア以外）を農地か工場にする。農地はターンごとに食料 +1、工場は戦力 +1', () => {
+test('発展：資源4・行動力1で、自分の平原のセル（コア以外）を農地か工場にする。農地はターンごとに食料 +2、工場は戦力 +1', () => {
   const { g, a } = rtGame();
   const [q, r] = freeNext(g, a);
   setCell(g, q, r, { owner: a });
@@ -264,7 +264,7 @@ test('発展：資源4・行動力1で、自分の平原のセル（コア以外
   assert.strictEqual(E.apply(g, a, { type: 'develop', q, r, to: 'mine' }).ok, false);   // 農地か工場だけ
   assert.ok(E.apply(g, a, { type: 'develop', q, r, to: 'farm' }).ok);
   assert.deepStrictEqual([g.board[E.key(q, r)].terrain, P(g, a).resource, P(g, a).ap], ['farm', 6, 2]);
-  assert.strictEqual(E.foodMade(g, a), 7);
+  assert.strictEqual(E.foodMade(g, a), 8);
   assert.ok(!E.targets(g, a, 'develop').includes(E.key(q, r)));            // 発展ずみの土地はもう発展できない
   // 工場：ターンの終わりに戦力 +1
   const [q2, r2] = nb(g, ...E.parseKey(P(g, a).core)).find(([x, y]) => !g.board[E.key(x, y)].owner && g.board[E.key(x, y)].terrain !== 'river');

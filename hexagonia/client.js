@@ -711,7 +711,7 @@
     let baseRes = 0, baseFood = 0;
     for (const c of E.cellsOf(g, app.me)) {
       const res = (c.core ? inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0) : c.strong ? inc.strong : 0) + (c.terrain === 'forest' ? R.forestResource : 0);
-      const food = (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
+      const food = (c.core ? f.core : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
       const pow = c.terrain === 'factory' ? R.factoryPower : 0;
       baseRes += res; baseFood += food;
       if (res || food || pow) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : '') + (pow ? `<span class="fl-pow">${TOKEN_SVG.power}+${pow}</span>` : ''), 'gain', 0);
@@ -826,7 +826,7 @@
   const TERRAIN_EFFECTS = {
     plain: `効果なし。自分のセルなら、資源 ${R.cost.develop} で発展させて農地か工場にできる`,
     mine: `拡張したときと強化したときに、戦力トークン +${R.minePower}`,
-    farm: `発展させた土地。このセルがあると、ターンごとに食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
+    farm: `発展させた土地。このセルがあると、ターンごとに食料 +${R.farmFood}`,
     factory: `発展させた土地。このセルがあると、ターンごとに戦力トークン +${R.factoryPower}`,
     forest: `このセルがあると、ターンごとに資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。壊されると橋が落ちて河川に戻る`,
@@ -847,7 +847,7 @@
       if (!c.strong) {
         const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
         list.push({ type: 'strengthen', cost: R.cost.strengthen,
-          gain: `戦力 +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・毎ターン資源 +${inc}・食料 +${R.food.strong}・攻撃の拠点に` });
+          gain: `戦力 +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・毎ターン資源 +${inc}・攻撃の拠点に` });
       }
       if (!c.core && c.terrain === 'plain') {
         list.push({ type: 'develop', to: 'farm', name: '発展：農地', cost: R.cost.develop, gain: `毎ターン食料 +${R.farmFood}` });

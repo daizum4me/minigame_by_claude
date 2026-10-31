@@ -37,7 +37,7 @@
     centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
     minePower: 1,                       // 鉱山マス：拡張と強化のときに戦力トークン +1
-    farmFood: 1,                        // 農地（発展で作る）：ターンごとに食料 +1（強化の +1 とは別）
+    farmFood: 2,                        // 農地（発展で作る）：ターンごとに食料 +2
     factoryPower: 1,                    // 工場（発展で作る）：ターンごとに戦力トークン +1
     forestResource: 1,                  // 森林マス：このセルがあるとターンごとに資源 +1（強化の +1 とは別）
     startResource: 10,
@@ -46,9 +46,9 @@
     cost: { expand: 2, bridge: 5, strengthen: 4, develop: 4 },
     // ターンごとの資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
-    // 食料：ターンごとに、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
+    // 食料：ターンごとに、コア +6・農地1つにつき +2 を作り（強化では増えない）、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけ自動でセルを捨てる
-    food: { start: 0, core: 6, strong: 1, perCell: 1 },
+    food: { start: 0, core: 6, perCell: 1 },
     strengthenPower: 1,                 // 強化でもらえる戦力トークン
     // 拠点：攻撃できるのは、自分の強化済のセル（強化済のコアも）に隣接する相手のセルだけ
   };
@@ -448,11 +448,11 @@
     return cellsOf(state, id).filter(c => c.terrain === 'factory').length * RULES.factoryPower;
   }
 
-  // ターンごとに作る食料：コア +6、強化済のセル（コアも）1つにつき +1、農地のセル1つにつき +1
+  // ターンごとに作る食料：コア +6、農地のセル1つにつき +2
   function foodMade(state, id) {
     const f = RULES.food;
     const ev = eventOf(state);
-    let n = cellsOf(state, id).reduce((k, c) => k + (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
+    let n = cellsOf(state, id).reduce((k, c) => k + (c.core ? f.core : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
     if (ev && ev.riverFood > 0) n += riversideCells(state, id) * ev.riverFood;   // 豊漁
     return Math.floor(n * ((ev && ev.food) || 1));                               // 不作・豊作
   }
