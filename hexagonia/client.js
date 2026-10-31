@@ -616,12 +616,9 @@
     $('#dock-tickbar').hidden = g.over;
     renderMyTokens(me);
 
-    // 拡張・強化・攻撃・防御はマスを選んで出るツールチップから。マスに関係ない生産はここ
-    const canAct = me && canPlay(g);
-    $('#actions').innerHTML = `<button class="act prod" data-act="produce" ${canAct && !E.actionBlocked(g, app.me, 'produce') ? '' : 'disabled'} title="生産：資源 ${R.cost.produce} で戦力トークン +1（行動力を使わない・ログに出ない）">${TOKEN_SVG.power}<b>生産</b><small>資源${R.cost.produce} → 戦力+1</small></button>`;
 
     $('#hint').textContent = g.over ? '' : !me || !me.alive ? '脱落しました。観戦できます'
-      : 'マスを選ぶと行動のボタンが出ます。防御と生産は行動力を使いません';
+      : 'マスを選ぶと行動のボタンが出ます。防御は行動力を使いません';
 
     // プレイヤー一覧
     const isHost = room.hostId === app.me;
@@ -658,13 +655,18 @@
       if (mine.length) window.HexSound.play(mine.some(a => a.took) ? 'success' : 'block');
       else playSounds(g, fresh);
     }
+    // ターンが始まったら音で知らせる（ほかの音と重なってもよい）
+    if (fresh.some(l => l.tone === 'round')) window.HexSound.play('round');
     // ターンの終わり：どのマスで何が増えたかを盤面に浮かべ、下のバーの数字を「増えてから減る」順に動かす
     const ti = g.tickInfo && g.tickInfo[app.me];
     if (ti && fresh.some(l => l.seq === ti.seq)) playTick(g, ti);
     app.lastLogSeq = g.log.length ? g.log[g.log.length - 1].seq : 0;
 
+    // ゲーム開始前のカウントダウン（終わる時刻を覚えて、tickCountdown で数える）
+    if (room.countdownMs > 0) app.countdownEnd = Date.now() + room.countdownMs;
     updateDock();
     tickTimers();
+    tickCountdown();
     renderResult(room, g);
     if (app.tip) showTip(app.tip);
   }
@@ -687,7 +689,7 @@
     };
     const inc = E.income(g, app.me), pw = E.powerMade(g, app.me);
     net('resource', inc, `資源の収支（ターンごと）：${signed(inc)}（強化済のセル・コア・森林）`);
-    net('power', pw, `戦力の収支（ターンごと）：${signed(pw)}（工場）。強化・鉱山・生産でも増える`);
+    net('power', pw, `戦力の収支（ターンごと）：${signed(pw)}（工場）。強化・鉱山でも増える`);
     const made = E.foodMade(g, app.me), eaten = E.foodEaten(g, app.me);
     const short = Math.max(0, eaten - made - (me.food || 0));
     const chip = net('food', made - eaten, `食料の収支（ターンごと）：作る +${made}・食べる −${eaten} ＝ ${signed(made - eaten)}` + (short ? `。${short} 足りないので、セルを捨てることになる` : ''));
@@ -709,7 +711,7 @@
     let baseRes = 0, baseFood = 0;
     for (const c of E.cellsOf(g, app.me)) {
       const res = (c.core ? inc.core + (c.strong && inc.coreStrongBonus ? inc.strong : 0) : c.strong ? inc.strong : 0) + (c.terrain === 'forest' ? R.forestResource : 0);
-      const food = (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
+      const food = (c.core ? f.core : 0) + (c.terrain === 'farm' ? R.farmFood : 0);
       const pow = c.terrain === 'factory' ? R.factoryPower : 0;
       baseRes += res; baseFood += food;
       if (res || food || pow) floater(E.key(c.q, c.r), (res ? `<span class="fl-res">${TOKEN_SVG.resource}+${res}</span>` : '') + (food ? `<span class="fl-food">${TOKEN_SVG.food}+${food}</span>` : '') + (pow ? `<span class="fl-pow">${TOKEN_SVG.power}+${pow}</span>` : ''), 'gain', 0);
@@ -764,6 +766,21 @@
     else if (name) window.HexSound.play(name);
   }
 
+  // ゲーム開始前の 3・2・1 のカウントダウン。数が変わるたびに音を鳴らし、0 で「スタート！」
+  function tickCountdown() {
+    const el = $('#countdown');
+    if (!app.countdownEnd) { el.hidden = true; return; }
+    const left = app.countdownEnd - Date.now();
+    const n = left > 0 ? Math.ceil(left / 1000) : 0;
+    if (left < -800) { app.countdownEnd = 0; app.countdownShown = null; el.hidden = true; return; }   // 「スタート！」を少し見せてから消す
+    if (n === app.countdownShown) return;
+    app.countdownShown = n;
+    el.innerHTML = n ? `<b>${n}</b>` : '<b class="go">スタート！</b>';
+    el.hidden = false;
+    el.firstElementChild.style.animation = 'none'; void el.offsetWidth; el.firstElementChild.style.animation = '';
+    window.HexSound.play(n ? 'count' : 'go');
+  }
+
   // 次のターンまでの時間を、バーで（満タンから減っていく）。届いた時刻からの経過で数える
   function tickTimers() {
     const room = app.room;
@@ -809,7 +826,7 @@
   const TERRAIN_EFFECTS = {
     plain: `効果なし。自分のセルなら、資源 ${R.cost.develop} で発展させて農地か工場にできる`,
     mine: `拡張したときと強化したときに、戦力トークン +${R.minePower}`,
-    farm: `発展させた土地。このセルがあると、ターンごとに食料 +${R.farmFood}（強化の +${R.food.strong} とは別）`,
+    farm: `発展させた土地。このセルがあると、ターンごとに食料 +${R.farmFood}`,
     factory: `発展させた土地。このセルがあると、ターンごとに戦力トークン +${R.factoryPower}`,
     forest: `このセルがあると、ターンごとに資源 +${R.forestResource}（強化の +${R.income.strong} とは別）`,
     river: `セルを置くには橋をかける（資源 ${R.cost.bridge}）。橋は強化できる。壊されると橋が落ちて河川に戻る`,
@@ -830,7 +847,7 @@
       if (!c.strong) {
         const inc = c.core ? (R.income.coreStrongBonus ? R.income.strong : 0) : R.income.strong;
         list.push({ type: 'strengthen', cost: R.cost.strengthen,
-          gain: `戦力 +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・毎ターン資源 +${inc}・食料 +${R.food.strong}・攻撃の拠点に` });
+          gain: `戦力 +${R.strengthenPower + (c.terrain === 'mine' ? R.minePower : 0)}・毎ターン資源 +${inc}・攻撃の拠点に` });
       }
       if (!c.core && c.terrain === 'plain') {
         list.push({ type: 'develop', to: 'farm', name: '発展：農地', cost: R.cost.develop, gain: `毎ターン食料 +${R.farmFood}` });
@@ -972,13 +989,6 @@
     $('#set-diameter').onchange = e => send({ type: 'settings', diameter: Number(e.target.value) });
     $('#set-ticks').onchange = e => send({ type: 'settings', ticks: Number(e.target.value) });
     document.querySelectorAll('#set-ticks option').forEach(o => { const n = Number(o.value); if (n) o.textContent = `${n}ターン（${ticksTime(n)}）`; });
-    $('#actions').onclick = e => {
-      const b = e.target.closest('[data-act]');
-      if (!b || b.disabled) return;
-      // 生産はログに出ないので、効果音はここで鳴らす（自分にだけ聞こえる）
-      if (b.dataset.act === 'produce') window.HexSound.play('produce');
-      send({ type: 'act', action: { type: b.dataset.act } });
-    };
     // ツールチップの上でホイールを回しても、盤面を拡大・縮小する
     $('#tooltip').addEventListener('wheel', e => {
       e.preventDefault();
@@ -994,6 +1004,7 @@
       // 行動のあとも同じマスを選んだまま（続けて強化・攻撃できるように）
     };
     setInterval(tickTimers, 250);
+    setInterval(tickCountdown, 100);
     $('#players').onclick = e => {
       const b = e.target.closest('[data-forfeit]');
       if (b && confirm('この人を脱落させますか？（セルはすべて空きマスに戻ります）')) send({ type: 'forfeit', target: b.dataset.forfeit });

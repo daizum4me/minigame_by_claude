@@ -18,13 +18,13 @@
     minPlayers: 2,
     maxPlayers: 12,
     rt: {
-      tickSeconds: 20,                      // 1ターンの長さ（秒）
-      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5。拡張・強化・発展・攻撃で1使う（防御・生産は使わない）
+      tickSeconds: 30,                      // 1ターンの長さ（秒）
+      apSeconds: 5, apMax: 5, apStart: 0,   // 行動力：5秒に1回復・上限5・最初は0。拡張・強化・発展・攻撃で1使う（防御は使わない）
       defMax: 6,                            // セルの防御の上限（六角形の辺の数）
-      ticks: [[4, 28], [8, 24], [12, 20]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
-      ticksRange: [10, 80],
-      eventEvery: [4, 8],                   // イベントはターン4〜8回ごとに起き、4ターンのあいだ続く
-      eventLength: 4,
+      ticks: [[4, 18], [8, 16], [12, 14]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
+      ticksRange: [8, 40],
+      eventEvery: [4, 8],                   // イベントはターン4〜8回ごとに起き、1ターンのあいだ続く
+      eventLength: 1,
     },
     // 人数ごとの盤面の半径（直径 = 半径×2+1）。部屋の設定で変えられる
     radius: { 2: 4, 3: 4, 4: 5, 5: 6, 6: 6, 7: 7, 8: 7, 9: 8, 10: 8, 11: 8, 12: 8 },
@@ -37,18 +37,18 @@
     centerBias: 3,                      // 散らすときの出やすさ：（半径 + 1 − 中心からの距離）の3乗に比例。真ん中ほど豊か
     islandShare: 0.6,                   // 河川で区切られても、どのコアも「盤面 ÷ 人数」の 3/5 以上の広さの島を持てるようにする
     minePower: 1,                       // 鉱山マス：拡張と強化のときに戦力トークン +1
-    farmFood: 1,                        // 農地（発展で作る）：ターンごとに食料 +1（強化の +1 とは別）
+    farmFood: 2,                        // 農地（発展で作る）：ターンごとに食料 +2
     factoryPower: 1,                    // 工場（発展で作る）：ターンごとに戦力トークン +1
     forestResource: 1,                  // 森林マス：このセルがあるとターンごとに資源 +1（強化の +1 とは別）
-    startResource: 3,
+    startResource: 10,
     startPower: 2,                      // 最初に戦力トークンを2個配る
-    // 生産：資源で戦力トークンを作る（行動力を使わない・ログに出ない）。発展：自分の平原のセル（コア以外）を農地か工場に。農地にする
-    cost: { expand: 1, bridge: 3, strengthen: 2, develop: 2, produce: 2 },
+    // 発展：自分の平原のセル（コア以外）を農地か工場に。農地にする
+    cost: { expand: 2, bridge: 5, strengthen: 4, develop: 4 },
     // ターンごとの資源。強化済セル +1、コアは +2（強化済ならさらに +1）
     income: { strong: 1, core: 2, coreStrongBonus: true },
-    // 食料：ターンごとに、コア +6・強化済のセル（コアも）1つにつき +1 を作り、セル1つにつき1を食べる。
+    // 食料：ターンごとに、コア +7・農地1つにつき +2 を作り（強化では増えない）、セル1つにつき1を食べる。
     // 余りは持ち越す。足りなければ、足りない数だけ自動でセルを捨てる
-    food: { start: 0, core: 6, strong: 1, perCell: 1 },
+    food: { start: 0, core: 7, perCell: 1 },
     strengthenPower: 1,                 // 強化でもらえる戦力トークン
     // 拠点：攻撃できるのは、自分の強化済のセル（強化済のコアも）に隣接する相手のセルだけ
   };
@@ -60,7 +60,7 @@
   const neighbors = (q, r) => DIRS.map(([dq, dr]) => [q + dq, r + dr]);
 
   const TERRAIN_NAMES = { plain: '平原マス', mine: '鉱山マス', farm: '農地マス', factory: '工場マス', forest: '森林マス', river: '河川マス' };
-  // イベント（4ターンのあいだ続く）。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、ap：行動力の上限
+  // イベント（1ターンのあいだ続く）。food・res：生産の倍率（切り捨て）、riverFood：河川の隣のセル1つにつき食料（マイナスは食べる量が増える）、ap：行動力の上限
   const EVENTS = {
     famine: { name: '不作', text: '食料生産が0.5倍', food: 0.5 },
     harvest: { name: '豊作', text: '食料生産が1.5倍', food: 1.5 },
@@ -75,7 +75,7 @@
   const TERRAIN_KINDS = ['mine', 'forest'];   // 盤面を作るときに置く、効果のある地形（農地・工場は発展で作る）
   const DEVELOP_KINDS = ['farm', 'factory'];  // 発展で作れる地形
 
-  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', develop: '発展', destroy: '攻撃', produce: '生産（戦力トークン）', fortify: '防御', unfortify: '防御の解除' };
+  const ACTION_NAMES = { expand: '拡張', strengthen: '強化', develop: '発展', destroy: '攻撃', fortify: '防御', unfortify: '防御の解除' };
   // 行動力を使う行動（ほかは使わない）
   const AP_ACTIONS = ['expand', 'strengthen', 'develop', 'destroy'];
 
@@ -448,11 +448,11 @@
     return cellsOf(state, id).filter(c => c.terrain === 'factory').length * RULES.factoryPower;
   }
 
-  // ターンごとに作る食料：コア +6、強化済のセル（コアも）1つにつき +1、農地のセル1つにつき +1
+  // ターンごとに作る食料：コア +7、農地のセル1つにつき +2
   function foodMade(state, id) {
     const f = RULES.food;
     const ev = eventOf(state);
-    let n = cellsOf(state, id).reduce((k, c) => k + (c.core ? f.core : 0) + (c.strong ? f.strong : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
+    let n = cellsOf(state, id).reduce((k, c) => k + (c.core ? f.core : 0) + (c.terrain === 'farm' ? RULES.farmFood : 0), 0);
     if (ev && ev.riverFood > 0) n += riversideCells(state, id) * ev.riverFood;   // 豊漁
     return Math.floor(n * ((ev && ev.food) || 1));                               // 不作・豊作
   }
@@ -510,19 +510,13 @@
 
   /*
    * 行動を実行する。state は書き換わる。
-   * action: { type: 'expand'|'strengthen'|'destroy'|'fortify'|'unfortify', q, r } / { type: 'develop', q, r, to: 'farm'|'factory' } / { type: 'produce' }
+   * action: { type: 'expand'|'strengthen'|'destroy'|'fortify'|'unfortify', q, r } / { type: 'develop', q, r, to: 'farm'|'factory' }
    */
   function apply(state, id, action) {
     if (!action || typeof action.type !== 'string') return fail('不明な行動です');
     const blocked = actionBlocked(state, id, action.type);
     if (blocked) return fail(blocked);
     const p = playerById(state, id);
-    // 生産：資源で戦力トークンを作る。行動力を使わず、ログにも出さない
-    if (action.type === 'produce') {
-      p.resource -= RULES.cost.produce;
-      p.power += 1;
-      return { ok: true };
-    }
     const k = key(Number(action.q), Number(action.r));
     const cell = state.board[k];
     if (!cell) return fail('盤面の外です');
@@ -600,12 +594,12 @@
     return `鉱山：戦力トークン +${RULES.minePower}`;
   }
 
-  // 脱落。heir（コアを壊した人）がいれば、残りのセル（強化済・防御はそのまま）・資源・戦力・食料をまるごと受け継ぐ。
-  // いなければ（切断などで脱落させたとき）、セルは空きマスに戻り、トークンもなくなる
+  // 脱落。残りのセルは空きマスに戻る（だれのものにもならない）。
+  // heir（コアを壊した人）がいれば、資源・戦力・食料を受け継ぐ。いなければ（切断などで脱落させたとき）、トークンもなくなる
   function eliminate(state, p, heir) {
     p.alive = false;
     const cells = cellsOf(state, p.id);
-    for (const c of cells) Object.assign(c, heir ? { owner: heir.id, core: false } : { owner: null, strong: false, core: false, def: 0 });
+    for (const c of cells) Object.assign(c, { owner: null, strong: false, core: false, def: 0 });
     if (heir) {
       heir.resource += p.resource;
       heir.power += p.power;
@@ -613,7 +607,7 @@
     }
     p.resource = 0; p.power = 0; p.food = 0; p.ap = 0;
     addLog(state, heir
-      ? `💀 ${p.name} のコアが壊され、脱落。セル ${cells.length} 個とトークンはすべて ${heir.name} のものに`
+      ? `💀 ${p.name} のコアが壊され、脱落。残りのセル ${cells.length} 個は空きマスに、トークンは ${heir.name} のものに`
       : `💀 ${p.name} が脱落`, 'out');
     const alive = state.players.filter(x => x.alive);
     if (alive.length === 1) finish(state, alive, `${alive[0].name} 以外の全員が脱落`);

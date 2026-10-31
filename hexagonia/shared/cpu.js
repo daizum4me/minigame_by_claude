@@ -18,8 +18,8 @@
   // bias：行動の種類ごとの点数の上乗せ
   const LEVELS = {
     weak: { noise: 4, endBelow: 1.5, bias: {} },
-    normal: { noise: 0.6, endBelow: 0.5, bias: {} },
-    strong: { noise: 0.15, endBelow: 0.5, bias: { strengthen: 1.5, expand: -0.5 } },
+    normal: { noise: 0.6, endBelow: 0.5, bias: { strengthen: 1, expand: -0.3 } },
+    strong: { noise: 0.3, endBelow: 0.5, bias: { strengthen: 1, expand: -0.3 } },
   };
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };   // ロビーで選べる強さ
   const cellAt = (g, q, r) => g.board[E.key(q, r)];
@@ -85,7 +85,6 @@
         const c = g.board[k];
         // 強化するとターンごとの資源 +1 と戦力トークン +1。終盤は元が取れない
         let s = late ? 1 : 3.2;
-        if (foodLeft < 3) s += late ? 4 : 2;               // 強化すると食料 +1
         if (c.core) s += 2.5;
         if (c.terrain === 'mine') s += 1.2;
         if (me.power === 0 && frontier(g, id) > 0) s += 1.5;
@@ -104,8 +103,11 @@
       if (ks.length) {
         const k = ks.map(k => ({ k, f: foeNeighbors(g, id, g.board[k]) })).sort((a, b) => a.f - b.f)[0].k;
         const [q, r] = E.parseKey(k);
-        let farm = foodLeft < 0 ? 5 : foodLeft < 2 ? 3.5 : foodLeft < 4 ? 1.8 : 0.4;
+        // 農地は毎ターン食料 +2。毎ターンの収支が少ないうちから作っておくと、そのぶん広げられる
+        const foodNet = E.foodMade(g, id) - E.foodEaten(g, id);
+        let farm = foodLeft < 0 ? 5 : foodNet < 1 ? 4.2 : foodNet < 3 ? 2.8 : 0.4;
         let factory = foodLeft < 2 ? 0.5 : 4 - E.powerMade(g, id) * 0.4;   // 工場は毎ターン戦力 +1。多すぎると使いきれない
+        if (danger > 0 && me.power < 3) factory += 1;                        // コアの近くに相手がいれば、守るための戦力がほしい
         if (late) { farm -= 1.5; factory -= 2; }                              // 終盤は元が取れない
         out.push({ s: farm + noise(), a: { type: 'develop', q, r, to: 'farm' } });
         out.push({ s: factory + noise(), a: { type: 'develop', q, r, to: 'factory' } });
@@ -125,18 +127,6 @@
         if (E.dist([c.q, c.r], E.parseKey(me.core)) <= 1) s += 3;
         out.push({ s: s + noise() + (lv.bias.destroy || 0), a: { type: 'destroy', q: c.q, r: c.r } });
       }
-    }
-    if (!E.actionBlocked(g, id, 'produce')) {
-      // 生産（戦力トークン）：攻めるにも守るにも使う
-      const front = frontier(g, id) > 0;
-      let s = me.power === 0 && front ? 3.5 : me.power < 2 && front ? 1.2 : 0.1;
-      // 自分のコアの近くに相手がいれば、守るためにためる
-      if (danger > 0) s = Math.max(s, 5.5 - me.power * 1.3 + danger * 0.5);
-      else if (me.power <= 1 && g.round >= 3) s = Math.max(s, 1.8);
-      // 相手のコアの隣に拠点があるなら、コアを削りきれそうな数までためる
-      const coreFoe = foes.find(f => { const [q, r] = E.parseKey(f.core); return E.adjacentToStrong(g, id, q, r); });
-      if (coreFoe && me.power < 4) s = Math.max(s, 4);
-      out.push({ s: s + noise(), a: { type: 'produce' } });
     }
     return out;
   }
