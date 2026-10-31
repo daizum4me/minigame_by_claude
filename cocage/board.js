@@ -21,6 +21,7 @@
   const EDGE_MS = 800;         // 1本の枝が折れる時間
   const TOP_RESERVE = 46;      // 上のバー（ターン・表示切り替え）の分
   const ZOOM_MAX = 6;
+  const PAN_SLACK = 0.45;   // 縦に動かせる余白（画面の高さに対する割合）
 
   const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880' };
   const FONT = '"Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif';
@@ -53,7 +54,7 @@
       this.h = handlers || {};
       this.data = null;
       this.pan = 0;               // 横の回転（x の単位。ループ）
-      this.panY = 0;              // 縦の移動（px。拡大して盤面が縦にはみ出すときだけ）
+      this.panY = 0;              // 縦の移動（px。上下に余白ぶんまで動かせる）
       this.zoom = 1;
       this.panInit = false;
       this.k = 8;
@@ -146,13 +147,16 @@
       this.boardH = 37 * this.hu + 2 * MARGIN + LABEL_H;
       this.clipW = Math.min(this.boardW, vw);
       this.bx = Math.round((this.cw - this.clipW) / 2);
+      // 縦の移動：拡大していなくても、上下に画面の高さの PAN_SLACK ぶんまで動かせる（はみ出すときは、端からさらに同じだけ）
+      const slack = Math.round(this.availH * PAN_SLACK);
       if (this.boardH <= this.availH + 0.5) {
-        this.panY = 0;
-        this.by = this.availTop + Math.round((this.availH - this.boardH) / 2);
+        this.baseY = this.availTop + Math.round((this.availH - this.boardH) / 2);
+        this.panY = clamp(this.panY, -slack, slack);
       } else {
-        this.panY = clamp(this.panY, this.availH - this.boardH, 0);
-        this.by = this.availTop + this.panY;
+        this.baseY = this.availTop;
+        this.panY = clamp(this.panY, this.availH - this.boardH - slack, slack);
       }
+      this.by = this.baseY + this.panY;
       this.left = this.bx + MARGIN;                   // x = 0 の位置（pan を足す）
     }
 
@@ -168,10 +172,8 @@
       this.zoom = clamp(this.zoom * factor, 1, ZOOM_MAX);
       this.layout();
       this.setPan((mx - this.left) / this.k - xu);
-      if (this.boardH > this.availH + 0.5) {
-        this.panY = my - MARGIN - (36 - yu) * this.hu - this.availTop;
-        this.layout();
-      }
+      this.panY = my - MARGIN - (36 - yu) * this.hu - this.baseY;
+      this.layout();
       this.hover = null;
       this.redraw();
     }
@@ -573,10 +575,10 @@
           const tr = geo.trunks[p.trunk], color = colors[p.id];
           ctx.setLineDash([]);
           ctx.lineWidth = 2.4;
-          ctx.strokeStyle = overlay === 'normal' ? color : COL.trunkGray;
+          ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;   // 幹は明るい方の色（枝と見分けやすく）
           for (let i = 1; i <= p.trunkLen; i++) this.line(ctx, tr.edges[i], dx);
           if (!g.over && p.trunkLen < tr.edges.length - 1) {
-            ctx.strokeStyle = overlay === 'normal' ? color : COL.trunkGray;
+            ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;
             ctx.setLineDash([1.5, 6]);
             this.line(ctx, tr.edges[p.trunkLen + 1], dx);
             ctx.setLineDash([]);

@@ -13,10 +13,10 @@
 
   // noise：点数のゆらぎ（大きいほど気まぐれ）
   const LEVELS = { weak: { noise: 1.2 }, normal: { noise: 0.3 }, strong: { noise: 0.05 } };
-  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0;   // 葉を枝より優先する（枝は葉を置くための手段）
+  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0, AHEAD_W = 0.3, ATTACK = 0.8;   // 葉を枝より優先する（枝は葉を置くための手段）
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
 
-  // 葉を置いたときの価値：自分の得点の増え分 − 相手の増え分の6割。折れずに残る見込みと残りターンを掛ける
+  // 葉を置いたときの価値：自分の得点の増え分 − 相手の増え分（ATTACK 倍。相手の点を奪う手を重く見る）。折れずに残る見込みと残りターンを掛ける
   function leafValue(state, geo, me, ck, extraLeaves, surv, horizon) {
     const c = geo.cells[ck];
     const list = [];
@@ -29,11 +29,11 @@
       const d = after[i] - before[i];
       if (x.owner === me) mine += d; else others += d;
     });
-    return (mine - 0.6 * others) * horizon * surv;
+    return (mine - ATTACK * others) * horizon * surv;
   }
 
   // 保険：自分の葉がその列の一番上にあるとき、2枚目以降の葉は点にならないが、一番上が折れたときの控えになる
-  function insurance(state, geo, me, ck, extraLeaves, surv, horizon) {
+  function insurance(state, geo, me, ck, ctx, surv, horizon) {
     const c = geo.cells[ck];
     let top = null;
     for (const [k, lf] of Object.entries(state.leaves)) {
@@ -42,17 +42,30 @@
     }
     if (!top || top.owner !== me || top.r <= c.r) return 0;
     let topSurv = 0;
-    for (const ek of geo.cells[top.k].edges) if (state.edges[ek] && state.edges[ek].owner === me) topSurv = Math.max(topSurv, survival(state, geo, ek, {}, horizon));
+    for (const ek of geo.cells[top.k].edges) if (state.edges[ek] && state.edges[ek].owner === me) topSurv = Math.max(topSurv, survival(ctx, ek, 0, horizon));
     return (1 - topSurv) * horizon * 1.0 * surv;
   }
 
-  // 辺 ek の先まで残る見込み（horizon ターン）
-  function survival(state, geo, ek, pendingMeta, horizon) {
+  // 辺 ek から根本までが horizon ターン残る見込み。add：その辺から先に、さらに足す枝の数（根本ほど重くなる）
+  function survival(ctx, ek, add, horizon) {
     let s = 1;
-    const m = pendingMeta[ek];
-    if (m) s *= Math.pow(1 - E.breakProb(m.h, m.l), horizon);
-    for (let k = m ? m.parent : ek; k && state.edges[k]; k = state.edges[k].parent) s *= Math.pow(1 - E.breakProb(state.edges[k].h, state.edges[k].l), horizon);
+    for (let k = ek; k && ctx.all[k]; k = ctx.all[k].parent) s *= Math.pow(1 - E.breakProb(ctx.all[k].h, ctx.w[k] + add), horizon);
     return s;
+  }
+
+  // 新しく枝を置いたときの、その辺から根本までの見込み
+  function newEdgeSurvival(ctx, h, parent, horizon) {
+    return Math.pow(1 - E.breakProb(h, 1), horizon) * (parent ? survival(ctx, parent, 1, horizon) : 1);
+  }
+
+  // 列 c で、自分より下にある相手の一番上の葉（覆えば相手の点を奪える）
+  function opponentTopBelow(state, me, c, r) {
+    let top = null;
+    for (const [k, lf] of Object.entries(state.leaves)) {
+      const [kc, kr] = k.split(',').map(Number);
+      if (kc === c && (!top || kr > top.r)) top = { r: kr, owner: lf.owner };
+    }
+    return top && top.owner !== me && top.r < r;
   }
 
   function nextAction(state, id, rng, level) {
@@ -66,18 +79,20 @@
     const cand = E.candidates(state, id);
     const left = state.turns - state.round;
     const horizon = Math.min(left, 14), noise = () => (rng() - 0.5) * lv.noise;
-    // 計画中の枝のメタ（長さ・親）を、計画した順に積み上げる
-    const meta = {};
+    // 計画中の枝も、置いたものとして（高さ・親）積み上げる。支えている枝の数はそれも込みで数える
+    const all = {};
+    for (const [k, e] of Object.entries(state.edges)) all[k] = { h: e.h, parent: e.parent };
     const net = E.ownNet(state, geo, p);
     for (const it of p.plan) {
       if (it.t !== 'b') continue;
       const e = geo.edges[it.e];
       const ia = net.v.get(e.a), ib = net.v.get(e.b);
       const at = ia || ib, to = ia ? e.b : e.a;
-      meta[it.e] = { h: e.h, l: at.l + 1, parent: at.edge };
+      all[it.e] = { h: e.h, parent: at.edge };
       net.v.set(to, { l: at.l + 1, edge: it.e });
       net.edges.add(it.e);
     }
+    const ctx = { all, w: E.loads({ edges: all }) };
     const extraLeaves = p.plan.filter(it => it.t === 'l').map(it => it.c);
     let best = null;
     const consider = (s, a) => { if (!best || s > best.s) best = { s, a }; };
@@ -87,28 +102,37 @@
       // その葉を支える枝の中で一番残りやすいもの
       let surv = 0;
       for (const ek of geo.cells[ck].edges) {
-        if (state.edges[ek] && state.edges[ek].owner === id) surv = Math.max(surv, survival(state, geo, ek, meta, horizon / 2));
-        else if (meta[ek]) surv = Math.max(surv, survival(state, geo, ek, meta, horizon / 2));
+        if ((state.edges[ek] && state.edges[ek].owner === id) || (all[ek] && !state.edges[ek])) surv = Math.max(surv, survival(ctx, ek, 0, horizon / 2));
       }
-      const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon) * LEAF_BIAS + insurance(state, geo, id, ck, extraLeaves, surv, horizon);
+      const v = leafValue(state, geo, id, ck, extraLeaves, surv, horizon) * LEAF_BIAS + insurance(state, geo, id, ck, ctx, surv, horizon);
       consider(v + (v > 0 ? 0.3 : 0) + noise(), { type: 'addLeaf', cell: ck });
     }
-    // 枝：新しい辺に接するセルに葉を置く価値の合計（の一部）。遠く・高いほど折れやすいので割り引く。
-    // すでに自分の枝に接している（もう葉を置ける）セルは、枝を足しても増えないので数えない
+    // 枝：新しい辺に接するセルに葉を置く価値（の一部）。高い・根本が重いほど折れやすいので割り引く。
+    // すでに自分の枝に接している（もう葉を置ける）セルは、枝を足しても増えないので数えない。
+    // 攻め：その先（もう1辺）で、相手の一番上の葉を覆えるセルに届くなら、その価値も少し足す
     const reach = new Set();
     for (const ek of net.edges) for (const ck of geo.edges[ek].cells) reach.add(ck);
     for (const ek of cand.edges) {
       const e = geo.edges[ek];
-      const at = net.v.get(e.a) || net.v.get(e.b);
-      const l = at.l + 1;
-      const m = { h: e.h, l, parent: at.edge };
-      const surv = Math.pow(1 - E.breakProb(e.h, l), horizon / 2) * (m.parent ? survival(state, geo, m.parent, {}, horizon / 2) : 1);
+      const ia = net.v.has(e.a), at = net.v.get(e.a) || net.v.get(e.b), to = ia ? e.b : e.a;
+      const surv = newEdgeSurvival(ctx, e.h, at.edge, horizon / 2);
       let gain = 0;
       for (const ck of e.cells) {
         if (state.leaves[ck] || extraLeaves.includes(ck) || reach.has(ck)) continue;
         gain = Math.max(gain, leafValue(state, geo, id, ck, extraLeaves, surv, horizon));   // 同じ列の葉は1枚あれば足りるので、合計ではなく一番よいものだけ
       }
-      consider(gain * BRANCH_W + CLIMB * e.h * surv + noise() - BRANCH_COST, { type: 'addBranch', edge: ek });
+      let ahead = 0;
+      for (const ek2 of geo.verts[to].edges) {
+        if (ek2 === ek || geo.reserved.has(ek2) || state.edges[ek2] || all[ek2]) continue;
+        const e2 = geo.edges[ek2];
+        for (const ck of e2.cells) {
+          if (state.leaves[ck] || reach.has(ck) || e.cells.includes(ck)) continue;
+          const c = geo.cells[ck];
+          if (!opponentTopBelow(state, id, c.c, c.r)) continue;
+          ahead = Math.max(ahead, leafValue(state, geo, id, ck, extraLeaves, surv, horizon));
+        }
+      }
+      consider((gain + AHEAD_W * ahead) * BRANCH_W + CLIMB * e.h * surv + noise() - BRANCH_COST, { type: 'addBranch', edge: ek });
     }
     return best && best.s > 0.15 ? best.a : null;
   }

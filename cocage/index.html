@@ -7,7 +7,7 @@
 <meta name="description" content="Cocage — 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232A2A28%22/><path d=%22M50 94 L50 40 M50 62 L72 44 M50 52 L28 36%22 stroke=%22%237BD39A%22 stroke-width=%228%22 stroke-linecap=%22round%22 fill=%22none%22/><polygon points=%2250,6 70,17 70,39 50,50 30,39 30,17%22 fill=%22%237BD39A%22 fill-opacity=%22.45%22 stroke=%22%237BD39A%22 stroke-width=%225%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -149,9 +149,9 @@
       <li>同じ辺・セルを複数人が選んだら、等確率の抽選で1人だけが成功します（負けても行動力は戻りません）。選んだ人が1人なら、必ず成功します。</li>
     </ul>
     <h3>枝が折れる確率</h3>
-    <p class="formula">p = 0.05% ＋ 0.03% × 高さ ＋ 0.05% × 長さ</p>
+    <p class="formula">p = 0.05% ＋ 0.03% × 高さ ＋ 0.05% × 支える枝の数</p>
     <ul>
-      <li>高さ＝その辺の行番号、長さ＝幹から枝をたどった辺の数。毎ターン、辺ごとに独立に抽選します。幹は折れません。</li>
+      <li>高さ＝その辺の行番号、支える枝の数＝その辺と、その先にある枝の数（先端の辺は1）。<b>根本ほど重さがかかって折れやすく</b>、折れると先がまるごと消えます。毎ターン、辺ごとに独立に抽選します。幹は折れません。</li>
       <li>折れると、その辺とその先の枝・葉がすべて消えます（あとから作り直せます）。</li>
       <li>枝にカーソルを合わせると、折れやすさ・10ターン生き残る確率・失うものが見られます。上の「折れる確率」「期待損失」で、盤面全体の危険度を色で一覧できます。</li>
     </ul>
@@ -165,17 +165,17 @@
     <ul>
       <li>今置けるところは白く光ります。光っている辺をクリックすると枝、セルをクリックすると葉が、計画に加わります。</li>
       <li>計画した行動は数字つきで盤面に出ます（自分にだけ見えます）。<b>右クリック</b>で、その行動を取り消せます（行動のないところなら、いちばん新しい行動）。下のバーでも、確定したり外したりできます。「全て確定」で、残りを使わずに確定できます。</li>
-      <li>盤面は、ホイールで拡大・縮小、ドラッグで移動できます（横はループ）。スマホは、ピンチと1本指のドラッグ。「全体」で元の大きさに戻ります。</li>
+      <li>盤面は、ホイールで拡大・縮小、ドラッグで移動できます（横はループ。縦も上下に余白ぶん動かせます）。スマホは、ピンチと1本指のドラッグ。「全体」で元の大きさに戻ります。</li>
     </ul>
   </div>
   <div class="row"><button class="primary" data-close>閉じる</button></div>
 </dialog>
 
-<script src="shared/engine.js?v=2"></script>
-<script src="shared/cpu.js?v=2"></script>
-<script src="shared/room.js?v=2"></script>
-<script src="sound.js?v=2"></script>
-<script src="board.js?v=2"></script>
-<script src="client.js?v=2"></script>
+<script src="shared/engine.js?v=3"></script>
+<script src="shared/cpu.js?v=3"></script>
+<script src="shared/room.js?v=3"></script>
+<script src="sound.js?v=3"></script>
+<script src="board.js?v=3"></script>
+<script src="client.js?v=3"></script>
 </body>
 </html>

@@ -516,14 +516,14 @@
     let html = '';
     if (h.edge && g.edges[h.edge]) {
       const st = E.edgeStats(g, h.edge, 10);
-      html = edgeTip('この枝が折れる確率（毎ターン）', st.parts, st.edge.h, st.edge.l, st.survive, st.lostEdges, st.lostLeaves, null);
+      html = edgeTip('この枝が折れる確率（毎ターン）', st.parts, st.edge.h, st.survive, st.lostEdges, st.lostLeaves, null);
     } else if (h.edge) {
       html = `<div class="tt-head">幹</div><div class="tt-big">壊れません</div>`;
     } else if (h.cand && h.cand.t === 'b') {
       const me = g.players.find(p => p.id === app.me), pr = E.project(g, app.me, me.plan);
-      const e = geo.edges[h.cand.key], at = pr.net.v.get(e.a) || pr.net.v.get(e.b);
-      const parts = E.breakParts(e.h, at.l + 1);
-      html = edgeTip('この枝を置くと、折れる確率（毎ターン）', parts, e.h, at.l + 1, null, null, null, 'まだ置いていません');
+      const e = geo.edges[h.cand.key];
+      const parts = E.breakParts(e.h, 1);
+      html = edgeTip('この枝を置くと、折れる確率（毎ターン）', parts, e.h, null, null, null, 'まだ置いていません');
     } else { hideTip(); return; }
     const tip = $('#tooltip');
     tip.innerHTML = html;
@@ -537,12 +537,13 @@
     tip.style.top = Math.max(8, ty) + 'px';
   }
 
-  function edgeTip(head, parts, h, l, survive, lostEdges, lostLeaves, note) {
+  function edgeTip(head, parts, h, survive, lostEdges, lostLeaves, note) {
     const rows = [
       ['基本', pct(parts.base)],
       [`高さ（${h}行目）`, '+' + pct(parts.height)],
-      [`長さ（幹から${l}辺目）`, '+' + pct(parts.length)],
+      [`重さ（支える枝${parts.w}本）`, '+' + pct(parts.load)],
     ];
+    if (survive == null) rows.push(['根本側の枝', '支える枝が1本ずつ増える']);
     if (survive != null) rows.push(['10ターン残る確率', pct(survive, 0)], ['折れると失う', `枝${lostEdges}・葉${lostLeaves}`]);
     return `<div class="tt-head">${head}</div><div class="tt-big">${pct(parts.p)}${note ? `<small>${note}</small>` : ''}</div>`
       + `<dl class="tt-rows">${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;

@@ -53,7 +53,7 @@ test('頂点には辺が3本ずつ集まり（上下の端を除く）、幹の�
   assert.strictEqual(geo.reserved.size, 72);
 });
 
-test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×長さ。長さ8・高さ9の先端の葉は10ターン生き残る確率が約65%', () => {
+test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×支えている枝の数。根本ほど折れやすい。長さ8・高さ9の先端の葉は10ターン生き残る確率が約65%', () => {
   assert.ok(Math.abs(E.breakProb(9, 8) - 0.0072) < 1e-12);
   assert.ok(Math.abs(E.breakProb(1, 1) - 0.0013) < 1e-12);
   const g = newGame(2);
@@ -61,7 +61,10 @@ test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×長さ。長さ8・�
   for (let l = 1; l <= 8; l++) { const k = 'e' + l; g.edges[k] = { owner: 'a', from: 'x', to: 'y', parent, l, h: 9, round: 0 }; parent = k; }
   const st = E.edgeStats(g, 'e8', 10);
   assert.ok(Math.abs(st.survive - 0.65) < 0.02, `生存率 ${st.survive}`);
-  assert.deepStrictEqual([st.lostEdges, st.p], [1, 0.0072]);
+  assert.ok(Math.abs(st.p - 0.0037) < 1e-12);                       // 先端は自分だけを支える（1本）
+  assert.strictEqual(E.edgeStats(g, 'e1', 10).parts.w, 8);           // 根本は8本を支える
+  assert.ok(Math.abs(E.edgeStats(g, 'e1', 10).p - 0.0072) < 1e-12);
+  assert.deepStrictEqual(E.loads(g), { e1: 8, e2: 7, e3: 6, e4: 5, e5: 4, e6: 3, e7: 2, e8: 1 });
 });
 
 test('幹の成長：最初から1辺伸びていて、毎ターン1辺ずつ伸びる。最上部に達したら止まり、ゲームが終わる', () => {
@@ -311,7 +314,7 @@ test('枝の折れやすさ：確率・内訳・失うもの', () => {
   g.edges['e1'] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 4, round: 0 };
   g.edges['e2'] = { owner: 'a', from: 'y', to: 'z', parent: 'e1', l: 2, h: 5, round: 0 };
   const st = E.edgeStats(g, 'e1', 10);
-  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0005)) < 1e-12);
+  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0005 * 2)) < 1e-12);   // e1 は e1・e2 の2本を支える
   assert.deepStrictEqual([st.lostEdges, st.parts.base], [2, 0.0005]);
   assert.deepStrictEqual(E.subtree(g, 'e1').sort(), ['e1', 'e2']);
   assert.deepStrictEqual(E.pathTo(g, 'e2'), ['e2', 'e1']);

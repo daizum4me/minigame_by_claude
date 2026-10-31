@@ -30,8 +30,9 @@
     turns: 36,
     ap: 3,                   // 行動力：毎ターン全員3（繰越しなし）
     turnSeconds: 90,
-    // 枝の折れる確率（毎ターン・辺ごと）p = base + height×h + length×l
-    break: { base: 0.0005, height: 0.0003, length: 0.0005 },
+    // 枝の折れる確率（毎ターン・辺ごと）p = base + height×h + load×w
+    //   w：その辺が支えている枝の数（その辺と、その先の枝すべて）。根本ほど重さがかかって折れやすい
+    break: { base: 0.0005, height: 0.0003, load: 0.0005 },
     // 得点：一番上の葉は 1 + min(3, 下にある他人の葉の数)。一番上でない葉は、上に他人の葉があれば 0.3
     score: { top: 1, bonusMax: 3, covered: 0.3 },
     trunkStart: 1,           // 最初から伸びている幹の辺の数（そこから毎ターン1辺ずつ伸びる）
@@ -100,15 +101,29 @@
 
   // ---------- 折れる確率 ----------
 
-  // h：辺の高さ（行番号 1〜18）、l：幹から枝をたどった辺の数（幹につながる最初の辺が 1）
-  function breakProb(h, l) {
+  // h：辺の高さ（行番号 1〜18）、w：その辺が支えている枝の数（その辺を含む。先端の辺は 1）
+  function breakProb(h, w) {
     const b = RULES.break;
-    return b.base + b.height * h + b.length * l;
+    return b.base + b.height * h + b.load * w;
   }
 
-  function breakParts(h, l) {
+  function breakParts(h, w) {
     const b = RULES.break;
-    return { base: b.base, height: b.height * h, length: b.length * l, p: breakProb(h, l) };
+    return { base: b.base, height: b.height * h, load: b.load * w, w, p: breakProb(h, w) };
+  }
+
+  // 辺キー → その辺が支えている枝の数（その辺と子孫の辺の数）
+  function loads(state) {
+    const kids = {}, out = {};
+    for (const [k, e] of Object.entries(state.edges)) if (e.parent) (kids[e.parent] = kids[e.parent] || []).push(k);
+    const count = k => {
+      if (out[k]) return out[k];
+      let n = 1;
+      for (const c of kids[k] || []) n += count(c);
+      return (out[k] = n);
+    };
+    for (const k of Object.keys(state.edges)) count(k);
+    return out;
   }
 
   // ---------- ゲームの作成 ----------
@@ -356,9 +371,10 @@
     const e = state.edges[ek];
     if (!e) return null;
     const geo = geometry(state.cols);
-    const parts = breakParts(e.h, e.l);
+    const w = loads(state);
+    const parts = breakParts(e.h, w[ek]);
     let survive = 1;
-    for (const k of pathTo(state, ek)) survive *= Math.pow(1 - breakProb(state.edges[k].h, state.edges[k].l), horizon || 10);
+    for (const k of pathTo(state, ek)) survive *= Math.pow(1 - breakProb(state.edges[k].h, w[k]), horizon || 10);
     const lost = subtree(state, ek), gone = new Set(lost);
     let lostLeaves = 0;
     for (const [ck, lf] of Object.entries(state.leaves)) {
@@ -417,8 +433,8 @@
     for (const p of state.players) if (p.trunkLen < RULES.rows * 2) p.trunkLen++;
 
     // 3. 折れ判定：すべての枝の辺を、1本ずつ独立に抽選。折れたら、その辺とその先の枝・葉が消える
-    const brokenNow = [];
-    for (const [ek, e] of Object.entries(state.edges)) if (rng() < breakProb(e.h, e.l)) brokenNow.push(ek);
+    const brokenNow = [], w = loads(state);
+    for (const [ek, e] of Object.entries(state.edges)) if (rng() < breakProb(e.h, w[ek])) brokenNow.push(ek);
     const goneEdges = new Set();
     for (const ek of brokenNow) for (const k of subtree(state, ek)) goneEdges.add(k);
     for (const k of goneEdges) {
@@ -464,7 +480,7 @@
   const allFinished = (state, skip) => state.players.every(p => p.finished || (skip && skip(p.id)));
 
   return {
-    RULES, geometry, breakProb, breakParts, createGame, apply, project, candidates,
+    RULES, geometry, breakProb, breakParts, loads, createGame, apply, project, candidates,
     resolveTurn, scoreColumn, scoreBoard, edgeStats, subtree, pathTo, ownNet, allFinished,
     playerById, edgeKeyOf,
   };
