@@ -249,8 +249,9 @@ test('行動完了：人間の全員が押したら、待たずに次のター�
   assert.deepStrictEqual(last(g).room.readyIds.sort(), [h, cpu].sort());
   room.handle(g, { type: 'act', action: { type: 'ready' } });
   assert.strictEqual(gm.round, 1);                                   // すぐ次のターンへ
-  // 飛ばした18秒のぶん、行動力が回復する（5秒ごと：15・20・25・30秒の4回。回復のタイマーはテストでは動かしていない）
+  // 飛ばした18秒のぶん、行動力の回復も進む（予定より遅れていた5秒目の1回＋15秒ぶんの3回。残りの3秒は次の回復までの時間を縮める）
   assert.deepStrictEqual(gm.players.map(p => p.ap), [4, 4, 4]);
+  assert.strictEqual(last(h).room.regenLeftMs, 2000);                // 5秒に満たない端数（3秒）は、次の回復までの残りを縮める
   assert.ok(gm.log.some(l => l.text.includes('全員が行動完了')));
   assert.deepStrictEqual(last(h).room.readyIds, [cpu]);              // 印は外れる
   assert.strictEqual(last(h).room.tickLeftMs, 30000);                // 次のターンの時間は数え直し

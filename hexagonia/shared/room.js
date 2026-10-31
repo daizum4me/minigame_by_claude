@@ -268,11 +268,16 @@
       const humans = g.players.filter(p => p.alive && !(this.player(p.id) || {}).cpu && (this.player(p.id) || {}).connected);
       if (!humans.length || !humans.every(p => p.ready)) return;
       this.note('全員が行動完了したので、次のターンへ');
-      // 飛ばした時間のぶん、行動力も回復させる（このターンの終わりまでに来るはずだった回復の回数）
+      // 飛ばした時間のぶん、行動力の回復も進める（秒単位）。回復の時刻を飛ばした時間だけ前に寄せ、
+      // 途中で来るはずだった回復はまとめて行い、5秒に満たない端数は次の回復までの残り時間を縮める
       const now = this.now(), step = E.RULES.rt.apSeconds * 1000;
-      let t = this.regenDeadline;
-      while (t <= now) t += step;
-      for (; t <= this.tickDeadline; t += step) E.rtRegen(g);
+      let skip = Math.max(0, this.tickDeadline - now);
+      let left = Math.max(0, this.regenDeadline - now);   // 次の回復までの残り
+      while (skip >= left) { E.rtRegen(g); skip -= left; left = step; }
+      left -= skip;
+      this.stop('rtRegen');
+      this.regenDeadline = now + left;
+      this.timer('rtRegen', () => { E.rtRegen(this.game); this.changed(); }, left);
       this.stop('rtTick');
       E.rtTick(g, this.rng);
       // checkTimers が次のターンのタイマーをかけ直す

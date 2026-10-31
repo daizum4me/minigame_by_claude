@@ -13,13 +13,16 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // ゲームのバージョン。ちがうバージョンどうしでは対戦できない（参加のときにホストが確かめる）
+  const VERSION = '1.0';
+
   // ルールの数値はすべてここ
   const RULES = {
     minPlayers: 2,
     maxPlayers: 12,
     rt: {
       tickSeconds: 30,                      // 1ターンの長さ（秒）
-      apSeconds: 5, apMax: 5, apStart: 0,   // 行動力：5秒に1回復・上限5・最初は0。拡張・強化・発展・攻撃で1使う（防御は使わない）
+      apSeconds: 5, apMax: 5, apStart: 3,   // 行動力：5秒に1回復・上限5・最初は3。拡張・強化・発展・攻撃で1使う（防御は使わない）
       defMax: 6,                            // セルの防御の上限（六角形の辺の数）
       ticks: [[4, 18], [8, 16], [12, 14]],  // ターンの回数（[この人数まで, 回数]）。部屋の設定で変えられる
       ticksRange: [8, 40],
@@ -681,7 +684,7 @@
   }
 
   return {
-    RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, DEVELOP_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
+    VERSION, RULES, DIRS, TERRAIN_NAMES, TERRAIN_KINDS, DEVELOP_KINDS, ACTION_NAMES, EVENTS, AP_ACTIONS,
     key, parseKey, dist, neighbors, ring, corePositions, generateBoard,
     createGame, apply, targets, actionBlocked, income, expandCost, cellsOf, forfeit,
     adjacentToStrong, autoTicks, rtTick, rtRegen, apMax, largestGroup, suggestAbandon, foodMade, foodEaten, powerMade, riversideCells,
