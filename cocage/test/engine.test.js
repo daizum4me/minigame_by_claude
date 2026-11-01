@@ -342,3 +342,91 @@ test('枝の折れやすさ：確率・内訳・失うもの', () => {
   assert.deepStrictEqual(E.pathTo(g, 'e2'), ['e2', 'e1']);
   assert.strictEqual(E.edgeStats(g, 'nope'), null);
 });
+
+// ---------- 落雷 ----------
+
+// a の一本道の枝（辺 e1〜e5。親子つながり）を作る。heights は辺ごとの高さ
+function chain(g, owner, heights, prefix) {
+  const keys = [];
+  heights.forEach((h, i) => {
+    const k = (prefix || 'e') + (i + 1);
+    g.edges[k] = { owner, from: 'x' + i, to: 'x' + (i + 1), parent: i ? keys[i - 1] : null, l: i + 1, h, round: 0 };
+    keys.push(k);
+  });
+  return keys;
+}
+
+test('落雷：ゲームのはじめに、決まった範囲の中から3回分のターンが決まる（昇順）。範囲外の指定や短いゲームも扱える', () => {
+  for (let seed = 0; seed < 30; seed++) {
+    let s = seed * 7919 + 1;
+    const rng = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    const g = E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], rng);
+    assert.strictEqual(g.lightning.length, 3);
+    E.RULES.lightning.windows.forEach(([lo, hi], i) => assert.ok(g.lightning[i] >= lo && g.lightning[i] <= hi, `${g.lightning} / ${lo}-${hi}`));
+  }
+  const short = E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], () => 0.5, { turns: 10 });
+  assert.deepStrictEqual(short.lightning, [9]);     // 10ターンのゲーム：1つめの範囲(8〜13)は8〜10に切り詰め、残りの範囲は使わない
+  assert.deepStrictEqual(E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], () => 0.5, { lightning: [3] }).lightning, [3]);
+});
+
+test('落雷：あと何ターンか・予告（3ターン前から）', () => {
+  const g = newGame(2);
+  g.lightning = [5, 12];
+  assert.deepStrictEqual([E.lightningLeft(g), E.lightningWarned(g)], [5, false]);
+  g.round = 2;
+  assert.deepStrictEqual([E.lightningLeft(g), E.lightningWarned(g)], [3, true]);
+  g.round = 4;
+  assert.strictEqual(E.lightningLeft(g), 1);                                // このターンの終わりに落ちる
+  g.round = 5;
+  assert.deepStrictEqual([E.lightningLeft(g), E.lightningWarned(g)], [7, false]);   // 次は12ターン目
+  g.round = 12;
+  assert.strictEqual(E.lightningLeft(g), null);
+});
+
+test('落雷：いちばん高い枝に落ちて、先端から3本ぶん根元側の辺が折れる。その先の枝・葉も消え、傷あとが残る', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  g.lightning = [1];
+  const a = chain(g, 'a', [3, 4, 5, 6, 7]);            // 先端 a5 が盤面でいちばん高い（7行目）
+  const b = chain(g, 'b', [2, 3, 4], 'f');
+  // 別の（自分の）枝を土台にする葉：先端が折れても残る
+  const leafCell = Object.keys(geo.cells)[200];
+  g.edges[geo.cells[leafCell].edges[0]] = { owner: 'a', from: 'y', to: 'z', parent: null, l: 1, h: 1, round: 0 };
+  g.leaves[leafCell] = { owner: 'a', round: 0 };
+  assert.deepStrictEqual(E.highestEdges(g), { h: 7, edges: [a[4]] });
+  const info = E.resolveTurn(g, NEVER);
+  assert.strictEqual(info.lightning.tip, a[4]);
+  assert.strictEqual(info.lightning.edge, a[2]);              // 先端から数えて3本目
+  assert.strictEqual(info.lightning.owner, 'a');
+  assert.deepStrictEqual(info.broken, [a[2]]);
+  assert.ok(g.edges[a[0]] && g.edges[a[1]] && !g.edges[a[2]] && !g.edges[a[3]] && !g.edges[a[4]]);
+  assert.ok(b.every(k => g.edges[k]), 'ほかの人の枝は無事');
+  assert.ok(g.leaves[leafCell], '土台が別にある葉は残る');
+  // 傷あと：折れた辺の根元の頂点
+  assert.deepStrictEqual(g.scars['x2'], { owner: 'a', until: 1 + E.RULES.scarTurns });
+  // 落雷は1回きり：次のターンは落ちない
+  g.lightning = [1];
+  assert.strictEqual(E.resolveTurn(g, NEVER).lightning, null);
+});
+
+test('落雷：枝が3本より短いときは根元の辺が折れる。同じ高さが並んだら抽選。枝がなければ何も起きない。無効にもできる', () => {
+  const g = newGame(2);
+  g.lightning = [1];
+  assert.strictEqual(E.resolveTurn(g, NEVER).lightning, null);          // 枝がひとつもない
+  const a = chain(g, 'a', [5, 6]);                                       // 2本だけ
+  const b = chain(g, 'b', [6], 'f');                                     // a2 と b1 が同じ高さ 6
+  g.lightning = [2];
+  let n = 0;
+  const total = Object.keys(g.edges).length;
+  const info = E.resolveTurn(g, () => (n++ < total ? 0.9999 : 0));       // 折れ判定は起きず、同じ高さの抽選は先頭（a2）
+  assert.strictEqual(info.lightning.tip, a[1]);
+  assert.strictEqual(info.lightning.edge, a[0]);                         // 枝が2本なので、いちばん根元（a1）
+  assert.ok(!g.edges[a[0]] && !g.edges[a[1]] && g.edges[b[0]]);
+  // 無効
+  const h = newGame(2); chain(h, 'a', [5, 6]); h.lightning = [1];
+  E.RULES.lightning.enabled = false;
+  try {
+    assert.strictEqual(E.resolveTurn(h, NEVER).lightning, null);
+    assert.ok(h.edges['e1'] && h.edges['e2'], '無効のときは何も折れない');
+    assert.deepStrictEqual(E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], () => 0.5).lightning, []);
+  } finally { E.RULES.lightning.enabled = true; }
+});

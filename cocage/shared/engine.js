@@ -35,6 +35,10 @@
     break: { base: 0.0005, height: 0.0003, load: 0.0015 },
     // 得点：一番上の葉は 1 + min(3, 下にある他人の葉の数) + 0.1 × 行番号。一番上でない葉は、上に他人の葉があれば 0.3
     score: { top: 1, bonusMax: 3, covered: 0.3, height: 0.1 },   // height：一番上の葉に 0.1 × 行番号（1〜18）を足す
+    // 落雷：決まったターンの終わりに、盤面でいちばん高い枝（辺の高さが最大。同じなら抽選）に雷が落ちる。
+    //   その辺から根元へ reach 本ぶん（先端から数えて reach 本目の辺）が折れ、その先の枝・葉も消える（傷あとも残る）。
+    //   落雷のターンは、ゲームのはじめにそれぞれの範囲 windows の中から決まり、warn ターン前から予告される。
+    lightning: { enabled: true, windows: [[8, 13], [18, 24], [28, 33]], warn: 3, reach: 3 },
     scarTurns: 3,            // 傷あと：枝が折れた根元の頂点からは、その持ち主は次の3ターン枝を伸ばせない
     trunkStart: 1,           // 最初から伸びている幹の辺の数（そこから毎ターン1辺ずつ伸びる）
     leafOnTrunk: false,      // 幹に接するだけのセルに葉を置けるか（仕様では「自分の枝に接するセル」なので false）
@@ -127,6 +131,42 @@
     return out;
   }
 
+  // ---------- 落雷 ----------
+
+  // 落雷のターン（昇順）を、ゲームのはじめに決める。turns を超える範囲は切り詰める
+  function makeLightning(rng, turns) {
+    const out = [];
+    if (!RULES.lightning.enabled) return out;
+    for (const [lo, hi0] of RULES.lightning.windows) {
+      const hi = Math.min(hi0, turns);
+      if (lo > hi) continue;
+      out.push(lo + Math.floor((rng || Math.random)() * (hi - lo + 1)));
+    }
+    return out;
+  }
+
+  // 次の落雷まであと何ターンの行動か（今ターンの終わりなら 1）。もうなければ null
+  function lightningLeft(state) {
+    if (!RULES.lightning.enabled || state.over) return null;
+    const next = (state.lightning || []).find(t => t > state.round);
+    return next === undefined ? null : next - state.round;
+  }
+
+  // 予告されているか（落雷まで warn ターン以内）
+  function lightningWarned(state) {
+    const left = lightningLeft(state);
+    return left !== null && left <= RULES.lightning.warn;
+  }
+
+  // いちばん高い枝（辺の高さが最大のもの）のキーの一覧と、その高さ
+  function highestEdges(state) {
+    let h = 0, edges = [];
+    for (const [k, e] of Object.entries(state.edges)) {
+      if (e.h > h) { h = e.h; edges = [k]; } else if (e.h === h) edges.push(k);
+    }
+    return { h, edges };
+  }
+
   // ---------- ゲームの作成 ----------
 
   function createGame(players, rng, opts) {
@@ -151,6 +191,7 @@
       edges: {},              // 辺キー → { owner, from, to, parent, l, h, round }（幹は含まない）
       leaves: {},             // セルキー → { owner, round }
       top: {},                // 列 → 一番上の葉の持ち主（入れ替わりを数えるため）
+      lightning: opts.lightning || makeLightning(rng, turns),   // 落雷のターン（昇順）
       scars: {},              // 頂点キー → { owner, until }：傷あと。state.round < until のあいだ、持ち主はそこから枝を伸ばせない
       lastTurn: null,         // 直前のターンに起きたこと
     };
@@ -445,6 +486,18 @@
     // 3. 折れ判定：すべての枝の辺を、1本ずつ独立に抽選。折れたら、その辺とその先の枝・葉が消える
     const brokenNow = [], w = loads(state);
     for (const [ek, e] of Object.entries(state.edges)) if (rng() < breakProb(e.h, w[ek])) brokenNow.push(ek);
+    // 落雷：いちばん高い枝の先から、reach 本ぶん根元側の辺が折れる
+    info.lightning = null;
+    if (RULES.lightning.enabled && (state.lightning || []).includes(turn)) {
+      const top = highestEdges(state);
+      if (top.edges.length) {
+        const tip = top.edges[Math.floor(rng() * top.edges.length)];
+        const path = pathTo(state, tip);
+        const hit = path[Math.min(RULES.lightning.reach, path.length) - 1];
+        info.lightning = { tip, edge: hit, owner: state.edges[tip].owner, h: top.h };
+        if (!brokenNow.includes(hit)) brokenNow.push(hit);
+      }
+    }
     const goneEdges = new Set();
     for (const ek of brokenNow) for (const k of subtree(state, ek)) goneEdges.add(k);
     const brokenMeta = brokenNow.map(ek => ({ owner: state.edges[ek].owner, from: state.edges[ek].from, parent: state.edges[ek].parent }));
@@ -502,7 +555,7 @@
   const allFinished = (state, skip) => state.players.every(p => p.finished || (skip && skip(p.id)));
 
   return {
-    RULES, geometry, breakProb, breakParts, loads, createGame, apply, project, candidates,
+    RULES, geometry, breakProb, breakParts, loads, lightningLeft, lightningWarned, highestEdges, createGame, apply, project, candidates,
     resolveTurn, scoreColumn, scoreBoard, edgeStats, subtree, pathTo, ownNet, allFinished,
     playerById, edgeKeyOf,
   };

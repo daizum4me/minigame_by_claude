@@ -205,6 +205,14 @@
     breakFlash:   (t, o) => { grain(t, { f: 3200, q: 1.2, dur: 0.14, vol: 0.08 * o.vol, send: 0.4 }); creak(t, { vol: 0.07 * o.vol, dur: 0.2 }); },
     snap:         (t, o) => snap(t, { vol: 0.34 * o.vol }),
     label:        (t, o) => thud(t, { f: 110, vol: 0.24 * o.vol, dur: 0.16 }),
+    // 落雷：鋭いひび割れ → 低いごろごろ
+    thunder:      (t, o) => {
+      grain(t, { f: 2600, q: 0.5, dur: 0.05, vol: 0.4 * o.vol, type: 'highpass', send: 0.5 });
+      grain(t + 0.01, { f: 900, q: 0.6, dur: 0.2, vol: 0.22 * o.vol, type: 'bandpass', send: 0.5 });
+      thud(t + 0.05, { f: 55, vol: 0.34 * o.vol, dur: 0.5 });
+      thud(t + 0.3, { f: 70, vol: 0.18 * o.vol, dur: 0.6 });
+      wind(t + 0.1, { dur: 0.9, vol: 0.06 * o.vol, f0: 300, f1: 120, leaves: 0 });
+    },
     fall:         (t, o) => { for (let i = 0; i < 3; i++) wood(t + i * rand(0.05, 0.11), { f: rand(1700, 3300), vol: 0.07 * o.vol, decay: 0.03, ratios: [1, 2.9], gains: [1, 0.4] }); },
     leafGone:     (t, o) => crinkle(t, { dur: 0.32, n: 9, lo: 1500, hi: 5000, vol: 0.09 * o.vol, decay: 0.014 }),
     // ゲームの流れ

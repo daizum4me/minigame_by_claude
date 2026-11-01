@@ -23,7 +23,7 @@
   const ZOOM_MAX = 6;
   const PAN_SLACK = 0.45;   // 縦に動かせる余白（画面の高さに対する割合）
 
-  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880', dim: '#77756D' };   // dim：折れる確率の表示で、自分の幹と枝以外をこの灰色にする
+  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880', dim: '#77756D', bolt: '#FFE27A' };   // dim：折れる確率の表示で、自分の幹と枝以外をこの灰色にする
   const FONT = '"Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif';
 
   const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
@@ -413,7 +413,29 @@
     }
 
     // 枝が折れる演出：t = 折れ始めてからの時間（ms）。折れた枝はかけらになって落ち、折れた場所に×と「折れた！」が出る
+    // 稲妻：盤の上から、落ちた枝の先まで、ぎざぎざの光（t は折れる演出の開始からの ms）
+    drawBolt(ctx, dx, t) {
+      const lt = this.data.game.lastTurn, S = this.S;
+      if (!lt || !lt.lightning || t < 0 || t > 520) return;
+      const [x1, y1, x2, y2] = this.edgePts(lt.lightning.tip, dx);
+      const tx = (x1 + x2) / 2, ty = (y1 + y2) / 2, top = Math.max(0, this.by);
+      const n = 9, pts = [[tx + (rnd(lt.lightning.tip, 1) - 0.5) * S * 3, top]];
+      for (let i = 1; i < n; i++) pts.push([tx + (rnd(lt.lightning.tip, i + 2) - 0.5) * S * 3 * (1 - i / n), top + (ty - top) * i / n]);
+      pts.push([tx, ty]);
+      const a = t < 120 ? 1 : Math.max(0, 1 - (t - 120) / 400);
+      ctx.save();
+      ctx.setLineDash([]); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.globalAlpha = a;
+      ctx.shadowColor = COL.bolt; ctx.shadowBlur = S * 1.6;
+      for (const [w, c] of [[S * 0.5, 'rgba(255,226,122,0.35)'], [S * 0.18, '#FFFFFF']]) {
+        ctx.strokeStyle = c; ctx.lineWidth = Math.max(2, w);
+        ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     drawBreak(ctx, dx, t, colors, inView) {
+      this.drawBolt(ctx, dx, t);
       const lt = this.data.game.lastTurn, S = this.S;
       const base = Math.min(...lt.removed.map(r => r.l), 99);
       for (const r of lt.removed) {
@@ -595,6 +617,28 @@
           this.line(ctx, ek, dx);
         }
 
+        // 落雷の予告：いちばん高い枝（雷が落ちるところ）に⚡の印
+        if (E.lightningWarned(g) && !(fresh && phase !== 'static')) {
+          const top = E.highestEdges(g);
+          for (const ek of top.edges) {
+            const [x1, y1, x2, y2] = this.edgePts(ek, dx);
+            const x = (x1 + x2) / 2, y = (y1 + y2) / 2;
+            if (!inView(x) || !inViewY(y)) continue;
+            const R = Math.max(6, S * 0.36);
+            ctx.save();
+            ctx.setLineDash([]);
+            ctx.shadowColor = COL.bolt; ctx.shadowBlur = R * 1.2;
+            ctx.strokeStyle = COL.bolt; ctx.lineWidth = 2;
+            ctx.fillStyle = 'rgba(31,31,29,0.85)';
+            ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = COL.bolt; ctx.font = `800 ${Math.round(R * 1.25)}px ${FONT}`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('⚡', x, y + R * 0.06);
+            ctx.restore();
+          }
+        }
+
         // 傷あと：折れた根元の頂点。持ち主はあと何ターンそこから枝を伸ばせないか（折れる演出が終わってから出す）
         if (g.scars && !(fresh && phase === 'pre')) {
           for (const [vk, sc] of Object.entries(g.scars)) {
@@ -715,6 +759,14 @@
           const nm = Array.from(p.name).slice(0, 7).join('');
           ctx.fillText(`P${p.trunk + 1} ${nm}`, x, this.by + MARGIN + 37 * this.hu + LABEL_H * 0.55);
         });
+      }
+      // 落雷のフラッシュ（盤全体がぱっと白くなる）
+      if (phase === 'anim' && lt && lt.lightning && bt < 360) {
+        ctx.save();
+        ctx.globalAlpha = (bt < 60 ? bt / 60 : 1 - (bt - 60) / 300) * 0.5;
+        ctx.fillStyle = '#FFF6D0';
+        ctx.fillRect(this.bx, this.by, this.clipW, this.boardH);
+        ctx.restore();
       }
       ctx.restore();
       // 演出が残っているあいだは描き続ける

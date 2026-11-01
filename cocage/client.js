@@ -424,6 +424,12 @@
 
     // 上のバーとオーバーレイ
     $('#hud-round').textContent = g.over ? '終了' : `${g.round + 1} / ${g.turns}`;
+    // 落雷の予告：あと何ターンか（3ターン前から）
+    const boltLeft = E.lightningWarned(g) ? E.lightningLeft(g) : null;
+    const boltPill = $('#hud-bolt');
+    boltPill.hidden = boltLeft === null;
+    boltPill.classList.toggle('now', boltLeft === 1);
+    boltPill.textContent = boltLeft === null ? '' : boltLeft === 1 ? '⚡ このターンの終わりに落雷' : `⚡ あと${boltLeft}ターンで落雷`;
     document.querySelectorAll('[data-overlay]').forEach(b => b.classList.toggle('on', b.dataset.overlay === app.overlay));
     $('#overlay-legend').hidden = app.overlay === 'normal';
     $('#overlay-note').textContent = '自分の枝の毎ターンの折れる確率（自分の枝の中で相対）。ほかは灰色';
@@ -492,6 +498,7 @@
     $('#events').innerHTML = `<li class="muted">ターン${lt.turn}の結果</li>`
       + li(lt.placedBranches + lt.placedLeaves, '成功した行動', `枝${lt.placedBranches}・葉${lt.placedLeaves}`)
       + li(lt.contested, '抽選になった場所', lt.lost.length ? `負けた行動 ${lt.lost.length}` : '')
+      + (lt.lightning ? li('⚡', '落雷', `${lt.lightning.h}行目の${(g.players.find(p => p.id === lt.lightning.owner) || {}).name || ''}の枝に落ちた（失った枝${lt.removed.length}・葉${lt.removedLeaves}）`) : '')
       + li(primary, '折れた枝', primary ? `失った枝${lt.removed.length}・葉${lt.removedLeaves}` : '')
       + li(lt.topChanges, '一番上の入れ替わり');
   }
@@ -617,6 +624,8 @@
     }
     if (up) S.play('topUp', { delay: 0.75 });
     if (down) S.play('topDown', { delay: 0.8 });
+    // 落雷（盤面の演出に合わせて、数字がこぼれたあと。折れる音より少し前）
+    if (lt.lightning) S.play('thunder', { delay: window.CocageBoard.PART_MS / 1000 - 0.02 });
     // 枝が折れる（盤面の演出に合わせて、数字がこぼれたあと）
     const leaves = lt.removedLeafList || [];
     if (lt.removed.length || leaves.length) {

@@ -13,7 +13,7 @@
 
   // noise：点数のゆらぎ（大きいほど気まぐれ）
   const LEVELS = { weak: { noise: 1.2 }, normal: { noise: 0.3 }, strong: { noise: 0.05 } };
-  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0, AHEAD_W = 0.3, ATTACK = 0.8;   // 葉を枝より優先する（枝は葉を置くための手段）
+  const LEAF_BIAS = 1.8, BRANCH_W = 0.3, CLIMB = 0.03, BRANCH_COST = 0, AHEAD_W = 0.3, ATTACK = 0.8, LIGHTNING_PEN = 4;   // 葉を枝より優先する（枝は葉を置くための手段）
   const LEVEL_NAMES = { weak: 'よわい', normal: 'ふつう', strong: 'つよい' };
 
   // 葉を置いたときの価値：自分の得点の増え分 − 相手の増え分（ATTACK 倍。相手の点を奪う手を重く見る）。折れずに残る見込みと残りターンを掛ける
@@ -112,6 +112,11 @@
     // 攻め：その先（もう1辺）で、相手の一番上の葉を覆えるセルに届くなら、その価値も少し足す
     const reach = new Set();
     for (const ek of net.edges) for (const ck of geo.edges[ek].cells) reach.add(ck);
+    // 落雷が近いとき（このターンの終わり・次のターン）は、盤面でいちばん高い枝になる（同じ高さに並ぶ）枝を避ける
+    const boltIn = E.lightningLeft(state);
+    const danger = boltIn === 1 ? 1 : boltIn === 2 ? 0.6 : 0;
+    let maxH = danger ? E.highestEdges(state).h : 0;
+    if (danger) for (const it of p.plan) if (it.t === 'b') maxH = Math.max(maxH, geo.edges[it.e].h);
     for (const ek of cand.edges) {
       const e = geo.edges[ek];
       const ia = net.v.has(e.a), at = net.v.get(e.a) || net.v.get(e.b), to = ia ? e.b : e.a;
@@ -132,7 +137,8 @@
           ahead = Math.max(ahead, leafValue(state, geo, id, ck, extraLeaves, surv, horizon));
         }
       }
-      consider((gain + AHEAD_W * ahead) * BRANCH_W + CLIMB * e.h * surv + noise() - BRANCH_COST, { type: 'addBranch', edge: ek });
+      const bolt = danger && e.h >= maxH ? LIGHTNING_PEN * danger : 0;
+      consider((gain + AHEAD_W * ahead) * BRANCH_W + CLIMB * e.h * surv + noise() - BRANCH_COST - bolt, { type: 'addBranch', edge: ek });
     }
     return best && best.s > 0.15 ? best.a : null;
   }

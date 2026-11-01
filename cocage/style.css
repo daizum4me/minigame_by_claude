@@ -99,6 +99,8 @@ h3 { font-size: 13px; color: var(--muted); font-weight: 650; margin: 16px 0 8px;
 #board:active { cursor: grabbing; }
 .hud { position: absolute; top: 10px; left: 10px; z-index: 3; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; max-width: calc(100% - 150px); }
 .pill { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 999px; padding: 4px 14px; white-space: nowrap; }
+.pill.bolt { border-color: #FFE27A; color: #FFE27A; font-weight: 700; }
+.pill.bolt.now { background: rgba(255, 226, 122, 0.18); }
 .seg { display: inline-flex; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 999px; padding: 2px; }
 .seg button { border: none; background: none; border-radius: 999px; padding: 3px 12px; font-size: 13px; color: var(--muted); }
 .seg button.on { background: rgba(255, 255, 255, 0.13); color: var(--text); }

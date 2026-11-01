@@ -7,7 +7,7 @@
 <meta name="description" content="Cocage — 幹から枝と葉を伸ばし、各列の一番上の葉で得点を競う2〜5人用のヘックス盤ゲーム">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232A2A28%22/><path d=%22M50 94 L50 40 M50 62 L72 44 M50 52 L28 36%22 stroke=%22%237BD39A%22 stroke-width=%228%22 stroke-linecap=%22round%22 fill=%22none%22/><polygon points=%2250,6 70,17 70,39 50,50 30,39 30,17%22 fill=%22%237BD39A%22 fill-opacity=%22.45%22 stroke=%22%237BD39A%22 stroke-width=%225%22/></svg>">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -74,6 +74,7 @@
   <section class="board-wrap">
     <div class="hud">
       <div class="pill"><span class="muted">ターン</span> <strong id="hud-round">1 / 36</strong></div>
+      <div class="pill bolt" id="hud-bolt" hidden></div>
       <div class="seg" id="overlay-seg" role="group" aria-label="折れやすさの表示">
         <button data-overlay="normal" class="on">通常</button>
         <button data-overlay="p">折れる確率</button>
@@ -154,6 +155,12 @@
       <li>折れると、その辺とその先の枝・葉がすべて消えます。折れた根元の頂点には<b>傷あと</b>（数字の輪）が残り、持ち主はそこから<b>3ターン</b>枝を伸ばせません（ほかの頂点からは伸ばせます。そのあとは作り直せます）。</li>
       <li>枝にカーソルを合わせると、折れやすさ・10ターン生き残る確率・失うものが見られます。上の「折れる確率」で、自分の枝の危険度を色（緑→赤）で一覧できます（自分の幹と枝以外は灰色になります）。</li>
     </ul>
+    <h3>落雷</h3>
+    <ul>
+      <li>1ゲームに3回、決まったターンの終わりに、<b>盤面でいちばん高い枝</b>に雷が落ちます（高さが並んだら抽選）。先端から数えて<b>3本目</b>の辺が折れ、その先の枝・葉も消えます。</li>
+      <li>落雷の<b>3ターン前から予告</b>が出ます（上の「⚡ あとNターンで落雷」）。そのとき、いちばん高い枝に⚡の印が付きます。</li>
+      <li>高く登るほど点が増えますが、いちばん高いところは狙われます。直前に先頭に出るか、低くとどまるかを決めてください。</li>
+    </ul>
     <h3>得点</h3>
     <ul>
       <li>列で<b>一番上の葉</b>：1 ＋ min(3, その列の下にある他人の葉の数) ＋ <b>0.1 × 行番号</b>（高さボーナス。1行目なら +0.1、18行目なら +1.8）。</li>
@@ -170,11 +177,11 @@
   <div class="row"><button class="primary" data-close>閉じる</button></div>
 </dialog>
 
-<script src="shared/engine.js?v=9"></script>
-<script src="shared/cpu.js?v=9"></script>
-<script src="shared/room.js?v=9"></script>
-<script src="sound.js?v=9"></script>
-<script src="board.js?v=9"></script>
-<script src="client.js?v=9"></script>
+<script src="shared/engine.js?v=11"></script>
+<script src="shared/cpu.js?v=11"></script>
+<script src="shared/room.js?v=11"></script>
+<script src="sound.js?v=11"></script>
+<script src="board.js?v=11"></script>
+<script src="client.js?v=11"></script>
 </body>
 </html>
