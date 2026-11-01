@@ -261,7 +261,7 @@
     conn: null,
     me: null,
     room: null,
-    overlay: 'normal',  // 折れやすさの表示：normal／p／loss
+    overlay: 'normal',  // 折れやすさの表示：normal／p
     graceAt: 0,
   };
 
@@ -424,9 +424,15 @@
 
     // 上のバーとオーバーレイ
     $('#hud-round').textContent = g.over ? '終了' : `${g.round + 1} / ${g.turns}`;
+    // 落雷の予告：あと何ターンか（3ターン前から）
+    const boltLeft = E.lightningWarned(g) ? E.lightningLeft(g) : null;
+    const boltPill = $('#hud-bolt');
+    boltPill.hidden = boltLeft === null;
+    boltPill.classList.toggle('now', boltLeft === 1);
+    boltPill.textContent = boltLeft === null ? '' : boltLeft === 1 ? '⚡ このターンの終わりに落雷' : `⚡ あと${boltLeft}ターンで落雷`;
     document.querySelectorAll('[data-overlay]').forEach(b => b.classList.toggle('on', b.dataset.overlay === app.overlay));
     $('#overlay-legend').hidden = app.overlay === 'normal';
-    $('#overlay-note').textContent = app.overlay === 'p' ? '毎ターンの折れる確率（いまの盤面で相対）' : '確率 × 失う枝と葉の数（いまの盤面で相対）';
+    $('#overlay-note').textContent = '自分の枝の毎ターンの折れる確率（自分の枝の中で相対）。ほかは灰色';
 
     // 下のバー：置くもの・計画・確定
     $('#btn-finish').hidden = !live;
@@ -434,10 +440,13 @@
     const geo = E.geometry(g.cols);
     const desc = it => it.t === 'b'
       ? `枝（高さ${geo.edges[it.e].h}）`
-      : `${it.t === 'm' ? 'ヤドリギ' : '葉'}（${geo.cells[it.c].c + 1}列・${geo.cells[it.c].r + 1}行）`;
-    const used = plan.map((it, i) => `<li class="slot used${it.done ? ' done' : ''}"><b>${i + 1}</b><span class="grow">${desc(it)}${E.costOf(it) > 1 ? ` <small>行動力${E.costOf(it)}</small>` : ''}</span><button data-confirm="${i}" title="この行動を確定／取り消し">${it.done ? '✓ 確定' : '確定'}</button><button data-remove="${i}" title="この行動を外す">✕</button></li>`);
-    const emptyN = Math.max(0, R.ap - E.planCost(plan));
-    $('#plan').innerHTML = !live ? '' : used.join('') + Array.from({ length: emptyN }, () => `<li class="slot empty"><b>・</b><span class="grow">空き</span></li>`).join('');
+      : `葉（${geo.cells[it.c].c + 1}列・${geo.cells[it.c].r + 1}行）`;
+    $('#plan').innerHTML = !live ? '' : Array.from({ length: R.ap }, (_, i) => {
+      const it = plan[i];
+      return it
+        ? `<li class="slot used${it.done ? ' done' : ''}"><b>${i + 1}</b><span class="grow">${desc(it)}</span><button data-confirm="${i}" title="この行動を確定／取り消し">${it.done ? '✓ 確定' : '確定'}</button><button data-remove="${i}" title="この行動を外す">✕</button></li>`
+        : `<li class="slot empty"><b>${i + 1}</b><span class="grow">空き</span></li>`;
+    }).join('');
     const btn = $('#btn-finish');
     btn.textContent = me && me.finished ? '✓ 確定ずみ（取り消す）' : '全て確定';
     btn.classList.toggle('on', !!(me && me.finished));
@@ -446,8 +455,7 @@
       : !me ? '観戦中です'
       : me.finished ? `確定ずみ。ほかの人を待っています（確定した人：${room.finishedCount}/${n}人）。時間まで、取り消して変更できます`
       : '白く光っている辺（枝）かセル（葉）をクリックして置きます（行動力1）。右クリックで取り消し。ホイールで拡大・縮小、ドラッグで移動'
-        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '')
-        + (candidates && candidates.mistle && candidates.mistle.length ? '。点線のセルは「ヤドリギ」：他の人の枝に接するセルに、行動力2で葉を置けます（その枝が折れると一緒に消えます）' : '');
+        + (candidates && !candidates.cells.length ? '。葉は自分の枝に接するセルに置けます（幹だけでは置けないので、まず枝を）' : '');
     $('#tickbar').hidden = g.over;
 
     renderScores(g);
@@ -490,6 +498,7 @@
     $('#events').innerHTML = `<li class="muted">ターン${lt.turn}の結果</li>`
       + li(lt.placedBranches + lt.placedLeaves, '成功した行動', `枝${lt.placedBranches}・葉${lt.placedLeaves}`)
       + li(lt.contested, '抽選になった場所', lt.lost.length ? `負けた行動 ${lt.lost.length}` : '')
+      + (lt.lightning ? li('⚡', '落雷', `${lt.lightning.h}行目の${(g.players.find(p => p.id === lt.lightning.owner) || {}).name || ''}の枝に落ちた（失った枝${lt.removed.length}・葉${lt.removedLeaves}）`) : '')
       + li(primary, '折れた枝', primary ? `失った枝${lt.removed.length}・葉${lt.removedLeaves}` : '')
       + li(lt.topChanges, '一番上の入れ替わり');
   }
@@ -561,7 +570,6 @@
   function onPick(c) {
     if (!app.room || !app.room.game || app.room.game.over) return;
     if (c.t === 'b') act({ type: 'addBranch', edge: c.key });
-    else if (c.t === 'm') act({ type: 'addMistletoe', cell: c.key });
     else act({ type: 'addLeaf', cell: c.key });
   }
 
@@ -616,6 +624,8 @@
     }
     if (up) S.play('topUp', { delay: 0.75 });
     if (down) S.play('topDown', { delay: 0.8 });
+    // 落雷（盤面の演出に合わせて、数字がこぼれたあと。折れる音より少し前）
+    if (lt.lightning) S.play('thunder', { delay: window.CocageBoard.PART_MS / 1000 - 0.02 });
     // 枝が折れる（盤面の演出に合わせて、数字がこぼれたあと）
     const leaves = lt.removedLeafList || [];
     if (lt.removed.length || leaves.length) {

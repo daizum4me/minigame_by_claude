@@ -23,7 +23,7 @@
   const ZOOM_MAX = 6;
   const PAN_SLACK = 0.45;   // 縦に動かせる余白（画面の高さに対する割合）
 
-  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880' };
+  const COL = { page: '#1F1F1D', frame: '#2A2A28', cell: '#3A3A38', edge: '#56554F', text: '#E9E7E0', muted: '#9A988F', broken: '#FF9C94', hot: '#FF6E64', trunkGray: '#8A8880', dim: '#77756D', bolt: '#FFE27A' };   // dim：折れる確率の表示で、自分の幹と枝以外をこの灰色にする
   const FONT = '"Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif';
 
   const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
@@ -292,7 +292,6 @@
         const inCell = r => {
           let best = r, hit = null;
           for (const ck of d.candidates.cells) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'l', key: ck }; } }
-          for (const ck of d.candidates.mistle || []) { const dist = this.distToCell(ck, x, y); if (dist < best) { best = dist; hit = { t: 'm', key: ck }; } }
           return hit;
         };
         out.cand = nearEdge(Math.max(4, this.S * 0.14)) || inCell(this.S * 0.68) || nearEdge(thr) || inCell(this.S * 0.87);
@@ -314,7 +313,7 @@
       const nearest = (type, lim) => {
         let best = -1, bestD = lim;
         me.plan.forEach((it, i) => {
-          if (it.t !== type && !(type === 'l' && it.t === 'm')) return;
+          if (it.t !== type) return;
           const dist = type === 'b' ? this.distToEdge(it.e, x, y) : this.distToCell(it.c, x, y);
           if (dist < bestD) { bestD = dist; best = i; }
         });
@@ -387,13 +386,13 @@
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
 
-    // 折れやすさの値（オーバーレイ用）を辺ごとに出す
-    edgeValues(g, kind) {
+    // 折れる確率（オーバーレイ用）を、自分の枝だけ出す。色は自分の枝の中で相対（いちばん高いものが赤）
+    edgeValues(g, me) {
       const vals = {};
       let max = 1e-12;
-      for (const ek of Object.keys(g.edges)) {
-        const st = E.edgeStats(g, ek, 10);
-        const v = kind === 'p' ? st.p : st.expectedLoss;
+      for (const [ek, e] of Object.entries(g.edges)) {
+        if (e.owner !== me) continue;
+        const v = E.edgeStats(g, ek, 10).p;
         vals[ek] = v;
         if (v > max) max = v;
       }
@@ -401,7 +400,7 @@
     }
 
     // 葉を描く（得点の輪や数字はつけない）
-    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw, dashed) {
+    drawLeaf(ctx, x, y, color, scale, alpha, stroke, lw) {
       ctx.save();
       ctx.globalAlpha = alpha;
       this.hexPath(ctx, x, y, this.S * 0.78 * scale);
@@ -409,13 +408,34 @@
       ctx.fill();
       ctx.lineWidth = lw || 2;
       ctx.strokeStyle = stroke || color;
-      if (dashed) ctx.setLineDash([Math.max(3, this.S * 0.28), Math.max(2, this.S * 0.2)]);   // ヤドリギ：枠が破線
       ctx.stroke();
       ctx.restore();
     }
 
     // 枝が折れる演出：t = 折れ始めてからの時間（ms）。折れた枝はかけらになって落ち、折れた場所に×と「折れた！」が出る
+    // 稲妻：盤の上から、落ちた枝の先まで、ぎざぎざの光（t は折れる演出の開始からの ms）
+    drawBolt(ctx, dx, t) {
+      const lt = this.data.game.lastTurn, S = this.S;
+      if (!lt || !lt.lightning || t < 0 || t > 520) return;
+      const [x1, y1, x2, y2] = this.edgePts(lt.lightning.tip, dx);
+      const tx = (x1 + x2) / 2, ty = (y1 + y2) / 2, top = Math.max(0, this.by);
+      const n = 9, pts = [[tx + (rnd(lt.lightning.tip, 1) - 0.5) * S * 3, top]];
+      for (let i = 1; i < n; i++) pts.push([tx + (rnd(lt.lightning.tip, i + 2) - 0.5) * S * 3 * (1 - i / n), top + (ty - top) * i / n]);
+      pts.push([tx, ty]);
+      const a = t < 120 ? 1 : Math.max(0, 1 - (t - 120) / 400);
+      ctx.save();
+      ctx.setLineDash([]); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.globalAlpha = a;
+      ctx.shadowColor = COL.bolt; ctx.shadowBlur = S * 1.6;
+      for (const [w, c] of [[S * 0.5, 'rgba(255,226,122,0.35)'], [S * 0.18, '#FFFFFF']]) {
+        ctx.strokeStyle = c; ctx.lineWidth = Math.max(2, w);
+        ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     drawBreak(ctx, dx, t, colors, inView) {
+      this.drawBolt(ctx, dx, t);
       const lt = this.data.game.lastTurn, S = this.S;
       const base = Math.min(...lt.removed.map(r => r.l), 99);
       for (const r of lt.removed) {
@@ -487,7 +507,7 @@
         if (!inView(x)) continue;
         const w = clamp((t - 200) / 800, 0, 1);
         if (w >= 1) continue;
-        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4, !!lf.mist);
+        this.drawLeaf(ctx, x, y, colors[lf.owner], 1 - 0.4 * w, 1 - w, mix(colors[lf.owner], COL.broken, 0.4 + 0.6 * w), 2.4);
       }
     }
 
@@ -515,7 +535,8 @@
       ctx.clip();
 
       const overlay = d.overlay || 'normal';
-      const ov = overlay === 'normal' ? null : this.edgeValues(g, overlay === 'p' ? 'p' : 'loss');
+      const ov = overlay === 'p' ? this.edgeValues(g, d.me) : null;
+      const dim = !!ov;   // 折れる確率の表示：自分の幹と枝以外は、すべて灰色
       const { points, tops } = this.score;
       const topCells = new Set(Object.values(tops).map(t => t.cell));
       const hoverEdge = this.hover && this.hover.edge;
@@ -551,9 +572,9 @@
         for (const [ck, lf] of Object.entries(g.leaves)) {
           const [x, y] = cellXY(ck);
           if (!inView(x) || !inViewY(y)) continue;
-          const color = colors[lf.owner];
+          const color = dim ? COL.dim : colors[lf.owner];
           const isNew = g.round > 0 && lf.round === g.round;
-          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2, !!lf.host);
+          this.drawLeaf(ctx, x, y, color, 1, 1, isNew ? '#FFFFFF' : color, isNew ? 2.4 : 2);
           if (topCells.has(ck)) {
             this.hexPath(ctx, x, y, S * 0.67);
             ctx.lineWidth = S * 0.2;
@@ -568,7 +589,7 @@
         // 折れる前（数字がこぼれているあいだ）は、これから折れる葉も残して見せる
         if (phase === 'pre') for (const lf of lt.removedLeafList || []) {
           const [x, y] = cellXY(lf.cell);
-          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2, !!lf.mist);
+          if (inView(x) && inViewY(y)) this.drawLeaf(ctx, x, y, colors[lf.owner], 1, 1, colors[lf.owner], 2);
         }
 
         // 幹（根から今の長さまで）。次に伸びる1辺は点線
@@ -577,10 +598,11 @@
           const tr = geo.trunks[p.trunk], color = colors[p.id];
           ctx.setLineDash([]);
           ctx.lineWidth = 2.4;
-          ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;   // 幹は明るい方の色（枝と見分けやすく）
+          const trunkCol = dim && p.id !== d.me ? COL.dim : lighten(color, 0.55);   // 幹は明るい方の色（枝と見分けやすく）。折れる確率の表示では、自分の幹だけ色を残す
+          ctx.strokeStyle = trunkCol;
           for (let i = 1; i <= p.trunkLen; i++) this.line(ctx, tr.edges[i], dx);
           if (!g.over && p.trunkLen < tr.edges.length - 1) {
-            ctx.strokeStyle = overlay === 'normal' ? lighten(color, 0.55) : COL.trunkGray;
+            ctx.strokeStyle = trunkCol;
             ctx.setLineDash([1.5, 6]);
             this.line(ctx, tr.edges[p.trunkLen + 1], dx);
             ctx.setLineDash([]);
@@ -591,8 +613,30 @@
         for (const [ek, e] of Object.entries(g.edges)) {
           ctx.lineWidth = 2.4;
           ctx.setLineDash([]);
-          ctx.strokeStyle = ov ? heat(ov.vals[ek] / ov.max) : colors[e.owner];
+          ctx.strokeStyle = !ov ? colors[e.owner] : e.owner === d.me ? heat(ov.vals[ek] / ov.max) : COL.dim;
           this.line(ctx, ek, dx);
+        }
+
+        // 落雷の予告：いちばん高い枝（雷が落ちるところ）に⚡の印
+        if (E.lightningWarned(g) && !(fresh && phase !== 'static')) {
+          const top = E.highestEdges(g);
+          for (const ek of top.edges) {
+            const [x1, y1, x2, y2] = this.edgePts(ek, dx);
+            const x = (x1 + x2) / 2, y = (y1 + y2) / 2;
+            if (!inView(x) || !inViewY(y)) continue;
+            const R = Math.max(6, S * 0.36);
+            ctx.save();
+            ctx.setLineDash([]);
+            ctx.shadowColor = COL.bolt; ctx.shadowBlur = R * 1.2;
+            ctx.strokeStyle = COL.bolt; ctx.lineWidth = 2;
+            ctx.fillStyle = 'rgba(31,31,29,0.85)';
+            ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = COL.bolt; ctx.font = `800 ${Math.round(R * 1.25)}px ${FONT}`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('⚡', x, y + R * 0.06);
+            ctx.restore();
+          }
         }
 
         // 傷あと：折れた根元の頂点。持ち主はあと何ターンそこから枝を伸ばせないか（折れる演出が終わってから出す）
@@ -657,15 +701,6 @@
             ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fill();
             ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
           }
-          // ヤドリギ：他の人の枝に接するセル（点線）
-          ctx.setLineDash([3, 4]);
-          for (const ck of d.candidates.mistle || []) {
-            const [x, y] = cellXY(ck);
-            if (!inView(x) || !inViewY(y)) continue;
-            this.hexPath(ctx, x, y, S * 0.78);
-            ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
-          }
-          ctx.setLineDash([]);
           if (hv && hv.cand) {
             if (hv.cand.t === 'b') { ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4.6; this.line(ctx, hv.cand.key, dx); }
             else {
@@ -724,6 +759,14 @@
           const nm = Array.from(p.name).slice(0, 7).join('');
           ctx.fillText(`P${p.trunk + 1} ${nm}`, x, this.by + MARGIN + 37 * this.hu + LABEL_H * 0.55);
         });
+      }
+      // 落雷のフラッシュ（盤全体がぱっと白くなる）
+      if (phase === 'anim' && lt && lt.lightning && bt < 360) {
+        ctx.save();
+        ctx.globalAlpha = (bt < 60 ? bt / 60 : 1 - (bt - 60) / 300) * 0.5;
+        ctx.fillStyle = '#FFF6D0';
+        ctx.fillRect(this.bx, this.by, this.clipW, this.boardH);
+        ctx.restore();
       }
       ctx.restore();
       // 演出が残っているあいだは描き続ける

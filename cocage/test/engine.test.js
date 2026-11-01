@@ -53,17 +53,17 @@ test('頂点には辺が3本ずつ集まり（上下の端を除く）、幹の�
   assert.strictEqual(geo.reserved.size, 72);
 });
 
-test('折れる確率：p = 0.05% + 0.03%×高さ + 0.05%×支えている枝の数。根本ほど折れやすい。長さ8・高さ9の先端の葉は10ターン生き残る確率が約65%', () => {
-  assert.ok(Math.abs(E.breakProb(9, 8) - 0.0072) < 1e-12);
-  assert.ok(Math.abs(E.breakProb(1, 1) - 0.0013) < 1e-12);
+test('折れる確率：p = 0.05% + 0.03%×高さ + 0.15%×支えている枝の数。根本ほど折れやすい。長さ8・高さ9の先端の葉は10ターン生き残る確率が約45%', () => {
+  assert.ok(Math.abs(E.breakProb(9, 8) - 0.0152) < 1e-12);
+  assert.ok(Math.abs(E.breakProb(1, 1) - 0.0023) < 1e-12);
   const g = newGame(2);
   let parent = null;
   for (let l = 1; l <= 8; l++) { const k = 'e' + l; g.edges[k] = { owner: 'a', from: 'x', to: 'y', parent, l, h: 9, round: 0 }; parent = k; }
   const st = E.edgeStats(g, 'e8', 10);
-  assert.ok(Math.abs(st.survive - 0.65) < 0.02, `生存率 ${st.survive}`);
-  assert.ok(Math.abs(st.p - 0.0037) < 1e-12);                       // 先端は自分だけを支える（1本）
+  assert.ok(Math.abs(st.survive - 0.45) < 0.02, `生存率 ${st.survive}`);
+  assert.ok(Math.abs(st.p - 0.0047) < 1e-12);                       // 先端は自分だけを支える（1本）
   assert.strictEqual(E.edgeStats(g, 'e1', 10).parts.w, 8);           // 根本は8本を支える
-  assert.ok(Math.abs(E.edgeStats(g, 'e1', 10).p - 0.0072) < 1e-12);
+  assert.ok(Math.abs(E.edgeStats(g, 'e1', 10).p - 0.0152) < 1e-12);
   assert.deepStrictEqual(E.loads(g), { e1: 8, e2: 7, e3: 6, e4: 5, e5: 4, e6: 3, e7: 2, e8: 1 });
 });
 
@@ -152,7 +152,7 @@ test('行動力は毎ターン3。4つ目は計画できない。外すと、そ
   const next = E.candidates(g, 'a').edges.find(k => geo.edges[k].a === farV || geo.edges[k].b === farV);   // 最初の枝の先につなぐ
   act(g, 'a', { type: 'addBranch', edge: next });
   assert.strictEqual(E.apply(g, 'a', { type: 'addLeaf', cell: E.candidates(g, 'a').cells[0] || cell }).ok, false);   // もう3つ
-  assert.deepStrictEqual(E.candidates(g, 'a'), { edges: [], cells: [], mistle: [] });
+  assert.deepStrictEqual(E.candidates(g, 'a'), { edges: [], cells: [] });
   act(g, 'a', { type: 'remove', index: 0 });                              // 最初の枝を外す → つながる葉・枝も外れる
   assert.deepStrictEqual(P(g, 'a').plan, []);
   act(g, 'a', { type: 'addBranch', edge: ek });
@@ -336,109 +336,97 @@ test('枝の折れやすさ：確率・内訳・失うもの', () => {
   g.edges['e1'] = { owner: 'a', from: 'x', to: 'y', parent: null, l: 1, h: 4, round: 0 };
   g.edges['e2'] = { owner: 'a', from: 'y', to: 'z', parent: 'e1', l: 2, h: 5, round: 0 };
   const st = E.edgeStats(g, 'e1', 10);
-  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0005 * 2)) < 1e-12);   // e1 は e1・e2 の2本を支える
+  assert.ok(Math.abs(st.p - (0.0005 + 0.0003 * 4 + 0.0015 * 2)) < 1e-12);   // e1 は e1・e2 の2本を支える
   assert.deepStrictEqual([st.lostEdges, st.parts.base], [2, 0.0005]);
   assert.deepStrictEqual(E.subtree(g, 'e1').sort(), ['e1', 'e2']);
   assert.deepStrictEqual(E.pathTo(g, 'e2'), ['e2', 'e1']);
   assert.strictEqual(E.edgeStats(g, 'nope'), null);
 });
 
-test('ヤドリギ：他人の枝に接するセルに行動力2で葉を置ける（1ターン1回）。宿主の枝が折れると一緒に消え、宿主を重くする', () => {
-  const g = newGame(3), geo = E.geometry(g.cols);
-  // b の枝を1本（根から）。a はそこに接するセルへヤドリギ
-  const v0 = geo.trunks[1].verts[2];       // 2行目の幹の頂点から出る、セルが2つ接する辺
-  const ek = geo.verts[v0].edges.find(k => !geo.reserved.has(k) && geo.edges[k].cells.length === 2);
-  const e = geo.edges[ek], to = e.a === v0 ? e.b : e.a;
-  g.edges[ek] = { owner: 'b', from: v0, to, parent: null, l: 1, h: e.h, round: 0 };
-  const cand = E.candidates(g, 'a').mistle;
-  assert.ok(cand.length > 1 && cand.every(ck => geo.cells[ck].edges.includes(ek)));
-  const ck = cand[0];
-  assert.ok(!E.candidates(g, 'b').mistle.includes(ck));                      // 自分の枝に接するセルには要らない
-  assert.ok(!E.apply(g, 'b', { type: 'addMistletoe', cell: ck }).ok);
-  act(g, 'a', { type: 'addMistletoe', cell: ck });
-  assert.strictEqual(E.planCost(P(g, 'a').plan), 2);
-  assert.deepStrictEqual(E.candidates(g, 'a').mistle, []);                   // 1ターン1回
-  const r2 = E.apply(g, 'a', { type: 'addMistletoe', cell: cand[1] });
-  assert.ok(!r2.ok);
-  // 残りの行動力1：葉は自分の枝がないので置けないが、行動力3を超えない
-  act(g, 'a', { type: 'addBranch', edge: geo.verts[geo.trunks[0].verts[0]].edges.find(k => !geo.reserved.has(k)) });
-  assert.ok(!E.apply(g, 'a', { type: 'addBranch', edge: geo.verts[geo.trunks[0].verts[1]].edges.find(k => !geo.reserved.has(k)) }).ok);
-  E.resolveTurn(g, NEVER);
-  assert.deepStrictEqual(g.leaves[ck], { owner: 'a', round: 1, host: ek });
-  assert.strictEqual(E.loads(g)[ek], 2);                                     // 宿主は葉の分、重くなる
-  // 宿主が折れると、ヤドリギの葉も消える
-  const order = Object.keys(g.edges), idx = order.indexOf(ek);
+// ---------- 落雷 ----------
+
+// a の一本道の枝（辺 e1〜e5。親子つながり）を作る。heights は辺ごとの高さ
+function chain(g, owner, heights, prefix) {
+  const keys = [];
+  heights.forEach((h, i) => {
+    const k = (prefix || 'e') + (i + 1);
+    g.edges[k] = { owner, from: 'x' + i, to: 'x' + (i + 1), parent: i ? keys[i - 1] : null, l: i + 1, h, round: 0 };
+    keys.push(k);
+  });
+  return keys;
+}
+
+test('落雷：ゲームのはじめに、決まった範囲の中から3回分のターンが決まる（昇順）。範囲外の指定や短いゲームも扱える', () => {
+  for (let seed = 0; seed < 30; seed++) {
+    let s = seed * 7919 + 1;
+    const rng = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    const g = E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], rng);
+    assert.strictEqual(g.lightning.length, 3);
+    E.RULES.lightning.windows.forEach(([lo, hi], i) => assert.ok(g.lightning[i] >= lo && g.lightning[i] <= hi, `${g.lightning} / ${lo}-${hi}`));
+  }
+  const short = E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], () => 0.5, { turns: 10 });
+  assert.deepStrictEqual(short.lightning, [9]);     // 10ターンのゲーム：1つめの範囲(8〜13)は8〜10に切り詰め、残りの範囲は使わない
+  assert.deepStrictEqual(E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], () => 0.5, { lightning: [3] }).lightning, [3]);
+});
+
+test('落雷：あと何ターンか・予告（3ターン前から）', () => {
+  const g = newGame(2);
+  g.lightning = [5, 12];
+  assert.deepStrictEqual([E.lightningLeft(g), E.lightningWarned(g)], [5, false]);
+  g.round = 2;
+  assert.deepStrictEqual([E.lightningLeft(g), E.lightningWarned(g)], [3, true]);
+  g.round = 4;
+  assert.strictEqual(E.lightningLeft(g), 1);                                // このターンの終わりに落ちる
+  g.round = 5;
+  assert.deepStrictEqual([E.lightningLeft(g), E.lightningWarned(g)], [7, false]);   // 次は12ターン目
+  g.round = 12;
+  assert.strictEqual(E.lightningLeft(g), null);
+});
+
+test('落雷：いちばん高い枝に落ちて、先端から3本ぶん根元側の辺が折れる。その先の枝・葉も消え、傷あとが残る', () => {
+  const g = newGame(2), geo = E.geometry(g.cols);
+  g.lightning = [1];
+  const a = chain(g, 'a', [3, 4, 5, 6, 7]);            // 先端 a5 が盤面でいちばん高い（7行目）
+  const b = chain(g, 'b', [2, 3, 4], 'f');
+  // 別の（自分の）枝を土台にする葉：先端が折れても残る
+  const leafCell = Object.keys(geo.cells)[200];
+  g.edges[geo.cells[leafCell].edges[0]] = { owner: 'a', from: 'y', to: 'z', parent: null, l: 1, h: 1, round: 0 };
+  g.leaves[leafCell] = { owner: 'a', round: 0 };
+  assert.deepStrictEqual(E.highestEdges(g), { h: 7, edges: [a[4]] });
+  const info = E.resolveTurn(g, NEVER);
+  assert.strictEqual(info.lightning.tip, a[4]);
+  assert.strictEqual(info.lightning.edge, a[2]);              // 先端から数えて3本目
+  assert.strictEqual(info.lightning.owner, 'a');
+  assert.deepStrictEqual(info.broken, [a[2]]);
+  assert.ok(g.edges[a[0]] && g.edges[a[1]] && !g.edges[a[2]] && !g.edges[a[3]] && !g.edges[a[4]]);
+  assert.ok(b.every(k => g.edges[k]), 'ほかの人の枝は無事');
+  assert.ok(g.leaves[leafCell], '土台が別にある葉は残る');
+  // 傷あと：折れた辺の根元の頂点
+  assert.deepStrictEqual(g.scars['x2'], { owner: 'a', until: 1 + E.RULES.scarTurns });
+  // 落雷は1回きり：次のターンは落ちない
+  g.lightning = [1];
+  assert.strictEqual(E.resolveTurn(g, NEVER).lightning, null);
+});
+
+test('落雷：枝が3本より短いときは根元の辺が折れる。同じ高さが並んだら抽選。枝がなければ何も起きない。無効にもできる', () => {
+  const g = newGame(2);
+  g.lightning = [1];
+  assert.strictEqual(E.resolveTurn(g, NEVER).lightning, null);          // 枝がひとつもない
+  const a = chain(g, 'a', [5, 6]);                                       // 2本だけ
+  const b = chain(g, 'b', [6], 'f');                                     // a2 と b1 が同じ高さ 6
+  g.lightning = [2];
   let n = 0;
-  const info = E.resolveTurn(g, () => (n++ === idx ? 0 : 0.9999));
-  assert.deepStrictEqual(info.broken, [ek]);
-  assert.strictEqual(g.leaves[ck], undefined);
-  assert.strictEqual(info.removedLeaves, 1);
-});
-
-test('ヤドリギ：同じセルを選んだら抽選。自分の枝に接するセルや、他人の枝に接しないセルには置けない', () => {
-  const g = newGame(3), geo = E.geometry(g.cols);
-  const v0 = geo.trunks[2].verts[2];
-  const ek = geo.verts[v0].edges.find(k => !geo.reserved.has(k) && geo.edges[k].cells.length === 2);
-  const e = geo.edges[ek], to = e.a === v0 ? e.b : e.a;
-  g.edges[ek] = { owner: 'c', from: v0, to, parent: null, l: 1, h: e.h, round: 0 };
-  const ck = geo.edges[ek].cells[0];
-  act(g, 'a', { type: 'addMistletoe', cell: ck });
-  act(g, 'b', { type: 'addMistletoe', cell: ck });
-  let n = 0;
-  const info = E.resolveTurn(g, () => (n++ === 0 ? 0 : 0.9999));            // 抽選は先頭（a）が勝つ。折れは起きない
-  assert.strictEqual(g.leaves[ck].owner, 'a');
-  assert.deepStrictEqual(info.lost.map(l => [l.owner, l.t]), [['b', 'm']]);
-  const far = Object.keys(geo.cells).find(k => !geo.cells[k].edges.includes(ek) && !g.leaves[k] && !geo.cells[k].edges.some(x => g.edges[x]));
-  const r = E.apply(g, 'a', { type: 'addMistletoe', cell: far });
-  assert.ok(!r.ok && /他の人の枝/.test(r.error), r.error);
-});
-
-test('ヤドリギ：2人戦では使えない。ヤドリギの葉も、宿主のボーナスの「下にある他人の葉」に数えられる（上限は設定できる）', () => {
-  const g2 = newGame(2), geo = E.geometry(g2.cols);
-  const v0 = geo.trunks[1].verts[2];
-  const ek = geo.verts[v0].edges.find(k => !geo.reserved.has(k) && geo.edges[k].cells.length === 2);
-  const e = geo.edges[ek], to = e.a === v0 ? e.b : e.a;
-  g2.edges[ek] = { owner: 'b', from: v0, to, parent: null, l: 1, h: e.h, round: 0 };
-  assert.deepStrictEqual(E.candidates(g2, 'a').mistle, []);
-  assert.ok(!E.apply(g2, 'a', { type: 'addMistletoe', cell: geo.edges[ek].cells[0] }).ok);
-  // 得点：宿主 a が一番上、下に b・c のヤドリギの葉が3枚（ほかの人の葉は他に無い）
-  const col = n => E.scoreColumn([{ r: 9, owner: 'a' }, { r: 4, owner: 'b', mist: true }, { r: 3, owner: 'c', mist: true }, { r: 2, owner: 'd', mist: true }], n).map(v => Math.round(v * 1000) / 1000);
-  const h = E.RULES.score.height, f = E.RULES.mistletoeFeedMax;
-  E.RULES.score.height = 0;
+  const total = Object.keys(g.edges).length;
+  const info = E.resolveTurn(g, () => (n++ < total ? 0.9999 : 0));       // 折れ判定は起きず、同じ高さの抽選は先頭（a2）
+  assert.strictEqual(info.lightning.tip, a[1]);
+  assert.strictEqual(info.lightning.edge, a[0]);                         // 枝が2本なので、いちばん根元（a1）
+  assert.ok(!g.edges[a[0]] && !g.edges[a[1]] && g.edges[b[0]]);
+  // 無効
+  const h = newGame(2); chain(h, 'a', [5, 6]); h.lightning = [1];
+  E.RULES.lightning.enabled = false;
   try {
-    assert.strictEqual(col(3)[0], 1 + 3);                       // 初期値：ヤドリギの葉もふつうの葉と同じく数える（上限3）
-    E.RULES.mistletoeFeedMax = { 3: 1, 4: 2, 5: 2 };
-    assert.strictEqual(col(3)[0], 1 + 1);     // 3人戦：ヤドリギの葉は1枚まで
-    assert.strictEqual(col(5)[0], 1 + 2);     // 5人戦：2枚まで
-    E.RULES.mistletoeFeedMax = 0;
-    assert.strictEqual(col(5)[0], 1);         // 0：数えない
-    assert.strictEqual(E.scoreColumn([{ r: 9, owner: 'a' }, { r: 4, owner: 'b' }, { r: 3, owner: 'c', mist: true }], 3)[0], 1 + 1);   // ふつうの葉だけ数える
-  } finally { E.RULES.score.height = h; E.RULES.mistletoeFeedMax = f; }
-});
-
-test('ヤドリギ：養分を吸う。宿主の枝が残っているあいだ毎ターン、宿主から drain 点を奪う。宿主の持ち点が足りなければ奪えない', () => {
-  const g = newGame(3), geo = E.geometry(g.cols);
-  const v0 = geo.trunks[1].verts[2];
-  const ek = geo.verts[v0].edges.find(k => !geo.reserved.has(k) && geo.edges[k].cells.length === 2);
-  const e = geo.edges[ek], to = e.a === v0 ? e.b : e.a;
-  g.edges[ek] = { owner: 'b', from: v0, to, parent: null, l: 1, h: e.h, round: 0 };
-  const ck = geo.edges[ek].cells[0];
-  g.leaves[ck] = { owner: 'a', round: 0, host: ek };
-  const drain = E.RULES.mistletoeDrain, h = E.RULES.score.height;
-  E.RULES.score.height = 0;
-  try {
-    P(g, 'b').score = 10;
-    const info = E.resolveTurn(g, NEVER);
-    // a の葉：その列で自分だけの一番上 → 1点 + 吸った drain。b は持ち点 10 から drain を奪われる
-    assert.ok(Math.abs(P(g, 'a').gain - (1 + drain)) < 1e-9, String(P(g, 'a').gain));
-    assert.ok(Math.abs(P(g, 'b').gain + drain) < 1e-9);
-    assert.ok(Math.abs(info.drained - drain) < 1e-9);
-    P(g, 'b').score = 0; P(g, 'b').gain = 0;
-    E.resolveTurn(g, NEVER);
-    assert.ok(Math.abs(P(g, 'b').score) < 1e-9, '持ち点 0 のときは奪えない');
-    // 宿主の枝がなくなったら、吸えない（葉も消える）
-    delete g.edges[ek];
-    const info3 = E.resolveTurn(g, NEVER);
-    assert.strictEqual(info3.drained, 0);
-  } finally { E.RULES.score.height = h; }
+    assert.strictEqual(E.resolveTurn(h, NEVER).lightning, null);
+    assert.ok(h.edges['e1'] && h.edges['e2'], '無効のときは何も折れない');
+    assert.deepStrictEqual(E.createGame([{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], () => 0.5).lightning, []);
+  } finally { E.RULES.lightning.enabled = true; }
 });
