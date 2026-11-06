@@ -236,11 +236,12 @@
 
   // CPU対戦（通信なし）：自分のブラウザで Room を動かす
   class LocalTransport {
-    constructor(name) {
+    constructor(name, opts) {
       this.isLocal = true;
       this.room = new window.SnowRoom.Room({ code: '', send: (pid, msg) => { if (pid === this.id) { const m = clone(msg); setTimeout(() => onMessage(m), 0); } } });
       this.id = this.room.join(token(), name).id;
       for (let i = 0; i < R.minPlayers - 1; i++) this.room.handle(this.id, { type: 'addCpu' });
+      if (opts && opts.tutorial) { this.room.tutorial = true; this.room.handle(this.id, { type: 'start' }); }   // チュートリアルは、すぐに始める
     }
     send(msg) { setTimeout(() => { if (!this.room.closed) this.room.handle(this.id, msg); }, 0); }
     close() { this.room.close(); }
@@ -257,6 +258,7 @@
     card: null,          // ドラッグ中の建設カード
   };
   let board = null;
+  let guide = null;
 
   const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
   const TH = () => B.THEMES[theme()];
@@ -330,6 +332,7 @@
     toastNewLog(g);
     announce(g);
     renderGame();
+    guide.onState();
   }
 
   function toastNewLog(g) {
@@ -480,14 +483,18 @@
       app.conn = new GuestTransport({ type: 'join', token: token(), name, code });
     } else if (type === 'create') {
       app.conn = new HostTransport(name);
+    } else if (type === 'tutorial') {
+      guide.start();
+      app.conn = new LocalTransport(name, { tutorial: true });
     } else {
       app.conn = new LocalTransport(name);
     }
-    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = true;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = $('#btn-tutorial').disabled = true;
     if (app.conn.isLocal) { app.conn.room.broadcast(); }
   }
 
   function leaveRoom(text) {
+    if (guide) guide.stop();
     if (app.conn) { app.conn.close(); app.conn = null; }
     app.room = null; app.game = null; app.me = null; app.gameKey = null; app.styleSent = false;
     $('#result').hidden = true;
@@ -496,7 +503,7 @@
     url.searchParams.delete('room');
     history.replaceState(null, '', url);
     show('top');
-    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = false;
+    $('#btn-create').disabled = $('#btn-join').disabled = $('#btn-local').disabled = $('#btn-tutorial').disabled = false;
     const msg = $('#top-msg');
     msg.textContent = text || '';
     msg.hidden = !text;
@@ -948,6 +955,7 @@
     $('#btn-create').onclick = () => enterRoom('create');
     $('#btn-join').onclick = () => enterRoom('join');
     $('#btn-local').onclick = () => enterRoom('local');
+    $('#btn-tutorial').onclick = () => enterRoom('tutorial');
     $('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') enterRoom('join'); });
     $('#btn-copy').onclick = () => {
       const v = $('#invite-url').value;
@@ -963,7 +971,7 @@
     $('#btn-leave').onclick = () => leaveRoom('');
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-rm-cpu]'); if (b) send({ type: 'removeCpu', id: b.dataset.rmCpu }); });
 
-    $$('[data-open]').forEach(b => { b.onclick = () => { $('#' + b.dataset.open).hidden = false; }; });
+    $$('[data-open]').forEach(b => { b.onclick = () => { if (b.dataset.open === 'rules') guide.openRules(); else $('#' + b.dataset.open).hidden = false; }; });
     $$('[data-close]').forEach(b => { b.onclick = () => { $('#' + b.dataset.close).hidden = true; }; });
     $('#rules').addEventListener('click', e => { if (e.target === $('#rules')) $('#rules').hidden = true; });
     $$('[data-act="theme"]').forEach(b => { b.onclick = () => applyTheme(theme() === 'dark' ? 'light' : 'dark'); });
@@ -1110,6 +1118,7 @@
     const room = new URLSearchParams(location.search).get('room');
     if (room) { $('#in-code').value = room.toUpperCase().slice(0, 6); }
     setupBoard();
+    guide = window.SnowGuide.create({ app, $, board: () => board, leave: () => leaveRoom(''), sound: SnowSound });
     bind();
     setInterval(() => { if (app.game && !$('#game').hidden) updateTimer(); }, 250);
     show('top');

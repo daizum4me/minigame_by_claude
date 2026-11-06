@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -31,6 +31,7 @@
     </div>
     <div class="divider"><span>または</span></div>
     <button id="btn-local" class="big">CPUと遊ぶ（ひとりで・通信なし）</button>
+    <button id="btn-tutorial" class="big">チュートリアル（操作しながら覚える）</button>
     <p id="top-msg" class="msg" hidden></p>
     <div class="row links">
       <button class="link" data-open="rules">ルール</button>
@@ -100,6 +101,7 @@
     <section class="mapcol">
       <div id="mapwrap" class="mapwrap">
         <canvas id="map" aria-label="マップ"></canvas>
+        <div id="tut-hl" class="tut-hl" hidden></div>
         <div id="tint" class="tint"></div>
         <div id="particles" class="particles"></div>
         <div id="hint" class="pill hint"></div>
@@ -118,6 +120,7 @@
       </div>
     </section>
     <aside class="right">
+      <div id="tutor" class="panel tutor" hidden></div>
       <div class="panel">
         <div class="items-head"><b>共有アイテム</b><span id="cap"></span></div>
         <div id="slots" class="slots"></div>
@@ -152,62 +155,16 @@
   </div>
 </div>
 
-<!-- ルール -->
+<!-- ルール（項目ごとのページ） -->
 <div id="rules" class="overlay" hidden>
   <div class="card rules-card">
     <div class="rules-head"><h2>ルール</h2><button class="x" data-close="rules" aria-label="閉じる">×</button></div>
-    <div class="rules-body">
-      <h3>目的</h3>
-      <p>みんなで協力して、<b>準備期間10ラウンド → 最終猛吹雪3ラウンド</b>を生き延びればクリアです。<b>全員が同時に行動不能</b>になるとゲームオーバー。最終猛吹雪が来ることは最初からわかっています。</p>
-      <h3>手番</h3>
-      <ul>
-        <li>全員が1回ずつ手番を行うのが1ラウンド。手番の始めに行動力が7になります（使い切らなくてOK・持ち越しなし）。人間の手番には<b>制限時間（120秒）</b>があり、切れると自動で終わります。</li>
-        <li>手番中は、左に「このまま手番を終えると」の予測（満腹度・体温・火力）が出ます。</li>
-        <li>手番の終わりに、①満腹度 −3 ②焚き火の火力 −1（雨ならさらに −1）③体温の低下 ④行動不能の判定、の順に処理します。</li>
-        <li>手番でない人は「移動」と「お絵かき」と「捨てる投票」だけできます。動物は、各プレイヤーの手番の終わりに1回ずつ動きます。</li>
-      </ul>
-      <h3>体温・満腹度</h3>
-      <ul>
-        <li>ゲーム開始時に、人数ぶんの野菜が配られます。</li>
-        <li>どちらも最大10。0になると<b>行動不能</b>：焚き火へ運ばれ、0だった数値が3に回復します。次の自分の手番は「温まる」「食べる」だけできます。</li>
-        <li>体温の低下（手番の終わり）：焚き火の上 <b>0</b> ／ かまくら・倉庫の中（防寒が有効）<b>−1</b> ／ 雪原・道・防寒が切れた建物・見張り台 <b>−2</b>。これに天候の補正が加わります（防寒が有効な建物の中では補正を最大2まで軽減）。</li>
-        <li>天候補正：晴れ 0・雪 +1・吹雪 +2・猛吹雪 +4。雨は焚き火の火力が余分に1下がります。</li>
-      </ul>
-      <h3>移動</h3>
-      <ul>
-        <li>自分の駒をドラッグして、行きたいマスで離します（行動力0）。<b>建物（道を含む）から1マス以内</b>のマスへ行けます。</li>
-        <li>雪原のマスに<b>入るたび体温 −1</b>（建物・道の上は減りません）。道を伸ばすと歩ける範囲が広がります。</li>
-        <li>建物は、<b>既存の建物（道を含む）に隣接する場所</b>にだけ建てられます（道に隣接して道を伸ばせます）。</li>
-        <li>動物や他のプレイヤーのいるマスには入れません。</li>
-      </ul>
-      <h3>行動（自分の駒をクリック）</h3>
-      <ul>
-        <li><b>温まる</b>（行動力2）：焚き火の上＝火力ぶん／防寒が有効な建物の中＝+1 体温が回復。</li>
-        <li><b>焚べる</b>（1）：木材1で火力+1（最大5）。焚き火の上かすぐ隣で。</li>
-        <li><b>食べる</b>（0）：肉＝満腹度+3、野菜＝+2。</li>
-        <li><b>集める</b>（1）：資源のマスで。体力−1ごとに1個。雪原なら雪も1個。体力0で消えます（木は50%で苗木を落とす）。資源は六角形で、外側の線の区切り1つが体力1です。</li>
-        <li><b>持ち物がいっぱい</b>のときは、持っている物を捨てて入れ替えるか、新しく得た物を捨てるかを選びます（雪が自動で付いてくるぶんは、入らなければ入りません）。</li>
-        <li><b>攻撃</b>（1）：隣の動物の体力−1。倒すと肉が1〜7個。</li>
-        <li><b>植える</b>（1）：野菜2個→野菜の苗／苗木1個→樹木の苗。雪原の空きマスに。1〜3ラウンド後に育ちます（苗の外側の線の区切り1つが「育つまであと1ラウンド」）。</li>
-        <li><b>建てる</b>：建設カードを盤面へドラッグ。<b>作る</b>：薪割り台の上かすぐ隣で、木材1→薪2（行動力1）。<b>直す</b>：建物に隣接して、石材1＋行動力（直径ぶん）でHP+2。</li>
-      </ul>
-      <h3>建物</h3>
-      <ul>
-        <li><b>焚き火</b>（3×3・最初からある）火力3から。最大5。</li>
-        <li><b>道</b>（1×1）雪1。建物の仲間として移動範囲を広げます。</li>
-        <li><b>かまくら</b>（2×2）雪5・行動力2。防寒施設。</li>
-        <li><b>倉庫</b>（4×4）木材4＋石材4・行動力4。防寒施設。共有アイテムの上限+10。</li>
-        <li><b>見張り台</b>（2×2）木材5＋石材3・行動力2。1ラウンド先の天候の予報が見え、<b>見張り台からは2マス以内</b>に移動できます。</li>
-        <li><b>薪割り台</b>（2×2・屋外）木材3＋石材1・行動力2。上かすぐ隣で「作る」と、木材1が薪2になります。薪は焚べるときに木材より先に使われます。</li>
-        <li>建物のHPは直径×2。<b>猛吹雪の間は各プレイヤーの手番開始時に全建物（焚き火・道を除く）のHPが1減ります</b>。かまくら・倉庫はHPが半分以下で防寒が消え、0で壊れます。</li>
-      </ul>
-      <h3>共有アイテム</h3>
-      <ul>
-        <li>木材・石材・野菜・肉・雪・苗木はみんなで共有。上限は <b>2×人数＋10＋10×倉庫数</b>。</li>
-        <li>アイテムのアイコンをクリックすると「捨てる」投票が始まり、過半数の賛成で1個捨てます（反対が半数以上で否決）。切断中の人は反対扱い。</li>
-      </ul>
-      <h3>お絵かき</h3>
-      <p>ゲーム効果のない飾りです。手番でない人が、生成済みの雪原に描けます（ペン・消しゴム・青／灰）。建物や道が建ったマスの絵は消えます。</p>
+    <div class="rules-layout">
+      <nav id="rules-nav" class="rules-nav" aria-label="ルールの項目"></nav>
+      <div class="rules-main">
+        <div id="rules-body" class="rules-body"></div>
+        <div class="rules-foot"><button id="rules-prev">← 前へ</button><span id="rules-pos" class="muted"></span><button id="rules-next">次へ →</button></div>
+      </div>
     </div>
   </div>
 </div>
@@ -217,9 +174,10 @@
 
 <script src="shared/engine.js?v=6"></script>
 <script src="shared/cpu.js?v=6"></script>
-<script src="shared/room.js?v=5"></script>
+<script src="shared/room.js?v=6"></script>
 <script src="sound.js?v=2"></script>
 <script src="board.js?v=6"></script>
-<script src="client.js?v=8"></script>
+<script src="guide.js?v=1"></script>
+<script src="client.js?v=9"></script>
 </body>
 </html>
