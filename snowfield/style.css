@@ -195,3 +195,36 @@ button.sw:disabled { opacity: .25; }
 .team-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; } .team-stats div { background: var(--btn2); border: 1px solid var(--pb); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); } .team-stats b { display: block; font-size: 16px; color: var(--text); }
 
 .bar { gap: 8px; padding: 0 14px; } .chip { font-size: 12px; padding: 4px 10px; }
+
+/* ルール（ページ）・チュートリアル */
+.rules-card { width: min(940px, 100%); height: min(86vh, 720px); padding: 18px 20px; gap: 10px; }
+.rules-layout { display: flex; gap: 14px; flex: 1; min-height: 0; }
+.rules-nav { width: 200px; flex: none; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.rules-nav button { text-align: left; padding: 7px 10px; font-size: 13px; border-radius: 8px; border-color: transparent; background: transparent; }
+.rules-nav button.on { background: var(--accBg); color: var(--accFg); font-weight: 700; border-color: var(--accent); }
+.rules-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.rules-body { flex: 1; overflow: auto; font-size: 13px; line-height: 1.75; padding-right: 6px; }
+.rules-body h3 { margin: 0 0 6px; font-size: 18px; } .rules-body h4 { margin: 12px 0 4px; font-size: 14px; }
+.rules-body p { margin: 4px 0; } .rules-body ul, .rules-body ol { margin: 4px 0; padding-left: 20px; }
+.rules-foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--pb); padding-top: 8px; }
+.gt { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12px; line-height: 1.5; }
+.gt th, .gt td { border: 1px solid var(--pb); padding: 5px 8px; text-align: left; vertical-align: top; } .gt th { background: var(--btn2); color: var(--muted2); font-weight: 700; white-space: nowrap; }
+.gnote { background: var(--accBg); color: var(--accFg); border-radius: 8px; padding: 6px 10px; margin: 8px 0; font-size: 12px; }
+.gi { display: inline-block; vertical-align: -3px; margin-right: 2px; }
+@media (max-width: 720px) { .rules-layout { flex-direction: column; } .rules-nav { width: auto; flex-direction: row; flex-wrap: wrap; } }
+.tutor { border: 2px solid var(--accent); gap: 6px; }
+.tut-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--accFg); }
+.tut-dots { display: flex; gap: 4px; } .tut-dots i { flex: 1; height: 4px; border-radius: 2px; background: var(--track); } .tut-dots i.done { background: var(--ok); } .tut-dots i.cur { background: var(--accent); }
+.tut-title { font-size: 16px; } .tut-text { font-size: 13px; line-height: 1.65; } .tut-link { align-self: flex-start; font-size: 12px; padding: 0; }
+.tut-btns button { padding: 6px 12px; font-size: 13px; }
+.tut-hl { position: absolute; z-index: 4; pointer-events: none; border: 3px solid var(--accent); border-radius: 10px; box-shadow: 0 0 0 4px rgba(90,160,230,.35); animation: tut-pulse 1.2s ease-in-out infinite; }
+.tut-pulse { animation: tut-pulse 1.2s ease-in-out infinite; outline: 3px solid var(--accent); outline-offset: 2px; }
+@keyframes tut-pulse { 0%, 100% { box-shadow: 0 0 0 2px rgba(90,160,230,.25); } 50% { box-shadow: 0 0 0 9px rgba(90,160,230,.45); } }
+@media (prefers-reduced-motion: reduce) { .tut-hl, .tut-pulse { animation: none; } }
+.gt td:first-child { min-width: 5em; }
+
+.bcard.armed { box-shadow: 0 0 0 3px var(--accent); }
+
+.gi { color: var(--accent); } .gi svg { display: inline-block; }
+.rules-nav button .gi { margin-right: 6px; }
+.rules-body h3 .gi { margin-right: 8px; vertical-align: -5px; }

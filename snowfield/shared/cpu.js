@@ -51,7 +51,7 @@
     for (let y = f.y - 7; y <= f.y + f.h + 6; y++) {
       for (let x = f.x - 7; x <= f.x + f.w + 6; x++) {
         if (E.buildWhy(st, t, x, y)) continue;
-        const far = Math.abs(x + d.size / 2 - (f.x + 1.5)) + Math.abs(y + d.size / 2 - (f.y + 1.5));
+        const far = Math.abs(x + d.size / 2 - (f.x + f.w / 2)) + Math.abs(y + d.size / 2 - (f.y + f.h / 2));
         if (!best || far < best.score) best = { x, y, score: far };
       }
     }
@@ -309,7 +309,7 @@
     // 手番の終わりじたく：暖かい場所に戻り、必要なら焚べて温まる
     if (here.kind === 'out' && canMove) {
       const w = warmSpot();
-      if (w) return go(w.x, w.y, 'home');
+      if (w) { mem.noTrip = true; return go(w.x, w.y, 'home'); }   // 戻ったら、この手番ではもう出かけない
     }
     if (stoke()) return { type: 'stoke' };
     if (p.ap >= R.ap.warm && warmHere > 0 && p.temp <= R.maxTemp - Math.min(2, warmHere)) return { type: 'warm' };

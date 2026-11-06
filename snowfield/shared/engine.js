@@ -17,7 +17,8 @@
     hunger: 3,                         // 手番終了時の満腹度の減少
     fireInit: 3, fireMax: 5,
     weights: { clear: 3, snow: 2, blizzard: 1, rain: 2 },
-    stormFrom: 4, stormChance: 0.1,    // ランダム猛吹雪：ラウンド4以降に10%
+    fireDiv: 1.5,                      // 焚き火の一辺 = ceil(人数 ÷ fireDiv)
+    resWeights: { tree: 3, stone: 2, veg: 2 },   // 資源の比率
     tempMod: { clear: 0, snow: 1, blizzard: 2, rain: 0, storm: 4 },
     base: { fire: 0, warm: 1, out: 2 }, // 手番終了時の体温低下の基本値
     relief: 2,                          // 防寒施設の中で天候補正を軽減する量
@@ -144,7 +145,6 @@
   // ---------- 天候 ----------
   function rollWeather(st, round) {
     if (round > RULES.prepRounds) return 'storm';
-    if (round >= RULES.stormFrom && rnd(st) < RULES.stormChance) return 'storm';
     const w = RULES.weights;
     let r = rnd(st) * Object.keys(w).reduce((s, k) => s + w[k], 0);
     for (const k of Object.keys(w)) { r -= w[k]; if (r < 0) return k; }
@@ -160,7 +160,8 @@
       for (let x = r[0]; x <= r[1]; x++) {
         if (inGen(st, x, y) || bAt(st, x, y)) continue;
         if (hash(st.seed, x, y, 1) >= RULES.resChance) continue;
-        const t = ['tree', 'stone', 'veg'][Math.floor(hash(st.seed, x, y, 2) * 3)];
+        const W = RULES.resWeights, tot = W.tree + W.stone + W.veg, q = hash(st.seed, x, y, 2) * tot;
+        const t = q < W.tree ? 'tree' : q < W.tree + W.stone ? 'stone' : 'veg';
         const hp = RULES.resHpMin + Math.floor(hash(st.seed, x, y, 3) * (RULES.resHpMax - RULES.resHpMin + 1));
         st.res[key(x, y)] = { t, hp, max: hp };
       }
@@ -183,8 +184,9 @@
     const hp = ri(st, RULES.animalHpMin, RULES.animalHpMax);
     st.animals.push({ id: st.nid++, x, y, hp, max: hp });
   }
-  function addBuilding(st, t, x, y) {
-    const d = t === 'fire' ? { size: 3 } : BUILD[t];
+  const fireSize = n => Math.ceil(n / RULES.fireDiv);
+  function addBuilding(st, t, x, y, size) {
+    const d = t === 'fire' ? { size } : BUILD[t];
     const hp = (t === 'fire' || t === 'road') ? null : d.size * 2;
     const b = { id: st.nid++, t, x, y, w: d.size, h: d.size, hp, max: hp };
     st.b.push(b);
@@ -213,10 +215,13 @@
       b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, pending: [], log: [],
       players: [],
     };
-    const f = addBuilding(st, 'fire', -1, -1);
+    const fs = fireSize(opts.players.length), f0 = -Math.floor(fs / 2);
+    const f = addBuilding(st, 'fire', f0, f0, fs);
     expandGen(st, f);
     guaranteeStart(st);
-    const spots = [[-1, 1], [1, 1], [0, 1], [-1, 0], [1, 0]];   // 焚き火の下側から（上側は焚き火のカードの文字がある）
+    // 焚き火の下側のマスから順に（上側は焚き火のカードの文字がある）
+    const spots = [];
+    for (let y = f.y + f.h - 1; y >= f.y; y--) for (let x = f.x; x < f.x + f.w; x++) spots.push([x, y]);
     st.items.veg += opts.players.length * RULES.startVegPerPlayer;   // 最初の食料
     opts.players.forEach(p => { st.stats.players[p.id] = { ap: 0, collect: 0, kills: 0, built: 0, crafted: 0, stoked: 0, planted: 0, repaired: 0, eaten: 0, warmed: 0, downs: 0 }; });
     opts.players.forEach((p, i) => st.players.push({
@@ -739,7 +744,7 @@
   }
 
   return {
-    RULES, BUILD, RECIPES, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    RULES, BUILD, RECIPES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

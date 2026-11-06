@@ -41,6 +41,7 @@
       this.timer = null;
       this.turnTimer = null;     // 手番の制限時間
       this.turnKey = '';
+      this.tutorial = false;     // チュートリアル中は、手番の制限時間をつけない
       this.turnEndsAt = 0;
       this.mem = {};          // CPU ごとの覚え書き
       this.cpuActs = 0;
@@ -128,7 +129,7 @@
       this.turnKey = key;
       if (this.turnTimer) { this.clearTimer(this.turnTimer); this.turnTimer = null; }
       this.turnEndsAt = 0;
-      if (c && !c.cpu && !c.away) {
+      if (c && !c.cpu && !c.away && !this.tutorial) {
         const ms = E.RULES.turnLimitMs;
         this.turnEndsAt = this.now() + ms;
         this.turnTimer = this.setTimer(() => this.turnTimeout(key), ms);
