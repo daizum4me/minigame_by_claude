@@ -129,7 +129,7 @@
         }
         const id = (this.room.players.find(x => x.token === tok) || {}).id;
         if (id) this.conns.set(conn, { id, lastSeen: Date.now() }); // 戻ってきた人には join の配信を届ける
-        const r = this.room.join(tok, msg.name);
+        const r = this.room.join(tok, msg.name, msg.v == null ? '0' : String(msg.v));   // バージョンが違う人は入れない
         if (r.error) { this.conns.delete(conn); return reject(r.error); }
         if (!id) { this.conns.set(conn, { id: r.id, lastSeen: Date.now() }); this.room.broadcast(); }
       });
@@ -252,7 +252,7 @@
   const app = {
     conn: null, me: null, room: null, game: null,
     sel: null,           // 選んでいる建物の id
-    menu: false, tray: false,
+    menu: false, tray: 'build',
     mode: 'play', tool: 'pen', color: 'a',
     lastLogN: -1, gameKey: null, resultHidden: false, weatherKey: '',
     card: null,          // ドラッグ中の建設カード
@@ -309,6 +309,9 @@
     }
     if (msg.type === 'toast') { if (msg.text) mapToast(msg.text, msg.tone); if (msg.sfx) SnowSound.play(msg.sfx); return; }
     if (msg.type !== 'state') return;
+    if (!app.conn || !app.conn.isHost && !app.conn.isLocal) {
+      if (msg.room.version !== E.VERSION) { leaveRoom(`この部屋は v${msg.room.version || '不明（古い版）'} です（あなたは v${E.VERSION}）。ページを再読み込みして、最新版にしてください`); return; }
+    }
     app.me = msg.you;
     app.room = msg.room;
     app.roomAt = Date.now();
@@ -331,7 +334,7 @@
     show('game');
     const g = app.game;
     if (app.gameKey !== g.seed) {
-      app.gameKey = g.seed; app.turnKey = null; app.annRound = null; app.over = null; app.endPopDismiss = null; app.lastLogN = -1; app.sel = null; app.menu = false; app.tray = false; app.resultHidden = false;
+      app.gameKey = g.seed; app.turnKey = null; app.annRound = null; app.over = null; app.endPopDismiss = null; app.lastLogN = -1; app.sel = null; app.menu = false; app.tray = 'build'; app.resultHidden = false;
       setMode('play');
       requestAnimationFrame(() => { board.resize(); board.reset(); });
     }
@@ -518,7 +521,7 @@
     if (type === 'join') {
       const code = $('#in-code').value.trim().toUpperCase();
       if (!code) { msg.textContent = '部屋IDを入れてください'; msg.hidden = false; return; }
-      app.conn = new GuestTransport({ type: 'join', token: token(), name, code });
+      app.conn = new GuestTransport({ type: 'join', token: token(), name, code, v: E.VERSION });
     } else if (type === 'create') {
       app.conn = new HostTransport(name);
     } else if (type === 'tutorial') {
@@ -790,11 +793,9 @@
 
   // 建設カード／レシピ（「建てる」「作る」で共用）
   function renderTray(g, th) {
-    const mode = app.tray;
-    $('#btn-tray-close').hidden = !mode;
-    $('#tray-title').textContent = mode === 'craft' ? '作る（レシピ）' : '建設カード';
+    const mode = app.tray === 'craft' ? 'craft' : 'build';
+    $$('[data-tray]').forEach(b => b.classList.toggle('on', b.dataset.tray === mode));
     const el = $('#tray');
-    if (!mode) { el.innerHTML = '<div class="small muted" style="line-height:1.6">駒をクリック →「建てる」か「作る」を選ぶと、ここに一覧が出ます。</div>'; return; }
     const me = myP();
     if (mode === 'craft') {
       const card = k => {
@@ -854,14 +855,9 @@
       if (me.gear) add(`外す：${E.GEAR[me.gear.k].name}`, '行動力1', { type: 'unequip', slot: 'gear' });
       if (me.tool) add(`外す：${E.GEAR[me.tool.k].name}（耐久${me.tool.dur}）`, '行動力1', { type: 'unequip', slot: 'tool' });
     }
-    head = '建設・製作';
-    const canBuild = myTurn() && me.down !== 2;
-    entries.push({ label: '建てる', cost: canBuild ? 'カード一覧を左下に表示' : (myTurn() ? '復帰中は建てられません' : '自分の手番ではありません'), ok: canBuild, head, fn: () => { app.tray = 'build'; mapToast('左下に建設カードの一覧を出しました。盤面へドラッグして置いてください'); renderGame(); } });
-    const craftWhy = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません' : '';
-    entries.push({ label: '作る', cost: craftWhy || '料理・薪・装備・道具（左下に一覧）', ok: !craftWhy, head: '', fn: () => { disarm(); app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
     void it;
     app.menuEntries = entries;
-    const tail = '<div class="small muted" style="padding:4px 6px 0">食べる・着けるは、右の共有アイテムをクリックして選びます。</div>';
+    const tail = '<div class="small muted" style="padding:4px 6px 0">建てる・作るは左下のボタン、食べる・着けるは右の共有アイテムのクリックで選びます。</div>';
     const nm = here ? DESC[here.t].name + 'の上' : res ? ({ tree: '木', stone: '石', veg: '野菜' })[res.t] + 'のマス' : '雪原';
     el.innerHTML = `<div class="mh"><div><b>${esc(me.name)}（あなた）</b><small>いる場所：${nm}</small></div><button class="x" data-menu-close aria-label="メニューを閉じる">×</button></div>` +
       entries.map((e, i) => `${e.head ? `<div class="sec">${e.head}</div>` : ''}<button class="ent ${e.ok ? '' : 'no'}" data-ent="${i}"><b>${esc(e.label)}</b><span>${esc(e.cost)}</span></button>`).join('') + tail;
@@ -1067,7 +1063,7 @@
     $('#btn-leave').onclick = () => leaveRoom('');
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-rm-cpu]'); if (b) send({ type: 'removeCpu', id: b.dataset.rmCpu }); });
 
-    $$('[data-open]').forEach(b => { b.onclick = () => { if (b.dataset.open === 'rules') guide.openRules(); else $('#' + b.dataset.open).hidden = false; }; });
+    $$('[data-open]').forEach(b => { b.onclick = () => { if (b.dataset.open === 'rules') guide.openRules(); else if (b.dataset.open === 'changelog') openChangelog(); else $('#' + b.dataset.open).hidden = false; }; });
     $$('[data-close]').forEach(b => { b.onclick = () => { $('#' + b.dataset.close).hidden = true; }; });
     $('#rules').addEventListener('click', e => { if (e.target === $('#rules')) $('#rules').hidden = true; });
     $$('[data-act="theme"]').forEach(b => { b.onclick = () => applyTheme(theme() === 'dark' ? 'light' : 'dark'); });
@@ -1094,7 +1090,7 @@
 
     $('#btn-endturn').onclick = () => { app.menu = false; act({ type: 'end' }); renderMenu(app.game, TH()); };
     $('#btn-log').onclick = () => { const p = $('#log-pop'); p.hidden = !p.hidden; if (!p.hidden && app.game) p.innerHTML = logHtml(app.game); };
-    $('#btn-tray-close').onclick = () => { app.tray = false; disarm(); renderGame(); };
+    $$('[data-tray]').forEach(b => { b.onclick = () => { app.tray = b.dataset.tray; if (b.dataset.tray === 'craft') disarm(); if (app.game) renderTray(app.game, TH()); }; });
     $('#btn-draw').onclick = () => {
       if (app.mode === 'draw') { setMode('play'); return; }
       if (myTurn()) { mapToast('お絵かきは、自分の手番以外で使えます', 'bad'); return; }
@@ -1227,7 +1223,7 @@
     document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) $('#log-pop').hidden = true; });
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
-      $('#rules').hidden = true;
+      $('#rules').hidden = true; $('#changelog').hidden = true;
       disarm();
       if (app.menu) { app.menu = false; renderMenu(app.game, TH()); }
     });
@@ -1238,6 +1234,12 @@
     window.addEventListener('beforeunload', e => {
       if (app.conn && app.conn.isHost && app.room && app.room.phase === 'game') { e.preventDefault(); e.returnValue = ''; }
     });
+  }
+
+  // 更新履歴（新しい版が上）
+  function openChangelog() {
+    $('#changelog-body').innerHTML = window.SnowChangelog.map(v => `<div class="cl-ver"><b>v${esc(v.version)}</b><span>${esc(v.date)}　${esc(v.title)}</span></div>${'<ul>' + v.items.map(t => `<li>${esc(t)}</li>`).join('') + '</ul>'}`).join('');
+    $('#changelog').hidden = false;
   }
 
   function applyTheme(t) {
@@ -1252,6 +1254,7 @@
     $('#in-name').value = store.get('name') || '';
     const room = new URLSearchParams(location.search).get('room');
     if (room) { $('#in-code').value = room.toUpperCase().slice(0, 6); }
+    $$('[data-ver]').forEach(el => { el.textContent = 'v' + E.VERSION; });
     setupBoard();
     guide = window.SnowGuide.create({ app, $, board: () => board, leave: () => leaveRoom(''), sound: SnowSound });
     bind();

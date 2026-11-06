@@ -245,3 +245,9 @@ button.sw:disabled { opacity: .25; }
 .movereq b { font-size: 14px; } .movereq span { font-size: 12px; color: var(--muted2); } .movereq button { text-align: left; padding: 6px 10px; font-size: 13px; }
 .movein { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; width: min(420px, 92vw); background: var(--menu); border: 2px solid var(--accent); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 16px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 8px; text-align: center; }
 .movein b { font-size: 15px; } .movein div { display: flex; gap: 8px; justify-content: center; }
+
+/* 建てる／作るの切り替え（左下に常に置く）・バージョン・更新履歴 */
+.tray-tabs { display: flex; gap: 6px; } .tray-tabs button { flex: 1; padding: 6px 8px; font-size: 13px; font-weight: 700; }
+.tray-tabs button.on { background: var(--accBg); border-color: var(--accent); color: var(--accFg); }
+.ver { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.cl-ver { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 4px; } .cl-ver b { font-size: 18px; } .cl-ver span { color: var(--muted); font-size: 12px; }

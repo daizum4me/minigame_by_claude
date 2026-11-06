@@ -51,7 +51,7 @@
     let best = null;
     for (let y = f.y - 7; y <= f.y + f.h + 6; y++) {
       for (let x = f.x - 7; x <= f.x + f.w + 6; x++) {
-        if (E.buildWhy(st, t, x, y)) continue;
+        if (E.buildWhy(st, t, x, y) || E.resAt(st, x, y)) continue;
         const far = Math.abs(x + d.size / 2 - (f.x + f.w / 2)) + Math.abs(y + d.size / 2 - (f.y + f.h / 2));
         if (!best || far < best.score) best = { x, y, score: far };
       }
@@ -70,7 +70,7 @@
     let best = null;
     for (let y = y0 - 1; y <= y1 + 1; y++) {
       for (let x = x0 - 1; x <= x1 + 1; x++) {
-        if (E.buildWhy(st, 'road', x, y)) continue;
+        if (E.buildWhy(st, 'road', x, y) || E.resAt(st, x, y)) continue;
         const d = Math.max(Math.abs(x - tx), Math.abs(y - ty)) * 10 + Math.abs(x - tx) + Math.abs(y - ty);
         if (!best || d < best.d) best = { x, y, d };
       }
@@ -161,7 +161,9 @@
         const [x, y] = E.parseKey(k);
         const w = E.where(st, { x, y });
         if (w.kind === 'out') continue;
-        const c = E.moveCost(d) + (w.kind === 'fire' ? 0 : 0.5);
+        // 手番を終える場所は、道や道の出入り口（道に接するマス）をなるべく避ける（ほかの人の通り道をふさがない）
+        const roadNb = E.DIRS.filter(([dx, dy]) => st.b.some(b => b.t === 'road' && E.inRect(b, x + dx, y + dy))).length;
+        const c = E.moveCost(d) + (w.kind === 'fire' ? 0 : 0.5) + roadNb * 0.15;
         if (!best || c < best.c) best = { x, y, c };
       }
       return best;
@@ -378,7 +380,7 @@
     }
     // 猛吹雪：温まってから、防寒が有効な建物の上へ移る（焚き火の上は−4、防寒の中は−3）。歩いて体温が減らない所だけ
     if (st.weather === 'storm' && here.kind === 'fire' && canMove && p.ap >= 0) {
-      const t = tileNear(q => E.where(st, q).kind === 'warm' && E.moveCost(map.get(E.key(q.x, q.y))) === 0);
+      const t = tileNear(q => E.where(st, q).kind === 'warm' && E.moveCost(map.get(E.key(q.x, q.y))) === 0 && !st.b.some(b => b.t === 'road' && E.inRect(b, q.x, q.y)));
       if (t) { mem.noTrip = true; return go(t.x, t.y, 'shelter'); }
     }
     return end;

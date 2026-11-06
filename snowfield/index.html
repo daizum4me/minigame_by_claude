@@ -9,14 +9,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 
 <!-- トップ -->
 <main id="top" class="screen center">
   <div class="card top-card">
-    <h1 class="title"><span class="logo" aria-hidden="true"></span>Snowfield</h1>
+    <h1 class="title"><span class="logo" aria-hidden="true"></span>Snowfield <small class="ver" data-ver></small></h1>
     <p class="lead">雪の極寒世界で資源を集め、寒さと空腹をしのいで生き延びる、<br>3〜5人の協力型サバイバルボードゲーム。準備期間10ラウンド → 最終猛吹雪3ラウンド。</p>
 
     <label class="field">
@@ -35,6 +35,7 @@
     <p id="top-msg" class="msg" hidden></p>
     <div class="row links">
       <button class="link" data-open="rules">ルール</button>
+      <button class="link" data-open="changelog">更新履歴</button>
       <button class="link" data-act="theme">ライト／ダーク</button>
       <button class="link" data-act="sound">音：ON</button>
     </div>
@@ -73,7 +74,7 @@
 <!-- ゲーム -->
 <main id="game" hidden>
   <header class="bar">
-    <div class="brand">Snowfield</div>
+    <div class="brand">Snowfield <small class="ver" data-ver></small></div>
     <div id="chip-round" class="chip"></div>
     <div id="chip-final" class="chip org"></div>
     <div id="chip-fore" class="chip grn" hidden></div>
@@ -95,7 +96,7 @@
       <div id="players" class="players"></div>
       <div id="endproj" class="panel endproj" hidden></div>
       <div class="tray-box">
-        <div class="tray-head"><span id="tray-title">建設カード</span><button id="btn-tray-close" class="x" aria-label="建設カードをしまう" hidden>×</button></div>
+        <div class="tray-tabs"><button data-tray="build" class="on">建てる</button><button data-tray="craft">作る</button></div>
         <div id="tray" class="tray"></div>
       </div>
     </aside>
@@ -159,6 +160,14 @@
   </div>
 </div>
 
+<!-- 更新履歴 -->
+<div id="changelog" class="overlay" hidden>
+  <div class="card rules-card" style="height:auto;max-height:86vh">
+    <div class="rules-head"><h2>更新履歴</h2><button class="x" data-close="changelog" aria-label="閉じる">×</button></div>
+    <div id="changelog-body" class="rules-body"></div>
+  </div>
+</div>
+
 <!-- ルール（項目ごとのページ） -->
 <div id="rules" class="overlay" hidden>
   <div class="card rules-card">
@@ -176,12 +185,13 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
 
-<script src="shared/engine.js?v=11"></script>
-<script src="shared/cpu.js?v=10"></script>
-<script src="shared/room.js?v=7"></script>
+<script src="shared/engine.js?v=12"></script>
+<script src="shared/cpu.js?v=11"></script>
+<script src="shared/room.js?v=8"></script>
 <script src="sound.js?v=2"></script>
 <script src="board.js?v=10"></script>
-<script src="guide.js?v=6"></script>
-<script src="client.js?v=14"></script>
+<script src="changelog.js?v=1"></script>
+<script src="guide.js?v=7"></script>
+<script src="client.js?v=15"></script>
 </body>
 </html>

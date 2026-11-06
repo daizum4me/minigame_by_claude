@@ -115,19 +115,21 @@ test('集める・攻撃・食べる・上限', () => {
   st.res['3,0'] = { t: 'stone', hp: 3 };
   // 上限でも集められる。入らない分は、本人が「入れ替える／あきらめる」を選ぶまで保留（その間はほかの行動ができない）
   assert.ok(doIt(st, { type: 'collect' }).ok);
-  assert.deepStrictEqual(st.pending, [{ pid: me(st).id, k: 'stone', n: 1 }]);
-  assert.strictEqual(st.items.snow, 1);       // 雪は自動で付くだけなので、入らなくても選ばせない
+  const pid = me(st).id;
+  assert.deepStrictEqual(st.pending, [{ pid, k: 'stone', n: 1 }, { pid, k: 'snow', n: 1 }]);   // 上限で入らない雪も、自動では捨てず、選ばせる
+  assert.strictEqual(st.items.snow, 1);
   assert.match(doIt(st, { type: 'warm' }).why, /どうするか選んで/);
   assert.match(doIt(st, { type: 'overflow', drop: { stone: 1 } }).why, /不正/);      // 同じ種類は捨てられない
   assert.match(doIt(st, { type: 'overflow', drop: { wood: 2 } }).why, /入らない数/);
-  assert.ok(doIt(st, { type: 'overflow', drop: { wood: 1 } }).ok);
+  assert.ok(doIt(st, { type: 'overflow', drop: { wood: 1 } }).ok);                   // 石材と木材を入れ替える
   assert.strictEqual(st.items.stone, 1);
-  assert.strictEqual(st.items.wood, 16 - st.items.snow - 1 - 0);
-  assert.strictEqual(E.total(st), 16);
-  assert.strictEqual(st.pending.length, 0);
+  assert.strictEqual(st.pending.length, 1);
+  assert.ok(doIt(st, { type: 'overflow', drop: {} }).ok);                            // 雪はあきらめる
+  assert.deepStrictEqual([st.items.snow, E.total(st), st.pending.length], [1, 16, 0]);
   st.res['3,0'] = { t: 'stone', hp: 3 };
   assert.ok(doIt(st, { type: 'collect' }).ok);
-  assert.ok(doIt(st, { type: 'overflow', drop: {} }).ok);                            // あきらめる
+  assert.ok(doIt(st, { type: 'overflow', drop: {} }).ok);
+  assert.ok(doIt(st, { type: 'overflow', drop: {} }).ok);
   assert.strictEqual(st.items.stone, 1);
   // 動物を倒すと肉
   st.items.wood = 0; st.items.stone = 0;
@@ -191,9 +193,16 @@ test('建設：素材・行動力・重なり・HP・道を上書き・周囲が
   assert.strictEqual(st.items.snow, 12 - 2 - 5);
   assert.strictEqual(p.ap, 7 - 2 - 2);
   assert.ok(st.gen.length > nb);
-  // 資源のあるマス
-  const rs = Object.keys(st.res).map(E.parseKey).find(([x, y]) => E.reach(st, x, y));
-  assert.match(E.buildWhy(st, 'road', rs[0], rs[1]), /資源/);
+  // 資源のあるマスにも建てられる（その資源は消える）
+  const rs = Object.keys(st.res).map(E.parseKey).find(([x, y]) => E.reach(st, x, y) && !E.buildWhy(st, 'road', x, y));
+  assert.ok(rs, '建てられる資源のマスがある');
+  st.items.snow = 6; me(st).ap = 7;
+  const res = doIt(st, { type: 'build', t: 'road', x: rs[0], y: rs[1] });
+  assert.ok(res.ok && /資源1個は消えた/.test(res.msg));
+  assert.strictEqual(E.resAt(st, rs[0], rs[1]), null);
+  // 苗のあるマスには建てられない
+  st.plants.push({ x: rs[0] + 1, y: rs[1], t: 'veg', left: 2 });
+  assert.match(E.buildWhy(st, 'road', rs[0] + 1, rs[1]), /苗/);
   // 道は建物に上書きされて消える
   st.items.snow = 6; me(st).ap = 7;
   let rd = null;
