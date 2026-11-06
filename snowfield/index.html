@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snowfield</title>
+<meta name="description" content="Snowfield — 雪の極寒世界で資源を集め、寒さと空腹をしのいで生き延びる3〜5人の協力型サバイバルボードゲーム">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%2317212d%22/><g stroke=%22%238ec3f5%22 stroke-width=%228%22 stroke-linecap=%22round%22><path d=%22M50 16v68M21 33l58 34M79 33L21 67%22/></g></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+<!-- トップ -->
+<main id="top" class="screen center">
+  <div class="card top-card">
+    <h1 class="title"><span class="logo" aria-hidden="true"></span>Snowfield</h1>
+    <p class="lead">雪の極寒世界で資源を集め、寒さと空腹をしのいで生き延びる、<br>3〜5人の協力型サバイバルボードゲーム。準備期間10ラウンド → 最終猛吹雪3ラウンド。</p>
+
+    <label class="field">
+      <span>なまえ（12文字まで）</span>
+      <input id="in-name" type="text" maxlength="24" autocomplete="nickname" placeholder="ゲスト">
+    </label>
+
+    <button id="btn-create" class="primary big">部屋を作る（オンライン）</button>
+    <div class="row">
+      <input id="in-code" type="text" maxlength="6" placeholder="部屋ID" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <button id="btn-join">参加する</button>
+    </div>
+    <div class="divider"><span>または</span></div>
+    <button id="btn-local" class="big">CPUと遊ぶ（ひとりで・通信なし）</button>
+    <p id="top-msg" class="msg" hidden></p>
+    <div class="row links">
+      <button class="link" data-open="rules">ルール</button>
+      <button class="link" data-act="theme">ライト／ダーク</button>
+    </div>
+  </div>
+</main>
+
+<!-- ロビー -->
+<main id="lobby" class="screen center" hidden>
+  <div class="card lobby-card">
+    <h2>ロビー</h2>
+    <div id="lobby-online">
+      <div class="room-id"><span>部屋ID</span><strong id="lobby-code">-----</strong></div>
+      <div class="row">
+        <input id="invite-url" type="text" readonly>
+        <button id="btn-copy">招待URLをコピー</button>
+      </div>
+      <p id="host-warn" class="note warn" hidden>この部屋はあなたのブラウザで動いています。ゲームが終わるまで、このページを閉じたり再読み込みしたりしないでください。</p>
+    </div>
+    <p id="lobby-local" class="note muted" hidden>CPUと遊ぶ（通信なし）。人数は合計3〜5人です。</p>
+    <h3>参加者 <span id="lobby-count" class="muted"></span></h3>
+    <ul id="lobby-players" class="lobby-players"></ul>
+    <button id="btn-add-cpu" class="add-cpu" hidden>＋ CPUを追加</button>
+    <p id="lobby-hint" class="note muted"></p>
+    <div class="row">
+      <button id="btn-start" class="primary big" hidden>ゲーム開始</button>
+      <button id="btn-leave">部屋を出る</button>
+    </div>
+  </div>
+</main>
+
+<!-- ゲーム -->
+<main id="game" hidden>
+  <header class="bar">
+    <div class="brand">Snowfield</div>
+    <div id="chip-round" class="chip"></div>
+    <div id="chip-final" class="chip org"></div>
+    <div id="chip-fore" class="chip grn" hidden></div>
+    <div id="chip-turn" class="chip acc"></div>
+    <div class="grow"></div>
+    <div id="weather" class="weather"></div>
+    <div class="menu-wrap">
+      <button id="btn-log" class="bar-btn">ログ</button>
+      <div id="log-pop" class="log-pop" hidden></div>
+    </div>
+    <button class="bar-btn" data-act="theme">ライト／ダーク</button>
+    <button class="bar-btn" data-open="rules">ルール</button>
+    <button id="btn-endturn" class="bar-btn primary">手番を終える</button>
+  </header>
+  <div class="body">
+    <aside class="left">
+      <div id="players" class="players"></div>
+      <div class="tray-box">
+        <div class="tray-head"><span>建設カード</span><button id="btn-tray-close" class="x" aria-label="建設カードをしまう" hidden>×</button></div>
+        <div id="tray" class="tray"></div>
+      </div>
+    </aside>
+    <section class="mapcol">
+      <div id="mapwrap" class="mapwrap">
+        <canvas id="map" aria-label="マップ"></canvas>
+        <div id="tint" class="tint"></div>
+        <div id="particles" class="particles"></div>
+        <div id="hint" class="pill hint"></div>
+        <div class="zoom pill">
+          <button id="z-out" aria-label="縮小">−</button>
+          <span id="z-pct">100%</span>
+          <button id="z-in" aria-label="拡大">＋</button>
+          <button id="z-reset" class="txt">リセット</button>
+        </div>
+        <div id="maptoast" class="pill toast-map" hidden></div>
+        <div id="tip" class="tip" hidden></div>
+        <div id="menu" class="menu" hidden></div>
+      </div>
+    </section>
+    <aside class="right">
+      <div class="panel">
+        <div class="items-head"><b>共有アイテム</b><span id="cap"></span></div>
+        <div id="slots" class="slots"></div>
+        <div id="item-summary" class="small muted"></div>
+        <div class="small muted">アイコンをクリックすると「捨てる」投票を始めます。上限＝2×人数＋10＋10×倉庫数。</div>
+      </div>
+      <div id="vote" class="panel vote" hidden></div>
+      <div id="detail" class="panel detail"></div>
+      <div class="panel drawbox">
+        <button id="btn-draw" class="draw-toggle"></button>
+        <div id="draw-tools" class="draw-tools"></div>
+        <div id="draw-hint" class="small muted"></div>
+      </div>
+    </aside>
+  </div>
+  <div id="itip" class="tip itip" hidden></div>
+  <div id="ghost" class="ghost" hidden></div>
+</main>
+
+<!-- 結果 -->
+<div id="result" class="overlay" hidden>
+  <div class="card result-card">
+    <h2 id="result-title"></h2>
+    <p id="result-sub" class="lead"></p>
+    <ul id="result-players" class="result-players"></ul>
+    <div class="row">
+      <button id="btn-result-lobby" class="primary" hidden>ロビーに戻る</button>
+      <button id="btn-result-view">盤面を見る</button>
+    </div>
+    <p id="result-wait" class="note muted" hidden>ホストが「ロビーに戻る」を押すと、続けて遊べます。</p>
+  </div>
+</div>
+
+<!-- ルール -->
+<div id="rules" class="overlay" hidden>
+  <div class="card rules-card">
+    <div class="rules-head"><h2>ルール</h2><button class="x" data-close="rules" aria-label="閉じる">×</button></div>
+    <div class="rules-body">
+      <h3>目的</h3>
+      <p>みんなで協力して、<b>準備期間10ラウンド → 最終猛吹雪3ラウンド</b>を生き延びればクリアです。<b>全員が同時に行動不能</b>になるとゲームオーバー。最終猛吹雪が来ることは最初からわかっています。</p>
+      <h3>手番</h3>
+      <ul>
+        <li>全員が1回ずつ手番を行うのが1ラウンド。手番の始めに行動力が7になります（使い切らなくてOK・持ち越しなし）。</li>
+        <li>手番の終わりに、①満腹度 −3 ②焚き火の火力 −1（雨ならさらに −1）③体温の低下 ④行動不能の判定、の順に処理します。</li>
+        <li>手番でない人は「移動」と「お絵かき」と「捨てる投票」だけできます。動物は、各プレイヤーの手番の終わりに1回ずつ動きます。</li>
+      </ul>
+      <h3>体温・満腹度</h3>
+      <ul>
+        <li>どちらも最大10。0になると<b>行動不能</b>：焚き火へ運ばれ、0だった数値が3に回復します。次の自分の手番は「温まる」「食べる」だけできます。</li>
+        <li>体温の低下（手番の終わり）：焚き火の上 <b>0</b> ／ かまくら・倉庫の中（防寒が有効）<b>−1</b> ／ 雪原・道・防寒が切れた建物・見張り台 <b>−2</b>。これに天候の補正が加わります（防寒が有効な建物の中では補正を最大2まで軽減）。</li>
+        <li>天候補正：晴れ 0・雪 +1・吹雪 +2・猛吹雪 +4。雨は焚き火の火力が余分に1下がります。</li>
+      </ul>
+      <h3>移動</h3>
+      <ul>
+        <li>自分の駒をドラッグして、行きたいマスで離します（行動力0）。<b>建物（道を含む）から2マス以内</b>のマスへ行けます。</li>
+        <li>雪原のマスに<b>入るたび体温 −1</b>（建物・道の上は減りません）。道を伸ばすと歩ける範囲が広がります。</li>
+        <li>動物や他のプレイヤーのいるマスには入れません。</li>
+      </ul>
+      <h3>行動（自分の駒をクリック）</h3>
+      <ul>
+        <li><b>温まる</b>（行動力2）：焚き火の上＝火力ぶん／防寒が有効な建物の中＝+1 体温が回復。</li>
+        <li><b>焚べる</b>（1）：木材1で火力+1（最大5）。焚き火の上かすぐ隣で。</li>
+        <li><b>食べる</b>（0）：肉＝満腹度+3、野菜＝+2。</li>
+        <li><b>集める</b>（1）：資源のマスで。体力−1ごとに1個。雪原なら雪も1個。体力0で消えます（木は50%で苗木を落とす）。</li>
+        <li><b>攻撃</b>（1）：隣の動物の体力−1。倒すと肉が1〜7個。</li>
+        <li><b>植える</b>（1）：野菜2個→野菜の苗／苗木1個→樹木の苗。雪原の空きマスに。1〜3ラウンド後に育ちます。</li>
+        <li><b>建てる</b>：建設カードを盤面へドラッグ。<b>直す</b>：建物に隣接して、石材1＋行動力（直径ぶん）でHP+2。</li>
+      </ul>
+      <h3>建物</h3>
+      <ul>
+        <li><b>焚き火</b>（3×3・最初からある）火力3から。最大5。</li>
+        <li><b>道</b>（1×1）雪1。建物の仲間として移動範囲を広げます。</li>
+        <li><b>かまくら</b>（2×2）雪5・行動力2。防寒施設。</li>
+        <li><b>倉庫</b>（4×4）木材4＋石材4・行動力4。防寒施設。共有アイテムの上限+10。</li>
+        <li><b>見張り台</b>（2×2）木材5＋石材3・行動力2。1ラウンド先の天候の予報が見えます。</li>
+        <li>建物のHPは直径×2。<b>猛吹雪の間は各プレイヤーの手番開始時に全建物（焚き火・道を除く）のHPが1減ります</b>。かまくら・倉庫はHPが半分以下で防寒が消え、0で壊れます。</li>
+      </ul>
+      <h3>共有アイテム</h3>
+      <ul>
+        <li>木材・石材・野菜・肉・雪・苗木はみんなで共有。上限は <b>2×人数＋10＋10×倉庫数</b>。</li>
+        <li>アイテムのアイコンをクリックすると「捨てる」投票が始まり、過半数の賛成で1個捨てます（反対が半数以上で否決）。切断中の人は反対扱い。</li>
+      </ul>
+      <h3>お絵かき</h3>
+      <p>ゲーム効果のない飾りです。手番でない人が、生成済みの雪原に描けます（ペン・消しゴム・青／灰）。建物や道が建ったマスの絵は消えます。</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
+
+<script src="shared/engine.js?v=1"></script>
+<script src="shared/cpu.js?v=1"></script>
+<script src="shared/room.js?v=1"></script>
+<script src="board.js?v=1"></script>
+<script src="client.js?v=1"></script>
+</body>
+</html>
