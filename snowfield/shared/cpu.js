@@ -23,13 +23,13 @@
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
   const MIN_END_TEMP = 4;   // 手番の終わりにこれ以上は残しておきたい体温
   // これを超えた分は「余り」として捨ててよい
-  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9, firewood: 99 };
+  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9, firewood: 99, fur: 12, steak: 99, soup: 99 };
 
   const surplus = (st, k) => st.items[k] > SURPLUS[k];
-  const foodStock = st => st.items.meat * E.RULES.eat.meat + st.items.veg * E.RULES.eat.veg;
+  const foodStock = st => Object.keys(E.RULES.eat).reduce((x, k) => x + st.items[k] * E.RULES.eat[k], 0);
   const last = st => st.round > E.RULES.prepRounds;
-  // 薪の貯まり具合（木材ぶんに換算。薪割り台があれば、木材1が薪2になるので、薪は木材の半分）
-  const woodEq = (st, cnt) => (cnt || st.items).wood + (cnt || st.items).firewood * (st.b.some(b => b.t === 'woodshed') ? 0.5 : 1);
+  // 薪の貯まり具合（木材ぶんに換算。作業場があれば、木材1が薪2になるので、薪は木材の半分）
+  const woodEq = (st, cnt) => (cnt || st.items).wood + (cnt || st.items).firewood * (st.b.some(b => b.t === 'workshop') ? 0.5 : 1);
   const fuelOf = st => st.items.wood + st.items.firewood;
 
   // 必要な量の目安（人数・ラウンドで変わる）
@@ -87,6 +87,9 @@
       case 'veg': return cnt.veg < 4 ? 5 : 2;
       case 'stone': return cnt.stone < 4 && E.count(st, 'storage') < 1 ? 3 : 0.5;
       case 'sapling': return cnt.sapling < 2 ? 3 : 0.5;
+      case 'fur': return cnt.fur < 4 ? 4 : 1;
+      case 'steak': return 8;
+      case 'soup': return 4;
       case 'snow': return cnt.snow < 2 ? 4 : (cnt.snow < 5 ? 1.5 : 0.2);
       default: return 0;
     }
@@ -128,17 +131,21 @@
     const T = targets(st);
     const fin = last(st);
 
+    // 食べるもの：満腹度の空きに収まるものの中で、いちばん回復が大きいもの（ステーキ・肉・スープ）
+    const miss = R.maxFood - p.food;
+    const cooked = ['steak', 'meat', 'soup'].filter(k => it[k] > 0 && R.eat[k] <= miss + 1).sort((a, b) => R.eat[b] - R.eat[a])[0];
+
     // 復帰中の手番は「温まる」「食べる」だけ
     if (p.down === 2) {
-      if (p.food <= 7 && it.meat > 0) return { type: 'eat', k: 'meat' };
+      if (p.food <= 7 && cooked) return { type: 'eat', k: cooked };
       if (p.food <= 8 && it.veg > 0) return { type: 'eat', k: 'veg' };
       if (p.ap >= R.ap.warm && p.temp < R.maxTemp && warmHere > 0) return { type: 'warm' };
       return end;
     }
 
     // 食べる（手番の終わりに満腹度が3減るので、3以下で終わらないように）
-    if (p.food <= 7 && it.meat > 0) return { type: 'eat', k: 'meat' };
-    if (p.food <= 8 && it.veg > 0 && (it.meat === 0 || p.food <= 4)) return { type: 'eat', k: 'veg' };
+    if (p.food <= 7 && cooked) return { type: 'eat', k: cooked };
+    if (p.food <= 8 && it.veg > 0 && (!cooked || p.food <= 4)) return { type: 'eat', k: 'veg' };
 
     const map = E.moveMap(st, p);
     const costAt = (x, y) => { const d = map.get(E.key(x, y)); return d == null ? null : E.moveCost(d); };
@@ -209,21 +216,34 @@
       if (s) return { type: 'build', t: 'storage', x: s.x, y: s.y };
     }
 
-    const hasShed = st.b.some(b => b.t === 'woodshed');
-    // 薪割り台：木材1が薪2になるので、薪（火力）の元になる木が半分で済む
-    if (!hasShed && !fin && it.wood >= 8 && it.stone >= 1 && p.ap >= E.BUILD.woodshed.ap) {
-      const sp = findSpot(st, 'woodshed');
-      if (sp) return { type: 'build', t: 'woodshed', x: sp.x, y: sp.y };
+    const hasShop = st.b.some(b => b.t === 'workshop');
+    // 作業場（木材3）：薪（木材1→薪2）・防寒着・道具を作る
+    if (!hasShop && !fin && st.round >= 2 && it.wood >= 6 && p.ap >= E.BUILD.workshop.ap) {
+      const sp = findSpot(st, 'workshop');
+      if (sp) return { type: 'build', t: 'workshop', x: sp.x, y: sp.y };
     }
     const keepWood = E.count(st, 'storage') < 1 && it.stone >= 3 && !fin ? 4 : 0;
-    if (hasShed && it.wood > keepWood && it.firewood < FIREWOOD_MAX && p.ap >= E.RECIPES.firewood.ap && E.room(st) >= 1) {
-      if (E.nearStation(st, p, 'woodshed')) return { type: 'craft', recipe: 'firewood' };
-      // 薪割り台のそばへ行く（暖かい場所を優先。1手番に1回だけ）
-      if (it.wood >= keepWood + 2 && canMove && !mem.noTrip && !mem.shedTrip && p.ap >= 2) {
+    // 持ち物の防寒着・道具を着ける（行動力0）
+    const coatInPool = st.gear.find(x => x.k === 'coat'), toolInPool = st.gear.find(x => E.GEAR[x.k].slot === 'tool');
+    if (coatInPool && !p.gear) return { type: 'equip', id: coatInPool.id };
+    if (toolInPool && !p.tool) return { type: 'equip', id: toolInPool.id };
+    // 作業場で作るもの
+    const wantCraft = () => {
+      if (!hasShop || p.ap < 1) return null;
+      if (!p.gear && !coatInPool && it.fur >= 3) return 'coat';
+      if (!p.tool && !toolInPool && !fin && it.fur >= 1 && it.wood >= 1 && it.stone >= 1) return 'axe';
+      if (it.wood > keepWood && it.firewood < FIREWOOD_MAX && E.room(st) >= 1) return 'firewood';
+      return null;
+    };
+    const cr = wantCraft();
+    if (cr) {
+      if (E.nearStation(st, p, 'workshop')) return { type: 'craft', recipe: cr };
+      // 作業場のそばへ行く（暖かい場所を優先。1手番に1回だけ）
+      if ((cr !== 'firewood' || it.wood >= keepWood + 2) && canMove && !mem.noTrip && !mem.shedTrip && p.ap >= 2) {
         let best = null;
         for (const [k, d] of map) {
           const [x, y] = E.parseKey(k);
-          if (!E.nearStation(st, { x, y }, 'woodshed')) continue;
+          if (!E.nearStation(st, { x, y }, 'workshop')) continue;
           const c = E.moveCost(d) + (E.where(st, { x, y }).kind === 'out' ? 1 : 0);
           if (!best || c < best.c) best = { x, y, c };
         }
@@ -233,7 +253,8 @@
 
     // 目当ての価値
     // 石材：倉庫（避難所・上限+10）のため（3人では、倉庫のために石材を追うと負担のほうが大きいので、4人以上）。倉庫があれば、猛吹雪の修理のために貯める
-    const stoneWant = (nP >= 4 && E.count(st, 'storage') < 1 && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
+    const toolStone = hasShop && !p.tool && !toolInPool && it.stone < 1;   // 道具の材料
+    const stoneWant = toolStone || (nP >= 4 && E.count(st, 'storage') < 1 && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
     const needSnow = it.snow < 2;
     const resValue = r => {
       const item = E.RES_ITEM[r.t];
@@ -350,6 +371,11 @@
     }
     if (stoke()) return { type: 'stoke' };
     if (p.ap >= R.ap.warm && warmHere >= (here.kind === 'warm' ? 1 : 2) && p.temp <= R.maxTemp - Math.min(2, warmHere)) return { type: 'warm' };
+    // 焚き火のそばで、余った行動力で料理（肉→ステーキ、野菜2＋雪1→スープ3）
+    if (p.ap >= 1 && nearFire && E.room(st) >= 0) {
+      if (it.meat >= 1) return { type: 'craft', recipe: 'steak' };
+      if (it.veg >= 2 && it.snow >= 1 && !farmVeg) return { type: 'craft', recipe: 'soup' };
+    }
     // 猛吹雪：温まってから、防寒が有効な建物の上へ移る（焚き火の上は−4、防寒の中は−3）。歩いて体温が減らない所だけ
     if (st.weather === 'storm' && here.kind === 'fire' && canMove && p.ap >= 0) {
       const t = tileNear(q => E.where(st, q).kind === 'warm' && E.moveCost(map.get(E.key(q.x, q.y))) === 0);

@@ -24,7 +24,7 @@
     relief: 2,                          // 防寒施設の中で天候補正を軽減する量
     moveRange: 1,                       // 建物（道を含む）からこのマス以内に移動できる
     towerRange: 2,                      // 見張り台からは、このマス以内に移動できる
-    turnLimitMs: 120000,                // 手番の制限時間（人間のプレイヤーだけ。ルームで使う）
+    turnLimitMs: 180000,                // 手番の制限時間（人間のプレイヤーだけ。ルームで使う）
     startVegPerPlayer: 1,               // ゲーム開始時に、人数 × この数の野菜を配る
     startFirewoodPerPlayer: 1,          // 同じく、人数 × この数の薪を配る
     startSnow: 3,                       // ゲーム開始時に配る雪
@@ -35,7 +35,11 @@
     sapChance: 0.5,
     animalsExtra: 2, animalHpMin: 3,   // 動物の数 = 人数 + animalsExtra
      animalHpMax: 5, meatMin: 1, meatMax: 7,
-    eat: { meat: 3, veg: 2 },
+    eat: { meat: 3, veg: 2, steak: 5, soup: 2 },
+    furMin: 1, furMax: 5,               // 動物が落とす毛皮
+    toolDur: 7,                         // 道具の耐久度（使うたびに1減る）
+    coatRelief: 1,                      // 防寒着で、手番の終わりの体温の低下が減る量
+    gearBonus: 1,                       // 道具を着けたときの、集める量・攻撃力の増加
     ap: { warm: 2, stoke: 1, collect: 1, attack: 1, plant: 1 },
     capBase: 10, capPerPlayer: 2, capPerStorage: 10,
     repairHp: 2,
@@ -50,14 +54,30 @@
     igloo: { name: 'かまくら', size: 2, ap: 2, cost: { snow: 5 } },
     storage: { name: '倉庫', size: 4, ap: 4, cost: { wood: 4, stone: 4 } },
     tower: { name: '見張り台', size: 2, ap: 2, cost: { wood: 5, stone: 3 } },
-    woodshed: { name: '薪割り台', size: 2, ap: 2, cost: { wood: 3, stone: 1 } },
+    workshop: { name: '作業場', size: 2, ap: 2, cost: { wood: 3 } },
   };
-  // 「作る」のレシピ：station の上かすぐ隣にいるときに作れる
+  const STATION_NAMES = { fire: '焚き火', workshop: '作業場' };
+  // 装備：防寒着は「装備」の枠、道具は「道具」の枠（それぞれ1つ。着けるのは行動力0、外すのは1）
+  const GEAR = {
+    coat: { name: '防寒着', slot: 'gear', desc: '手番の終わりの体温の低下が1減る' },
+    axe: { name: '斧', slot: 'tool', target: 'tree', desc: '木を集める量+1（体力も余計に減る）' },
+    pick: { name: 'ツルハシ', slot: 'tool', target: 'stone', desc: '石を集める量+1（体力も余計に減る）' },
+    shovel: { name: 'シャベル', slot: 'tool', target: 'veg', desc: '野菜を集める量+1（体力も余計に減る）' },
+    spear: { name: '槍', slot: 'tool', target: 'animal', desc: '動物への攻撃力+1' },
+  };
+  // 「作る」のレシピ：station の上かすぐ隣にいるときに作れる。gear があるものは、装備や道具ができる
   const RECIPES = {
-    firewood: { name: '薪', station: 'woodshed', ap: 1, in: { wood: 1 }, out: { firewood: 2 } },
+    steak: { name: 'ステーキ', station: 'fire', ap: 1, in: { meat: 1 }, out: { steak: 1 } },
+    soup: { name: 'スープ', station: 'fire', ap: 1, in: { veg: 2, snow: 1 }, out: { soup: 3 } },
+    firewood: { name: '薪', station: 'workshop', ap: 1, in: { wood: 1 }, out: { firewood: 2 } },
+    coat: { name: '防寒着', station: 'workshop', ap: 1, in: { fur: 3 }, gear: 'coat' },
+    axe: { name: '斧', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'axe' },
+    pick: { name: 'ツルハシ', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'pick' },
+    shovel: { name: 'シャベル', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'shovel' },
+    spear: { name: '槍', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'spear' },
   };
-  const ITEMS = ['wood', 'firewood', 'stone', 'veg', 'meat', 'snow', 'sapling'];
-  const ITEM_NAMES = { wood: '木材', firewood: '薪', stone: '石材', veg: '野菜', meat: '肉', snow: '雪', sapling: '苗木' };
+  const ITEMS = ['wood', 'firewood', 'stone', 'veg', 'meat', 'fur', 'steak', 'soup', 'snow', 'sapling'];
+  const ITEM_NAMES = { wood: '木材', firewood: '薪', fur: '毛皮', steak: 'ステーキ', soup: 'スープ', stone: '石材', veg: '野菜', meat: '肉', snow: '雪', sapling: '苗木' };
   const WEATHER_NAMES = { clear: '晴れ', snow: '雪', blizzard: '吹雪', rain: '雨', storm: '猛吹雪' };
   const RES_ITEM = { tree: 'wood', stone: 'stone', veg: 'veg' };
   const DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
@@ -104,7 +124,7 @@
   const nearB = (b, p) => { const g = rectGap(b, p.x, p.y); return g.dx + g.dy <= 1; };
   const count = (st, t) => st.b.filter(b => b.t === t).length;
   const cap = st => RULES.capPerPlayer * st.players.length + RULES.capBase + RULES.capPerStorage * count(st, 'storage');
-  const total = st => ITEMS.reduce((s, k) => s + st.items[k], 0);
+  const total = st => ITEMS.reduce((s, k) => s + st.items[k], 0) + (st.gear ? st.gear.length : 0);
   const room = st => Math.max(0, cap(st) - total(st));
   const hasTower = st => st.b.some(b => b.t === 'tower');
   const phaseOf = round => (round > RULES.prepRounds ? 'final' : 'prep');
@@ -136,9 +156,8 @@
   function tempLoss(st, p, weather) {
     const w = RULES.tempMod[weather || st.weather];
     const k = where(st, p).kind;
-    if (k === 'fire') return RULES.base.fire + w;
-    if (k === 'warm') return RULES.base.warm + Math.max(0, w - RULES.relief);
-    return RULES.base.out + w;
+    const v = k === 'fire' ? RULES.base.fire + w : k === 'warm' ? RULES.base.warm + Math.max(0, w - RULES.relief) : RULES.base.out + w;
+    return p.gear && p.gear.k === 'coat' ? Math.max(0, v - RULES.coatRelief) : v;   // 防寒着
   }
   function warmAmount(st, p) {
     const k = where(st, p).kind;
@@ -213,7 +232,8 @@
     const st = {
       v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null,
       weather: 'clear', next: 'clear', fire: RULES.fireInit, fireOut: 0,
-      items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }, RULES.startItems),
+      items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, fur: 0, steak: 0, soup: 0, snow: 0, sapling: 0 }, RULES.startItems),
+      gear: [],
       stats: { players: {}, team: { gained: {}, built: 0, destroyed: 0, discarded: 0 } },
       b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, pending: [], log: [],
       players: [],
@@ -231,7 +251,7 @@
     opts.players.forEach(p => { st.stats.players[p.id] = { ap: 0, collect: 0, kills: 0, built: 0, crafted: 0, stoked: 0, planted: 0, repaired: 0, eaten: 0, warmed: 0, downs: 0 }; });
     opts.players.forEach((p, i) => st.players.push({
       id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
-      x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0,
+      x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0, gear: null, tool: null,
     }));
     for (let i = 0; i < opts.players.length + RULES.animalsExtra; i++) spawnAnimal(st);
     st.weather = rollWeather(st, 1);
@@ -341,7 +361,9 @@
     return null;
   }
   // 現在地から行ける全マスの経路コスト（雪原に入るたび100、建物・道は1）。体温コスト＝floor(値/100)
-  function moveMap(st, p) {
+  // opts.ignorePlayers：ほかの駒を無視して経路を探す／opts.prev：経路をたどるための記録を受け取る Map
+  function moveMap(st, p, opts) {
+    opts = opts || {};
     const dist = new Map();
     if (p.down > 0) return dist;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -365,14 +387,41 @@
       for (const [dx, dy] of DIRS) {
         const x = ux + dx, y = uy + dy;
         if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-        if (!reach(st, x, y) || animalAt(st, x, y) || playerAt(st, x, y, p.id)) continue;
+        if (!reach(st, x, y) || animalAt(st, x, y) || (!opts.ignorePlayers && playerAt(st, x, y, p.id))) continue;
         const nd = d + (bAt(st, x, y) ? 0 : 100) + 1, k = key(x, y);
-        if (nd < (dist.has(k) ? dist.get(k) : Infinity)) { dist.set(k, nd); push([nd, x, y]); }
+        if (nd < (dist.has(k) ? dist.get(k) : Infinity)) { dist.set(k, nd); if (opts.prev) opts.prev.set(k, uk); push([nd, x, y]); }
       }
     }
     return dist;
   }
   const moveCost = d => Math.floor(d / 100);
+
+  // ほかの駒がふさいでいて行けないとき、駒を無視すれば通れる最短の道と、その道の上にいる駒（動いてほしい相手）を返す
+  function pathBlockers(st, p, x, y) {
+    const out = { path: [], blockers: [], ideal: null, real: null };   // ideal：駒がなければ体温がいくつ減るか／real：いまの体温の減り方（行けなければ null）
+    if (!p || p.down > 0) return out;
+    const prev = new Map(), dist = moveMap(st, p, { ignorePlayers: true, prev });
+    const tk = key(x, y);
+    if (!dist.has(tk) || tk === key(p.x, p.y)) return out;
+    for (let k = tk; k && k !== key(p.x, p.y); k = prev.get(k)) out.path.push(k);
+    out.blockers = st.players.filter(q => q.id !== p.id && out.path.includes(key(q.x, q.y)));
+    out.ideal = moveCost(dist.get(tk));
+    const real = moveMap(st, p).get(tk);
+    out.real = real == null ? null : moveCost(real);
+    return out;
+  }
+  // 道を空けるために動く先：avoid（空けてほしい道のマス）以外で、体温がいちばん減らない近いマス
+  function moveAsideTile(st, q, avoid) {
+    const map = moveMap(st, q), skip = new Set(avoid || []);
+    let best = null;
+    for (const [k, d] of map) {
+      if (k === key(q.x, q.y) || skip.has(k)) continue;
+      const [x, y] = parseKey(k);
+      const sc = d * 100 + Math.abs(x - q.x) + Math.abs(y - q.y);
+      if (!best || sc < best.sc) best = { x, y, sc, cost: moveCost(d) };
+    }
+    return best;
+  }
 
   // ---------- 建設 ----------
   function buildWhy(st, t, x, y) {
@@ -537,6 +586,15 @@
       r = { ok: true, sfx: 'tick', msg: total ? `${parts.join('・')}を捨てて、${ITEM_NAMES[pend.k]}${total}個を持った${lost ? `（${ITEM_NAMES[pend.k]}${lost}個は捨てた）` : ''}` : `${ITEM_NAMES[pend.k]}${pend.n}個を捨てた` };
       log(st, `${p.name}：${r.msg}`);
     } else if (t === 'move') r = doMove(st, p, a);
+    else if (t === 'moveAside') {            // 「どいて」と頼まれたときの移動（自動で、道をふさがない近いマスへ）
+      if (p.down > 0) return fail('行動不能中は移動できません');
+      const avoid = Array.isArray(a.avoid) ? a.avoid.filter(x => typeof x === 'string').slice(0, 300) : [];
+      const tile = moveAsideTile(st, p, avoid);
+      if (!tile) return fail('動ける場所がありません');
+      if (p.temp - tile.cost < 3) return fail('体温が低いので、動けません');
+      r = doMove(st, p, tile);
+      if (r.ok) r.msg = '道を空けた：' + r.msg;
+    }
     else if (t === 'draw' || t === 'erase') {
       if (mine) return fail('お絵かきは自分の手番以外で使えます');
       if (t === 'draw') {
@@ -574,6 +632,16 @@
     }
     if (r.ok) { st.v++; if (!r.sfx) r.sfx = SFX[t] || ''; }
     return r;
+  }
+
+  // 道具の耐久度を1減らす。0になったら壊れる
+  function wearTool(st, p) {
+    p.tool.dur--;
+    if (p.tool.dur > 0) return `（${GEAR[p.tool.k].name} 残り${p.tool.dur}）`;
+    const name = GEAR[p.tool.k].name;
+    p.tool = null;
+    log(st, `${p.name}の${name}が壊れた`);
+    return `（${name}が壊れた）`;
   }
 
   // 結果画面の統計
@@ -630,7 +698,7 @@
       }
       case 'eat': {
         const k = a.k;
-        if (k !== 'meat' && k !== 'veg') return fail('食べられません');
+        if (!RULES.eat[k]) return fail('食べられません');
         if (it[k] < 1) return fail(`${ITEM_NAMES[k]}がありません`);
         it[k]--;
         p.food = Math.min(RULES.maxFood, p.food + RULES.eat[k]);
@@ -641,10 +709,14 @@
         const r = resAt(st, p.x, p.y);
         if (!r) return fail('ここには集められる資源がありません');
         const onSnow = !bAt(st, p.x, p.y), k = RES_ITEM[r.t];
-        p.ap -= ap.collect; r.hp--;
-        let m = `集める：${ITEM_NAMES[k]} +1`;
+        // 斧・ツルハシ・シャベルを着けていると、その資源は体力が余計に減る代わりに、得る量も増える
+        const tool = p.tool && GEAR[p.tool.k].target === r.t ? p.tool : null;
+        const dmg = tool ? Math.min(1 + RULES.gearBonus, r.hp) : 1;
+        p.ap -= ap.collect; r.hp -= dmg;
+        let m = `集める：${ITEM_NAMES[k]} +${dmg}`;
         const sfx = 'collect_' + r.t;
-        if (!gain(st, p.id, k, 1)) m += '（上限で入りません）';
+        if (!gain(st, p.id, k, dmg)) m += '（上限で入りません）';
+        if (tool) m += wearTool(st, p);
         if (onSnow) m += addItem(st, 'snow', 1) ? '、雪 +1' : '（雪は上限で入らず）';   // 雪は自動で付いてくるので、入らなくても選ばせない
         if (r.hp <= 0) {
           delete st.res[key(p.x, p.y)];
@@ -657,12 +729,16 @@
         if ((e = needAp(ap.attack))) return fail(e);
         const an = animalAt(st, a.x, a.y);
         if (!an || Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail('隣のマスの動物だけ攻撃できます');
-        p.ap -= ap.attack; an.hp--;
-        if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -1（残り ${an.hp}）`, sfx: 'attack' };
+        const spear = p.tool && p.tool.k === 'spear' ? p.tool : null;
+        const dmg = spear ? 1 + RULES.gearBonus : 1;
+        p.ap -= ap.attack; an.hp -= dmg;
+        const worn = spear ? wearTool(st, p) : '';
+        if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -${dmg}（残り ${an.hp}）${worn}`, sfx: 'attack' };
         const n = ri(st, RULES.meatMin, RULES.meatMax), got = gain(st, p.id, 'meat', n);
+        const fn = ri(st, RULES.furMin, RULES.furMax), fgot = gain(st, p.id, 'fur', fn);
         st.animals = st.animals.filter(q => q !== an);
         spawnAnimal(st);
-        return { ok: true, msg: `動物を倒した：肉${n}個のうち${got}個を入手${got < n ? '（入りきらない分は、入れ替えるか選べます）' : ''}`, sfx: 'kill' };
+        return { ok: true, msg: `動物を倒した：肉${n}個・毛皮${fn}個のうち、肉${got}個・毛皮${fgot}個を入手${got < n || fgot < fn ? '（入りきらない分は、入れ替えるか選べます）' : ''}${worn}`, sfx: 'kill' };
       }
       case 'plant': {
         if ((e = needAp(ap.plant))) return fail(e);
@@ -694,16 +770,42 @@
         const rc = RECIPES[a.recipe];
         if (!rc) return fail('不正な操作です');
         if ((e = needAp(rc.ap))) return fail(e);
-        if (!nearStation(st, p, rc.station)) return fail(`${BUILD[rc.station].name}の上か、すぐ隣に移動してください`);
+        if (!nearStation(st, p, rc.station)) return fail(`${STATION_NAMES[rc.station]}の上か、すぐ隣に移動してください`);
         const lack = lacking(st, rc.in);
         if (lack) return fail(`${ITEM_NAMES[lack]}が足りません`);
-        const nIn = Object.values(rc.in).reduce((x, y) => x + y, 0), nOut = Object.values(rc.out).reduce((x, y) => x + y, 0);
+        const nIn = Object.values(rc.in).reduce((x, y) => x + y, 0), nOut = rc.gear ? 1 : Object.values(rc.out).reduce((x, y) => x + y, 0);
         if (nOut - nIn > room(st)) return fail('持ち物がいっぱいです');
         p.ap -= rc.ap;
         for (const k of Object.keys(rc.in)) it[k] -= rc.in[k];
-        for (const k of Object.keys(rc.out)) it[k] += rc.out[k];
         const txt = o => Object.keys(o).map(k => `${ITEM_NAMES[k]}${o[k]}`).join('・');
+        if (rc.gear) {
+          st.gear.push({ id: st.nid++, k: rc.gear, dur: GEAR[rc.gear].slot === 'tool' ? RULES.toolDur : null });
+          return { ok: true, msg: `作る：${txt(rc.in)} → ${GEAR[rc.gear].name}（持ち物に入った。着けると使えます）`, sfx: 'craft' };
+        }
+        for (const k of Object.keys(rc.out)) it[k] += rc.out[k];
         return { ok: true, msg: `作る：${txt(rc.in)} → ${txt(rc.out)}`, sfx: 'craft' };
+      }
+      case 'equip': {                         // 持ち物の装備・道具を着ける（行動力0。同じ枠に着けているものがあれば、外す行動力1）
+        const g = st.gear.find(x => x.id === a.id);
+        if (!g) return fail('その装備・道具はありません');
+        const slot = GEAR[g.k].slot, cur = slot === 'gear' ? p.gear : p.tool;
+        if (cur && (e = needAp(1))) return fail(e + '（いま着けているものを外すのに必要）');
+        st.gear = st.gear.filter(x => x !== g);
+        if (cur) { p.ap -= 1; st.gear.push(cur); }
+        if (slot === 'gear') p.gear = g; else p.tool = g;
+        return { ok: true, msg: `着ける：${GEAR[g.k].name}${cur ? `（${GEAR[cur.k].name}を外した）` : ''}`, sfx: 'tick' };
+      }
+      case 'unequip': {                       // 着けているものを外す（行動力1。持ち物に戻る）
+        const slot = a.slot === 'gear' ? 'gear' : a.slot === 'tool' ? 'tool' : null;
+        if (!slot) return fail('不正な操作です');
+        const cur = slot === 'gear' ? p.gear : p.tool;
+        if (!cur) return fail('着けているものがありません');
+        if ((e = needAp(1))) return fail(e);
+        if (room(st) < 1) return fail('持ち物がいっぱいで、外したものを入れられません');
+        p.ap -= 1;
+        st.gear.push(cur);
+        if (slot === 'gear') p.gear = null; else p.tool = null;
+        return { ok: true, msg: `外す：${GEAR[cur.k].name}`, sfx: 'tick' };
       }
       case 'repair': {
         const b = st.b.find(x => x.id === a.id);
@@ -746,7 +848,7 @@
   function foodNeed(st) {
     const out = { need: 0, have: 0, short: 0, turns: 0, final: st.round > RULES.prepRounds };
     if (st.phase !== 'play') return out;
-    out.have = st.items.meat * RULES.eat.meat + st.items.veg * RULES.eat.veg;
+    out.have = Object.keys(RULES.eat).reduce((x, k) => x + st.items[k] * RULES.eat[k], 0);
     if (!out.final) {
       out.turns = RULES.finalRounds;
       out.need = st.players.length * RULES.finalRounds * RULES.hunger;
@@ -762,10 +864,10 @@
   }
 
   return {
-    RULES, BUILD, RECIPES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,
-    moveMap, moveCost, moveWhy, buildWhy, lacking, genCells,
+    moveMap, moveCost, moveWhy, buildWhy, lacking, genCells, pathBlockers, moveAsideTile,
   };
 });

@@ -5,7 +5,7 @@ const path = require('node:path');
 const E = require('../shared/engine');
 
 // ブラウザ向けのファイルなので、必要な部分だけ用意して読み込む
-global.window = { SnowEngine: E, SnowBoard: { ITEM_ICON: { wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' }, svgIcon: n => `<svg data-i="${n}"></svg>` } };
+global.window = { SnowEngine: E, SnowBoard: { ITEM_ICON: { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' }, svgIcon: n => `<svg data-i="${n}"></svg>` } };
 require('../guide.js');
 const G = global.window.SnowGuide;
 
@@ -24,6 +24,8 @@ test('ルールの全ページが作れて、数値がルールに合ってい�
   for (const k of Object.keys(E.BUILD)) assert.ok(all.includes(E.BUILD[k].name), E.BUILD[k].name);   // すべての建物の説明がある
   assert.ok(all.includes('3人＝2×2') && all.includes('5人＝4×4'));                                       // 焚き火の大きさ
   assert.ok(all.includes('木3：石2：野菜2'));
+  assert.ok(all.includes('作業場'));
+  for (const k of Object.keys(E.RECIPES)) assert.ok(all.includes(E.RECIPES[k].name), E.RECIPES[k].name);     // すべてのレシピの説明がある
   assert.ok(all.includes(`${E.RULES.fireOutLimit}手番連続`));                                            // 焚き火が消えたままの敗北                                                             // 資源の比率
 });
 
@@ -32,6 +34,6 @@ test('ルールのアイコンは、すべて board.js の絵として用意さ�
   const have = new Set([...src.matchAll(/^\s{4}(\w+): \[/gm)].map(m => m[1]));
   const used = new Set([...G.PAGES.map(p => p.html()).join('').matchAll(/data-i="(\w+)"/g)].map(m => m[1]));
   G.PAGES.forEach(p => used.add(p.icon));
-  const items = { wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
+  const items = { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
   for (const u of used) assert.ok(have.has(u) || have.has(items[u]), `絵がない：${u}`);
 });

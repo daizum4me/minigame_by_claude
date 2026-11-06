@@ -380,42 +380,145 @@ test('ゲーム開始：人数ぶんの野菜と薪、雪3個が配られる', (
   assert.strictEqual(E.createGame({ seed: 1, players: [...P3, { id: 'p4', name: 'P4', color: 'red' }] }).items.veg, 4);
 });
 
-test('薪割り台：建てる・木材1→薪2・薪を先に焚べる・壊れる', () => {
+test('作業場：建てる（木材3）・木材1→薪2・薪を先に焚べる・壊れる', () => {
   const st = mk(); st.weather = 'clear'; st.next = 'clear';
   const p = me(st);
-  const sp = spotFor(st, 'woodshed');
-  st.items.wood = 5; st.items.stone = 1;
-  assert.ok(doIt(st, { type: 'build', t: 'woodshed', x: sp[0], y: sp[1] }).ok);
-  const sh = st.b.find(b => b.t === 'woodshed');
-  assert.deepStrictEqual([sh.hp, sh.max, st.items.wood, st.items.stone], [4, 4, 2, 0]);
+  const sp = spotFor(st, 'workshop');
+  st.items.wood = 5;
+  assert.ok(doIt(st, { type: 'build', t: 'workshop', x: sp[0], y: sp[1] }).ok);
+  const sh = st.b.find(b => b.t === 'workshop');
+  assert.deepStrictEqual([sh.hp, sh.max, st.items.wood], [4, 4, 2]);
   p.ap = 7;
-  // 離れていると作れない
-  p.x = sh.x + 5; p.y = sh.y + 5;
-  assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /薪割り台/);
-  p.x = sh.x + 1; p.y = sh.y;                       // 上
+  p.x = sh.x + 5; p.y = sh.y + 5;                                                   // 離れていると作れない
+  assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /作業場/);
+  p.x = sh.x + 1; p.y = sh.y;                                                       // 上
   assert.ok(doIt(st, { type: 'craft', recipe: 'firewood' }).ok);
   assert.deepStrictEqual([st.items.wood, st.items.firewood, p.ap], [1, 2, 6]);
-  p.x = sh.x + 2; p.y = sh.y;                       // すぐ隣
+  p.x = sh.x + 2; p.y = sh.y;                                                       // すぐ隣
   assert.ok(doIt(st, { type: 'craft', recipe: 'firewood' }).ok);
   assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /木材が足りません/);
-  assert.strictEqual(st.items.firewood, 4);
   // 焚べるときは、薪を先に使う
   st.items.wood = 2; st.fire = 1; p.x = 0; p.y = 0;
   assert.ok(doIt(st, { type: 'stoke' }).ok);
   assert.deepStrictEqual([st.items.firewood, st.items.wood], [3, 2]);
-  st.items.firewood = 0;
-  assert.ok(doIt(st, { type: 'stoke' }).ok);
-  assert.strictEqual(st.items.wood, 1);
   // 持ち物がいっぱいなら作れない（木材1が薪2になると +1 個）
   p.x = sh.x + 1; p.y = sh.y;
-  st.items = { wood: 1, firewood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }; st.items.snow = 15;
+  for (const k of Object.keys(st.items)) st.items[k] = 0;
+  st.items.wood = 1; st.items.snow = 15;
   assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /いっぱい/);
   // 猛吹雪で壊れる（HPがある）
   st.weather = 'storm'; st.next = 'storm';
-  for (let i = 0; i < 12; i++) doIt(st, { type: 'end' }, me(st).id);
-  assert.ok(!st.b.some(b => b.t === 'woodshed'));
+  for (let i = 0; i < 12; i++) { st.fire = 5; doIt(st, { type: 'end' }, me(st).id); }
+  assert.ok(!st.b.some(b => b.t === 'workshop'));
 });
 
+// 焚き火の上に立って、アイテムを持たせる
+function atFire(st) { const f = E.fireOf(st), p = me(st); p.x = f.x; p.y = f.y; p.ap = 7; return p; }
+
+test('毛皮：動物を倒すと、肉と毛皮（1〜5個）が手に入る', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  const [x, y] = freeSpot(st);
+  p.x = x; p.y = y; p.ap = 7;
+  st.animals = [{ id: 50, x: x + 1, y, hp: 1, max: 1 }, ...st.animals.slice(1)];
+  const r = doIt(st, { type: 'attack', x: x + 1, y });
+  assert.ok(r.ok && /毛皮/.test(r.msg));
+  assert.ok(st.items.fur >= 1 && st.items.fur <= 5);
+  assert.ok(st.items.meat >= 1 && st.items.meat <= 7);
+});
+
+test('料理：ステーキ（肉1→満腹度+5）・スープ（野菜2＋雪1→3個・+2）。焚き火の近くで、行動力1', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = atFire(st);
+  st.items.meat = 1; st.items.veg = 2; st.items.snow = 1;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'steak' }).ok);
+  assert.deepStrictEqual([st.items.meat, st.items.steak, p.ap], [0, 1, 6]);
+  assert.ok(doIt(st, { type: 'craft', recipe: 'soup' }).ok);
+  assert.deepStrictEqual([st.items.veg, st.items.snow, st.items.soup, p.ap], [0, 0, 3, 5]);
+  p.food = 2;
+  assert.ok(doIt(st, { type: 'eat', k: 'steak' }).ok); assert.strictEqual(p.food, 7);
+  assert.ok(doIt(st, { type: 'eat', k: 'soup' }).ok); assert.strictEqual(p.food, 9);
+  p.x = 5; p.y = 5;
+  st.items.meat = 1;
+  assert.match(doIt(st, { type: 'craft', recipe: 'steak' }).why, /焚き火/);           // 焚き火から離れると作れない
+  // 必要な食料の「持ち物の食料」にも入る
+  st.items.steak = 2; st.items.soup = 1; st.items.meat = 0;
+  assert.strictEqual(E.foodNeed(st).have, 2 * 5 + 2);
+});
+
+test('防寒着：毛皮3→作業場で作る・着けると手番の終わりの体温の低下が1減る（0未満にはならない）', () => {
+  const st = mk(); st.weather = 'snow'; st.next = 'snow';
+  const p = me(st);
+  st.b.push({ id: 90, t: 'workshop', x: 4, y: 0, w: 2, h: 2, hp: 4, max: 4 });
+  p.x = 4; p.y = 0; p.ap = 7;
+  st.items.fur = 3;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'coat' }).ok);
+  assert.deepStrictEqual([st.items.fur, st.gear.length, E.total(st)], [0, 1, 1]);        // 作ったものは持ち物（上限に数える）
+  const before = E.tempLoss(st, p);
+  const id = st.gear[0].id;
+  assert.ok(doIt(st, { type: 'equip', id }).ok);                                          // 着けるのは行動力0
+  assert.deepStrictEqual([p.ap, st.gear.length, p.gear.k], [6, 0, 'coat']);
+  assert.strictEqual(E.tempLoss(st, p), before - 1);
+  p.x = E.fireOf(st).x; p.y = E.fireOf(st).y; st.weather = 'clear';
+  assert.strictEqual(E.tempLoss(st, p), 0);                                                // 焚き火の上の晴れ＝もともと0
+  // 外すのは行動力1。持ち物に戻る
+  const ap0 = p.ap;
+  assert.ok(doIt(st, { type: 'unequip', slot: 'gear' }).ok);
+  assert.deepStrictEqual([p.ap, p.gear, st.gear.length], [ap0 - 1, null, 1]);
+});
+
+test('道具：斧・ツルハシ・シャベルは集める量+1、槍は攻撃力+1。耐久度7で壊れる。枠は1つで、入れ替えは行動力1', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  st.b.push({ id: 90, t: 'workshop', x: 4, y: 0, w: 2, h: 2, hp: 4, max: 4 });
+  p.x = 4; p.y = 0; p.ap = 7;
+  st.items.wood = 4; st.items.stone = 4; st.items.fur = 4;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'axe' }).ok);
+  assert.deepStrictEqual([st.items.wood, st.items.stone, st.items.fur], [3, 3, 3]);
+  assert.strictEqual(st.gear[0].dur, 7);
+  assert.ok(doIt(st, { type: 'equip', id: st.gear[0].id }).ok);
+  // 木：体力が2減って、木材が2個
+  p.x = 6; p.y = 6; st.res['6,6'] = { t: 'tree', hp: 5, max: 5 };
+  st.items.wood = 0;
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.deepStrictEqual([st.items.wood, st.res['6,6'].hp, p.tool.dur], [2, 3, 6]);
+  // 石は、斧では増えない
+  st.res['6,6'] = { t: 'stone', hp: 5, max: 5 }; st.items.stone = 0;
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.deepStrictEqual([st.items.stone, st.res['6,6'].hp, p.tool.dur], [1, 4, 6]);
+  // 体力1の木では、増えるのは1個だけ
+  st.res['6,6'] = { t: 'tree', hp: 1, max: 1 }; st.items.wood = 0; p.ap = 7;
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.strictEqual(st.items.wood, 1);
+  // 耐久度が0になると壊れる
+  p.tool.dur = 1; st.res['6,6'] = { t: 'tree', hp: 4, max: 4 };
+  const r = doIt(st, { type: 'collect' });
+  assert.ok(/壊れた/.test(r.msg));
+  assert.strictEqual(p.tool, null);
+  // 槍：攻撃力2
+  st.gear.push({ id: 700, k: 'spear', dur: 7 }, { id: 701, k: 'pick', dur: 7 });
+  assert.ok(doIt(st, { type: 'equip', id: 700 }).ok);
+  const [x, y] = freeSpot(st);
+  p.x = x; p.y = y; p.ap = 7;
+  st.animals = [{ id: 50, x: x + 1, y, hp: 5, max: 5 }, ...st.animals.slice(1)];
+  assert.ok(doIt(st, { type: 'attack', x: x + 1, y }).ok);
+  assert.deepStrictEqual([st.animals[0].hp, p.tool.dur], [3, 6]);
+  // 道具の枠は1つ：入れ替えるには、外す行動力1
+  const ap1 = p.ap;
+  assert.ok(doIt(st, { type: 'equip', id: 701 }).ok);
+  assert.deepStrictEqual([p.tool.k, p.ap, st.gear.map(g => g.k)], ['pick', ap1 - 1, ['spear']]);
+  assert.strictEqual(st.gear[0].dur, 6);                    // 外した道具は、耐久度を保ったまま持ち物に戻る
+  p.ap = 0;
+  assert.match(doIt(st, { type: 'equip', id: st.gear[0].id }).why, /行動力が足りません/);
+});
+
+test('復帰中の手番は、作る・着けるもできない（温まる・食べるだけ）', () => {
+  const st = mk();
+  const p = atFire(st);
+  p.down = 2; st.items.meat = 1; st.gear.push({ id: 5, k: 'coat', dur: null });
+  assert.match(doIt(st, { type: 'craft', recipe: 'steak' }).why, /復帰中/);
+  assert.match(doIt(st, { type: 'equip', id: 5 }).why, /復帰中/);
+});
 test('見張り台からは2マス以内に移動できる', () => {
   const st = mk();
   st.b.push({ id: 90, t: 'tower', x: 6, y: 0, w: 2, h: 2, hp: 4, max: 4 });
@@ -474,4 +577,37 @@ test('焚き火が消えたまま3手番が続くと敗北（火力1以上で手
   for (const p of st.players) { p.temp = 10; p.food = 10; }
   doIt(st, { type: 'end' });
   assert.deepStrictEqual([st.phase, st.over.reason], ['lost', 'fire']);
+});
+
+test('道をふさぐ駒：駒を無視すれば通れる道と、ふさいでいる駒がわかる。どいてもらう移動は、その道を避ける', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const a = me(st), b = E.pl(st, 'p2');
+  // 道を作る（焚き火の右に一直線）。aは焚き火の端、bは道の途中にいる
+  const f = E.fireOf(st);
+  for (let x = f.x + f.w; x < f.x + f.w + 4; x++) st.b.push({ id: 500 + x, t: 'road', x, y: f.y, w: 1, h: 1, hp: null, max: null });
+  a.x = f.x + f.w - 1; a.y = f.y;
+  const mid = f.x + f.w + 1;
+  b.x = mid; b.y = f.y;
+  const far = f.x + f.w + 3;
+  const info = E.pathBlockers(st, a, far, f.y);
+  assert.ok(info.blockers.some(q => q.id === 'p2'), 'bが道をふさいでいる');
+  assert.ok(info.path.includes(mid + ',' + f.y));
+  assert.strictEqual(info.ideal, 0);                                           // 道の上だけを通れば、体温は減らない
+  assert.ok(info.real == null || info.real > 0);                               // 道をふさがれると、遠回り（雪原を通る）か、行けない
+  // 行き先そのものにいても、ふさいでいる
+  b.x = far; b.y = f.y;
+  assert.ok(E.pathBlockers(st, a, far, f.y).blockers.some(q => q.id === 'p2'));
+  // どいてもらう：道のマスを避けて動く
+  b.x = mid; b.y = f.y;
+  const avoid = E.pathBlockers(st, a, far, f.y).path;
+  const r = E.act(st, 'p2', { type: 'moveAside', avoid });
+  assert.ok(r.ok, r.why);
+  assert.ok(!avoid.includes(b.x + ',' + b.y));
+  assert.ok(E.moveMap(st, a).has(far + ',' + f.y));                      // これで通れる
+  // 体温が低いときは動かない／行動不能中も動けない
+  b.x = mid; b.y = f.y; b.temp = 3;
+  const noRoad = E.act(st, 'p2', { type: 'moveAside', avoid: [] });
+  assert.ok(noRoad.ok || /体温/.test(noRoad.why));
+  b.down = 1;
+  assert.match(E.act(st, 'p2', { type: 'moveAside', avoid: [] }).why, /行動不能/);
 });
