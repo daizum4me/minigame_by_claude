@@ -1,14 +1,12 @@
 {
   "name": "snowfield",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
-  "description": "Snowfield — 協力型サバイバルボードゲーム",
-  "workspaces": ["packages/core", "packages/web"],
+  "description": "Snowfield — 協力型サバイバルボードゲーム（3〜5人・PeerJS によるP2Pオンライン対戦・CPU対戦あり）",
   "scripts": {
-    "dev": "npm run dev -w @snowfield/web",
-    "build": "npm run build -w @snowfield/web",
-    "test": "npm run test -w @snowfield/core",
-    "typecheck": "npm run typecheck -w @snowfield/core && npm run typecheck -w @snowfield/web"
+    "test": "node --test test/*.test.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
