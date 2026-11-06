@@ -201,9 +201,9 @@
     if (warmHere >= 2 && p.ap >= R.ap.warm + 1 && p.temp <= (st.weather === 'storm' ? 7 : R.maxTemp - Math.min(3, warmHere))) return { type: 'warm' };
 
     // 猛吹雪のあいだは、防寒施設のHPが毎手番1減るので、早めに直し続ける（HPが半分以下になると防寒が消える）
-    if (st.weather === 'storm' && it.stone >= 1) {
+    if (st.weather === 'storm') {
       for (const b of st.b) {
-        if (b.hp === null || b.hp > b.max - 2 || (b.t !== 'storage' && b.t !== 'igloo') || p.ap < b.w) continue;
+        if (b.hp === null || b.hp > b.max - 2 || (b.t !== 'storage' && b.t !== 'igloo') || p.ap < b.w || it.stone < E.repairStone(b)) continue;
         if (E.nearB(b, p)) return { type: 'repair', id: b.id };
         if (canMove && !mem.noTrip && !mem.repairTrip) {
           const t = tileNear(q => E.nearB(b, q) && E.moveCost(map.get(E.key(q.x, q.y))) <= 1);

@@ -529,6 +529,9 @@
   }
 
   // ---------- 捨てる投票 ----------
+  // 修理の石材：直径÷2の切り上げ
+  const repairStone = b => Math.ceil(b.w / 2);
+
   function resolveVote(st) {
     const v = st.vote;
     if (!v) return;
@@ -819,8 +822,9 @@
         if (b.hp >= b.max) return fail('HPは最大です');
         if (!nearB(b, p)) return fail('建物の上か、隣のマスから直せます');
         if ((e = needAp(b.w))) return fail(e);
-        if (it.stone < 1) return fail('石材がありません');
-        p.ap -= b.w; it.stone--;
+        const rs = repairStone(b);
+        if (it.stone < rs) return fail(`石材が足りません（${rs}個必要）`);
+        p.ap -= b.w; it.stone -= rs;
         b.hp = Math.min(b.max, b.hp + RULES.repairHp);
         return { ok: true, msg: `直す：${BUILD[b.t].name}のHP ${b.hp} / ${b.max}` };
       }
@@ -870,7 +874,7 @@
   }
 
   return {
-    VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    repairStone, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

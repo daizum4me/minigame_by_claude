@@ -749,11 +749,11 @@
       if (warm) { status = ins ? '防寒 有効' : '防寒 消失'; chip = ins ? th.chip.ok : th.chip.lost; meta.push(['防寒', ins ? '有効' : '消失（HPが半分以下）']); }
     }
     const build = d.build || costText(bd);
-    const repair = d.repair || `行動力${b.w}＋石材1 → HP+${R.repairHp}`;
+    const repair = d.repair || `行動力${b.w}＋石材${E.repairStone(b)} → HP+${R.repairHp}`;
     let btn = '';
     if (b.hp !== null) {
       const r = myTurn() ? probe({ type: 'repair', id: b.id }) : { ok: false, why: '自分の手番ではありません' };
-      btn = `<button class="rep" data-repair="${b.id}" ${r.ok ? '' : 'disabled'} title="${esc(r.ok ? '' : r.why)}">直す（行動力${b.w}・石材1）</button>${r.ok ? '' : `<div class="small muted">${esc(r.why)}</div>`}`;
+      btn = `<button class="rep" data-repair="${b.id}" ${r.ok ? '' : 'disabled'} title="${esc(r.ok ? '' : r.why)}">直す（行動力${b.w}・石材${E.repairStone(b)}）</button>${r.ok ? '' : `<div class="small muted">${esc(r.why)}</div>`}`;
     }
     el.innerHTML = `<div class="dn">${esc(d.name)}${status ? `<span class="sec-chip" style="background:${chip[0]};color:${chip[1]}">${status}</span>` : ''}</div>
       <div class="meta">${meta.map(m => `<div><span>${m[0]}</span><span>${m[1]}</span></div>`).join('')}</div>
@@ -849,7 +849,7 @@
       add('植える：野菜の苗', `行動力${R.ap.plant}・野菜2`, { type: 'plant', kind: 'veg' });
       add('植える：樹木の苗', `行動力${R.ap.plant}・苗木1`, { type: 'plant', kind: 'tree' });
     }
-    g.b.forEach(b => { if (b.hp !== null && E.nearB(b, me)) add(`直す：${E.BUILD[b.t].name}`, `行動力${b.w}・石材1`, { type: 'repair', id: b.id }); });
+    g.b.forEach(b => { if (b.hp !== null && E.nearB(b, me)) add(`直す：${E.BUILD[b.t].name}`, `行動力${b.w}・石材${E.repairStone(b)}`, { type: 'repair', id: b.id }); });
     if (me.gear || me.tool) {
       head = '装備・道具';
       if (me.gear) add(`外す：${E.GEAR[me.gear.k].name}`, '行動力1', { type: 'unequip', slot: 'gear' });

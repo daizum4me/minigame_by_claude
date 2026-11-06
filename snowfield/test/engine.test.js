@@ -237,6 +237,21 @@ test('直す：隣接・行動力は直径ぶん・石材1でHP+2', () => {
   assert.strictEqual(st.items.stone, 0);
 });
 
+test('直す：石材は直径÷2の切り上げ（倉庫は2個）', () => {
+  const st = mk();
+  const p = me(st);
+  st.b.push({ id: 91, t: 'storage', x: 3, y: 0, w: 4, h: 4, hp: 2, max: 8 });
+  p.x = 2; p.y = 0; p.ap = 6;
+  st.items.stone = 1;
+  assert.match(doIt(st, { type: 'repair', id: 91 }).why, /石材が足りません/);
+  st.items.stone = 3;
+  assert.ok(doIt(st, { type: 'repair', id: 91 }).ok);
+  assert.strictEqual(st.items.stone, 1);
+  assert.strictEqual(E.repairStone({ w: 1 }), 1);
+  assert.strictEqual(E.repairStone({ w: 2 }), 1);
+  assert.strictEqual(E.repairStone({ w: 3 }), 2);
+});
+
 test('行動不能：焚き火へ強制移動・3に回復・次の手番は温まる/食べるだけ', () => {
   const st = mk(); st.weather = 'clear';
   const a = me(st);
