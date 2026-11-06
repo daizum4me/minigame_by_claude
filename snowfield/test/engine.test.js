@@ -19,7 +19,7 @@ test('ゲーム開始：焚き火3×3・動物3体・資源・初期値', () => 
   const f = E.fireOf(st);
   assert.deepStrictEqual([f.w, f.h, f.hp], [3, 3, null]);
   assert.strictEqual(st.fire, 3);
-  assert.strictEqual(st.animals.length, 3);
+  assert.strictEqual(st.animals.length, 5);   // 人数+2
   assert.ok(Object.keys(st.res).length > 20);
   assert.ok(st.players.every(p => p.temp === 10 && p.food === 10));
   assert.strictEqual(me(st).ap, 7);
@@ -103,12 +103,27 @@ test('集める・攻撃・食べる・上限', () => {
   assert.strictEqual(st.items.snow, 1);       // 雪原で採集すると雪も1個
   assert.strictEqual(E.resAt(st, 3, 0), null);   // 体力0で消滅
   // 上限
-  st.items.wood = 16 - st.items.snow;
+  st.items.sapling = 0; st.items.wood = 16 - st.items.snow;
   assert.strictEqual(E.room(st), 0);
   st.res['3,0'] = { t: 'stone', hp: 3 };
-  assert.match(doIt(st, { type: 'collect' }).why, /上限/);
+  // 上限でも集められる。入らない分は、本人が「入れ替える／あきらめる」を選ぶまで保留（その間はほかの行動ができない）
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.deepStrictEqual(st.pending, [{ pid: me(st).id, k: 'stone', n: 1 }]);
+  assert.strictEqual(st.items.snow, 1);       // 雪は自動で付くだけなので、入らなくても選ばせない
+  assert.match(doIt(st, { type: 'warm' }).why, /どうするか選んで/);
+  assert.match(doIt(st, { type: 'overflow', drop: { stone: 1 } }).why, /不正/);      // 同じ種類は捨てられない
+  assert.match(doIt(st, { type: 'overflow', drop: { wood: 2 } }).why, /入らない数/);
+  assert.ok(doIt(st, { type: 'overflow', drop: { wood: 1 } }).ok);
+  assert.strictEqual(st.items.stone, 1);
+  assert.strictEqual(st.items.wood, 16 - st.items.snow - 1 - 0);
+  assert.strictEqual(E.total(st), 16);
+  assert.strictEqual(st.pending.length, 0);
+  st.res['3,0'] = { t: 'stone', hp: 3 };
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.ok(doIt(st, { type: 'overflow', drop: {} }).ok);                            // あきらめる
+  assert.strictEqual(st.items.stone, 1);
   // 動物を倒すと肉
-  st.items.wood = 0;
+  st.items.wood = 0; st.items.stone = 0;
   st.animals = [{ id: 50, x: 4, y: 0, hp: 1 }, { id: 51, x: 9, y: 9, hp: 4 }, { id: 52, x: 8, y: 9, hp: 4 }];
   const m = doIt(st, { type: 'attack', x: 4, y: 0 });
   assert.ok(m.ok);
@@ -312,4 +327,21 @@ test('お絵かき：手番外だけ・マスをまたぐ線は分割して保�
   st.items.snow = 5;
   assert.ok(E.act(st, 'p1', { type: 'build', t: 'igloo', x: sp[0], y: sp[1] }).ok);
   assert.strictEqual(st.draw[sp[0] + ',' + sp[1]], undefined);
+});
+
+test('猛吹雪を生き延びるのに必要な食料', () => {
+  const st = mk();
+  // 準備期間：最終猛吹雪の3ラウンド × 3人 × 3
+  assert.deepStrictEqual([E.foodNeed(st).need, E.foodNeed(st).short, E.foodNeed(st).turns], [27, 27, 3]);
+  st.items.meat = 5; st.items.veg = 5;
+  assert.strictEqual(E.foodNeed(st).have, 25);
+  assert.strictEqual(E.foodNeed(st).short, 2);
+  // 最終猛吹雪の中：残りの手番の終わりごとに3、最後に1以上残す
+  st.round = 11;
+  const n = E.foodNeed(st);
+  assert.strictEqual(n.final, true);
+  assert.strictEqual(n.turns, 3);
+  assert.strictEqual(n.need, 3 * (3 * 3 + 1 - 10));
+  st.players[0].food = 2;
+  assert.strictEqual(E.foodNeed(st).need, (3 * 3 + 1 - 2) + 0 + 0);
 });

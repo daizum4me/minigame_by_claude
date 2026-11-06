@@ -24,9 +24,10 @@
     moveRange: 1,                       // 建物（道を含む）からこのマス以内に移動できる
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
-    resHpMin: 3, resHpMax: 7, resChance: 0.15, genRadius: 8,
+    resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
     sapChance: 0.5,
-    animals: 3, animalHpMin: 3, animalHpMax: 5, meatMin: 1, meatMax: 7,
+    animalsExtra: 2, animalHpMin: 3,   // 動物の数 = 人数 + animalsExtra
+     animalHpMax: 5, meatMin: 1, meatMax: 7,
     eat: { meat: 3, veg: 2 },
     ap: { warm: 2, stoke: 1, collect: 1, attack: 1, plant: 1 },
     capBase: 10, capPerPlayer: 2, capPerStorage: 10,
@@ -97,6 +98,12 @@
   function log(st, text) {
     st.log.push({ n: st.ln = (st.ln || 0) + 1, r: st.round, t: text });
     if (st.log.length > 80) st.log.shift();
+  }
+  // アイテムを得る。上限で入らない分は、本人が「既存の物を捨てて入れる／あきらめる」を選ぶまで保留にする
+  function gain(st, pid, k, n) {
+    const got = addItem(st, k, n);
+    if (got < n) st.pending.push({ pid, k, n: n - got });
+    return got;
   }
   function addItem(st, k, n) {
     const a = Math.max(0, Math.min(n, room(st)));
@@ -191,7 +198,7 @@
       v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null,
       weather: 'clear', next: 'clear', fire: RULES.fireInit,
       items: Object.assign({ wood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }, RULES.startItems),
-      b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, log: [],
+      b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, pending: [], log: [],
       players: [],
     };
     const f = addBuilding(st, 'fire', -1, -1);
@@ -202,7 +209,7 @@
       id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
       x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0,
     }));
-    for (let i = 0; i < RULES.animals; i++) spawnAnimal(st);
+    for (let i = 0; i < opts.players.length + RULES.animalsExtra; i++) spawnAnimal(st);
     st.weather = rollWeather(st, 1);
     st.next = rollWeather(st, 2);
     log(st, `ゲーム開始。最初の天候は${WEATHER_NAMES[st.weather]}`);
@@ -470,7 +477,30 @@
     const t = a.type;
     let r;
 
-    if (t === 'move') r = doMove(st, p, a);
+    // 上限を超えたアイテムの扱いを選ぶまでは、ほかの行動はできない
+    const pend = st.pending && st.pending[0];
+    if (pend && pend.pid === pid && !['overflow', 'vote', 'voteCast', 'voteCancel'].includes(t)) {
+      return fail(`先に、上限を超えた「${ITEM_NAMES[pend.k]}」をどうするか選んでください`);
+    }
+
+    if (t === 'overflow') {
+      if (!pend || pend.pid !== pid) return fail('選ぶ必要のあるアイテムはありません');
+      const drop = a.drop && typeof a.drop === 'object' ? a.drop : {};
+      let total = 0;
+      for (const k of Object.keys(drop)) {
+        const n = drop[k];
+        if (!ITEMS.includes(k) || k === pend.k || !Number.isInteger(n) || n < 0 || n > st.items[k]) return fail('不正な操作です');
+        total += n;
+      }
+      if (total > pend.n) return fail('入らない数より多くは入れ替えられません');
+      for (const k of Object.keys(drop)) st.items[k] -= drop[k];
+      st.items[pend.k] += total;
+      st.pending.shift();
+      const lost = pend.n - total;
+      const parts = Object.keys(drop).filter(k => drop[k] > 0).map(k => `${ITEM_NAMES[k]}${drop[k]}個`);
+      r = { ok: true, sfx: 'tick', msg: total ? `${parts.join('・')}を捨てて、${ITEM_NAMES[pend.k]}${total}個を持った${lost ? `（${ITEM_NAMES[pend.k]}${lost}個は捨てた）` : ''}` : `${ITEM_NAMES[pend.k]}${pend.n}個を捨てた` };
+      log(st, `${p.name}：${r.msg}`);
+    } else if (t === 'move') r = doMove(st, p, a);
     else if (t === 'draw' || t === 'erase') {
       if (mine) return fail('お絵かきは自分の手番以外で使えます');
       if (t === 'draw') {
@@ -555,17 +585,16 @@
         if ((e = needAp(ap.collect))) return fail(e);
         const r = resAt(st, p.x, p.y);
         if (!r) return fail('ここには集められる資源がありません');
-        if (room(st) < 1) return fail('所持上限です。アイテムを捨ててください');
         const onSnow = !bAt(st, p.x, p.y), k = RES_ITEM[r.t];
         p.ap -= ap.collect; r.hp--;
-        addItem(st, k, 1);
         let m = `集める：${ITEM_NAMES[k]} +1`;
         const sfx = 'collect_' + r.t;
-        if (onSnow) m += addItem(st, 'snow', 1) ? '、雪 +1' : '（雪は上限で入らず）';
+        if (!gain(st, p.id, k, 1)) m += '（上限で入りません）';
+        if (onSnow) m += addItem(st, 'snow', 1) ? '、雪 +1' : '（雪は上限で入らず）';   // 雪は自動で付いてくるので、入らなくても選ばせない
         if (r.hp <= 0) {
           delete st.res[key(p.x, p.y)];
           m += '。資源が消えた';
-          if (r.t === 'tree' && rnd(st) < RULES.sapChance) m += addItem(st, 'sapling', 1) ? '。苗木を落とした' : '。苗木は上限で入らず';
+          if (r.t === 'tree' && rnd(st) < RULES.sapChance) m += gain(st, p.id, 'sapling', 1) ? '。苗木を落とした' : '。苗木を落とした（上限で入りません）';
         }
         return { ok: true, msg: m, sfx };
       }
@@ -575,10 +604,10 @@
         if (!an || Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail('隣のマスの動物だけ攻撃できます');
         p.ap -= ap.attack; an.hp--;
         if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -1（残り ${an.hp}）`, sfx: 'attack' };
-        const n = ri(st, RULES.meatMin, RULES.meatMax), got = addItem(st, 'meat', n);
+        const n = ri(st, RULES.meatMin, RULES.meatMax), got = gain(st, p.id, 'meat', n);
         st.animals = st.animals.filter(q => q !== an);
         spawnAnimal(st);
-        return { ok: true, msg: `動物を倒した：肉${n}個のうち${got}個を入手${got < n ? '（上限で入りきらず）' : ''}`, sfx: 'kill' };
+        return { ok: true, msg: `動物を倒した：肉${n}個のうち${got}個を入手${got < n ? '（入りきらない分は、入れ替えるか選べます）' : ''}`, sfx: 'kill' };
       }
       case 'plant': {
         if ((e = needAp(ap.plant))) return fail(e);
@@ -622,8 +651,29 @@
     }
   }
 
+  // 最終猛吹雪（最終3ラウンド）を生き延びるのに必要な食料（満腹度ぶん）。手番の終わりごとに3減り、0になると行動不能になる
+  //  ・準備期間：最終猛吹雪の手番の終わりの回数ぶん（人数×3ラウンド×3）。そのときの満腹度は見込まない
+  //  ・最終猛吹雪の中：これから迎える手番の終わりごとに、最後に1以上残るぶん（いまの満腹度を引く）
+  function foodNeed(st) {
+    const out = { need: 0, have: 0, short: 0, turns: 0, final: st.round > RULES.prepRounds };
+    if (st.phase !== 'play') return out;
+    out.have = st.items.meat * RULES.eat.meat + st.items.veg * RULES.eat.veg;
+    if (!out.final) {
+      out.turns = RULES.finalRounds;
+      out.need = st.players.length * RULES.finalRounds * RULES.hunger;
+    } else {
+      st.players.forEach((p, i) => {
+        const left = (TOTAL_ROUNDS - st.round) + (i >= st.turn ? 1 : 0);
+        out.need += Math.max(0, left * RULES.hunger + 1 - p.food);
+        if (i === st.turn) out.turns = left;
+      });
+    }
+    out.short = Math.max(0, out.need - out.have);
+    return out;
+  }
+
   return {
-    RULES, BUILD, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    RULES, BUILD, gain, foodNeed, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,
