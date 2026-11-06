@@ -19,7 +19,9 @@
   const FIREWOOD_MAX = 8;   // 薪をこれ以上は貯めない（持ち物の枠がもったいない）
   const FUEL_RESERVE = 2;   // 焚き火を保つために残しておく薪の数
   const SWAP_GAP = 2;       // 持ち物を入れ替えるのは、価値がこれ以上違うときだけ（往復を防ぐ）
-  const USE_BOW = process.env.BOW !== '0';   // 弓を作る
+  const USE_BOW = true;     // 弓を作る
+  const STEAK_FIRST = true;  // 焚き火のそばでは、肉を先にステーキにする
+  const VEG_MIN = 2, VEG_FOOD = 0, VEG_LATE = 5;   // 野菜の苗を植える：野菜2個から・食料が足りていても・準備期間の終わり5ラウンド前まで
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
@@ -150,6 +152,9 @@
     if (p.food <= 7 && cooked) return { type: 'eat', k: cooked };
     if (p.food <= 8 && it.veg > 0 && (!cooked || p.food <= 4)) return { type: 'eat', k: 'veg' };
 
+    // 肉は、焚き火のそばでステーキにしてから食べると満腹度が5（行動力1で+2）
+    if (STEAK_FIRST && it.meat >= 1 && p.ap >= 2 && E.nearFire(st, p)) return { type: 'craft', recipe: 'steak' };
+
     const map = E.moveMap(st, p);
     const costAt = (x, y) => { const d = map.get(E.key(x, y)); return d == null ? null : E.moveCost(d); };
     const canMove = mem.moves < MAX_MOVES;
@@ -273,7 +278,7 @@
     };
     const hasBow = !!(p.tool && p.tool.k === 'bow');
     const wantMeat = foodStock(st) < T.food;
-    const farmVeg = it.veg >= 4 && foodStock(st) >= T.food * 0.8 && st.round <= R.prepRounds - 1;
+    const farmVeg = it.veg >= VEG_MIN && foodStock(st) >= T.food * VEG_FOOD && st.round <= R.prepRounds - VEG_LATE;
     const farmTree = it.sapling > 0 && st.round <= R.prepRounds + 1;
 
     // いまの場所でできる仕事（集める・攻撃・植える）
