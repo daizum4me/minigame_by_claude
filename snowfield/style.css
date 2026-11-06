@@ -230,3 +230,7 @@ button.sw:disabled { opacity: .25; }
 .rules-body h3 .gi { margin-right: 8px; vertical-align: -5px; }
 
 .chip.red { background: var(--redBg); color: var(--redFg); font-weight: 700; }
+
+/* 装備・道具 */
+.slot.gear { border-style: solid; border-color: var(--accent); background: var(--accBg); }
+.worn { display: inline-flex; align-items: center; gap: 1px; color: var(--accent); font-size: 10px; } .worn small { font-weight: 700; }

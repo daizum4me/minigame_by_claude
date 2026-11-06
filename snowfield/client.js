@@ -564,8 +564,8 @@
       eff: ['共有アイテムの上限 +10', '防寒効果はかまくらと同じ'], build: null, repair: null },
     tower: { name: '見張り台', tip: '1ラウンド先の天候予報が見え、ここから2マス以内に移動できる。', desc: '高い場所から先を見渡す。屋外扱いで防寒はない。',
       eff: ['1ラウンド先の天候の予報が見える', '見張り台からは2マス以内に移動できる（ほかの建物は1マス）'], build: null, repair: null },
-    woodshed: { name: '薪割り台', tip: '上かすぐ隣で「作る」と、木材1が薪2になる。', desc: '木材を薪に割る作業台。屋外扱いで防寒はなく、猛吹雪ではHPが減る。',
-      eff: ['作る：木材1 → 薪2（行動力1。上かすぐ隣にいるとき）', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
+    workshop: { name: '作業場', tip: '上かすぐ隣で「作る」と、薪・防寒着・道具が作れる。', desc: '薪を割ったり、毛皮や木材から防寒着や道具を作る作業台。屋外扱いで防寒はなく、猛吹雪ではHPが減る。',
+      eff: ['作る：木材1 → 薪2', '作る：毛皮3 → 防寒着', '作る：木材1・石材1・毛皮1 → 斧・ツルハシ・シャベル・槍', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
   };
   const IDESC = {
     wood: '焚き火に焚べると火力+1。倉庫・見張り台の建設に使う。',
@@ -574,7 +574,10 @@
     meat: '食べると満腹度+3。',
     snow: 'かまくら・道の建設に使う。雪原で資源を集めると1個ついてくる。',
     sapling: '植えると樹木の苗になる。木を集めたとき50%で落ちる。',
-    firewood: '焚べると火力+1。木材より先に使われる。薪割り台で、木材1から2本作れる。',
+    firewood: '焚べると火力+1。木材より先に使われる。作業場で、木材1から2本作れる。',
+    fur: '動物が落とす（1〜5個）。作業場で、防寒着（3個）や道具（1個）の材料になる。',
+    steak: '食べると満腹度+5。焚き火で、肉1から作れる。',
+    soup: '食べると満腹度+2。焚き火で、野菜2と雪1から3個作れる。',
   };
   const costText = d => '行動力' + d.ap + '・' + Object.keys(d.cost).map(k => E.ITEM_NAMES[k] + d.cost[k]).join(' ');
   const iconOf = k => B.ITEM_ICON[k];
@@ -621,6 +624,8 @@
   }
   const logHtml = g => g.log.slice().reverse().slice(0, 50).map(l => `<div><span>R${l.r}</span>${esc(l.t)}</div>`).join('');
 
+  // 着けている装備・道具（道具は残りの耐久度つき）
+  const wornIcons = p => [p.gear, p.tool].filter(Boolean).map(x => `<span class="worn" title="${esc(E.GEAR[x.k].name)}：${esc(E.GEAR[x.k].desc)}${x.dur ? `（残り${x.dur}）` : ''}">${B.svgIcon(x.k, 15)}${x.dur ? `<small>${x.dur}</small>` : ''}</span>`).join('');
   function mini(label, v, pct, color, fg, cls) {
     return `<div class="ms ${cls || ''}"><span class="k">${label}</span><span class="tr"><i style="width:${pct}%;background:${color}"></i></span><b style="color:${fg}">${v}</b></div>`;
   }
@@ -635,7 +640,7 @@
         turn ? '<span class="badge">手番中</span>' : '',
       ].join('');
       return `<div class="pcard ${me ? 'me' : ''}">
-        <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span><span class="grow"></span>${tags}</div>
+        <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span>${wornIcons(p)}<span class="grow"></span>${tags}</div>
         <div class="pstats">
           ${mini('体温', p.temp, p.temp * 10, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
           ${mini('満腹', p.food, p.food * 10, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
@@ -657,9 +662,13 @@
         html += `<button class="slot" data-drop="${k}" aria-label="${E.ITEM_NAMES[k]}を1個捨てる" style="background:${c[0]};color:${c[1]};border-color:${c[1]}66">${B.svgIcon(iconOf(k), 18)}</button>`;
       }
     }
+    for (const x of g.gear) {
+      const d = E.GEAR[x.k];
+      html += `<div class="slot gear" title="${esc(d.name)}${x.dur ? `（耐久${x.dur}）` : ''}：${esc(d.desc)}。メニューの「着ける」で着用" style="color:var(--accent)">${B.svgIcon(x.k, 18)}</div>`;
+    }
     for (let i = tot; i < cap; i++) html += '<div class="slot"></div>';
     $('#slots').innerHTML = html;
-    $('#item-summary').textContent = E.ITEMS.map(k => E.ITEM_NAMES[k] + g.items[k]).join('　');
+    $('#item-summary').textContent = E.ITEMS.filter(k => g.items[k] > 0).map(k => E.ITEM_NAMES[k] + g.items[k]).concat(g.gear.map(x => E.GEAR[x.k].name)).join('　') || 'なし';
   }
 
   function renderVote(g, th) {
@@ -748,20 +757,21 @@
     if (!mode) { el.innerHTML = '<div class="small muted" style="line-height:1.6">駒をクリック →「建てる」か「作る」を選ぶと、ここに一覧が出ます。</div>'; return; }
     const me = myP();
     if (mode === 'craft') {
-      const cards = Object.keys(E.RECIPES).map(k => {
+      const card = k => {
         const rc = E.RECIPES[k], lack = E.lacking(g, rc.in);
-        const nIn = Object.values(rc.in).reduce((a, b) => a + b, 0), nOut = Object.values(rc.out).reduce((a, b) => a + b, 0);
+        const nIn = Object.values(rc.in).reduce((a, b) => a + b, 0), nOut = rc.gear ? 1 : Object.values(rc.out).reduce((a, b) => a + b, 0);
         const why = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません'
-          : !E.nearStation(g, me, rc.station) ? `${E.BUILD[rc.station].name}の上かすぐ隣で` : me.ap < rc.ap ? '行動力が足りません'
+          : !E.nearStation(g, me, rc.station) ? `${E.STATION_NAMES[rc.station]}の上かすぐ隣で` : me.ap < rc.ap ? '行動力が足りません'
           : lack ? E.ITEM_NAMES[lack] + 'が足りません' : nOut - nIn > E.room(g) ? '持ち物がいっぱいです' : '';
-        const c = th.card.woodshed;
+        const c = th.card[rc.station === 'fire' ? 'fire' : 'workshop'];
         return `<div class="bcard" data-recipe="${k}" data-why="${esc(why)}" style="border-color:${c[1]};background:${c[0]};color:${c[2]};opacity:${why ? .55 : 1};cursor:${why ? 'not-allowed' : 'pointer'}">
-          <b>${esc(rc.name)}を作る</b><span style="color:${why ? th.redFg : 'inherit'}">${esc(why || recipeText(rc))}</span></div>`;
-      }).join('');
-      el.innerHTML = '<div class="small muted" style="line-height:1.5">レシピをクリックすると作ります。</div>' + cards;
+          <b>${esc(rc.name)}</b><span style="color:${why ? th.redFg : 'inherit'}">${esc(why || recipeText(rc))}</span></div>`;
+      };
+      const group = st => `<div class="small muted" style="font-weight:700;margin-top:4px">${E.STATION_NAMES[st]}で作る${g.b.some(b => b.t === st) ? '' : '（まだありません）'}</div>` + Object.keys(E.RECIPES).filter(k => E.RECIPES[k].station === st).map(card).join('');
+      el.innerHTML = '<div class="small muted" style="line-height:1.5">レシピをクリックすると作ります（焚き火・作業場の上かすぐ隣で）。</div>' + group('fire') + group('workshop');
       return;
     }
-    const cards = ['road', 'igloo', 'storage', 'tower', 'woodshed'].map(k => {
+    const cards = ['road', 'igloo', 'storage', 'tower', 'workshop'].map(k => {
       const d = E.BUILD[k], c = th.card[k === 'road' ? 'storage' : k], isR = k === 'road';
       const lack = E.lacking(g, d.cost);
       const why = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は建てられません' : me.ap < d.ap ? '行動力が足りません' : lack ? E.ITEM_NAMES[lack] + 'が足りません' : '';
@@ -770,7 +780,7 @@
     }).join('');
     el.innerHTML = '<div class="small muted" style="line-height:1.5">カードを盤面へドラッグして置くか、クリックで選んでマップをクリックすると建設します（選んだままなら続けて置けます）。</div>' + cards;
   }
-  const recipeText = rc => `行動力${rc.ap}・${Object.keys(rc.in).map(k => E.ITEM_NAMES[k] + rc.in[k]).join('・')} → ${Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}`;
+  const recipeText = rc => `行動力${rc.ap}・${Object.keys(rc.in).map(k => E.ITEM_NAMES[k] + rc.in[k]).join('・')} → ${rc.gear ? E.GEAR[rc.gear].name : Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}`;
 
   // 駒のメニュー
   function renderMenu(g, th) {
@@ -802,12 +812,22 @@
     head = '持ち物';
     add('食べる：肉', `行動力0・満腹+${R.eat.meat}`, { type: 'eat', k: 'meat' });
     add('食べる：野菜', `行動力0・満腹+${R.eat.veg}`, { type: 'eat', k: 'veg' });
+    if (g.items.steak > 0) add('食べる：ステーキ', `行動力0・満腹+${R.eat.steak}`, { type: 'eat', k: 'steak' });
+    if (g.items.soup > 0) add('食べる：スープ', `行動力0・満腹+${R.eat.soup}`, { type: 'eat', k: 'soup' });
+    if (g.gear.length || me.gear || me.tool) {
+      head = '装備・道具';
+      g.gear.forEach(x => {
+        const slot = E.GEAR[x.k].slot, cur = slot === 'gear' ? me.gear : me.tool;
+        add(`着ける：${E.GEAR[x.k].name}${x.dur ? `（耐久${x.dur}）` : ''}`, cur ? `行動力1（${E.GEAR[cur.k].name}を外す）` : '行動力0', { type: 'equip', id: x.id });
+      });
+      if (me.gear) add(`外す：${E.GEAR[me.gear.k].name}`, '行動力1', { type: 'unequip', slot: 'gear' });
+      if (me.tool) add(`外す：${E.GEAR[me.tool.k].name}（耐久${me.tool.dur}）`, '行動力1', { type: 'unequip', slot: 'tool' });
+    }
     head = '建設・製作';
     const canBuild = myTurn() && me.down !== 2;
     entries.push({ label: '建てる', cost: canBuild ? 'カード一覧を左下に表示' : (myTurn() ? '復帰中は建てられません' : '自分の手番ではありません'), ok: canBuild, head, fn: () => { app.tray = 'build'; mapToast('左下に建設カードの一覧を出しました。盤面へドラッグして置いてください'); renderGame(); } });
-    const hasShed = g.b.some(b => b.t === 'woodshed');
-    const craftWhy = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません' : !hasShed ? '薪割り台を建てると作れます' : '';
-    entries.push({ label: '作る', cost: craftWhy || 'レシピ一覧を左下に表示', ok: !craftWhy, head: '', fn: () => { disarm(); app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
+    const craftWhy = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません' : '';
+    entries.push({ label: '作る', cost: craftWhy || '料理・薪・装備・道具（左下に一覧）', ok: !craftWhy, head: '', fn: () => { disarm(); app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
     void it;
     app.menuEntries = entries;
     const nm = here ? DESC[here.t].name + 'の上' : res ? ({ tree: '木', stone: '石', veg: '野菜' })[res.t] + 'のマス' : '雪原';
@@ -1067,8 +1087,8 @@
         const rc = E.RECIPES[rcEl.dataset.recipe], g = app.game;
         const mats = Object.keys(rc.in).map(m => `<span style="color:${g.items[m] >= rc.in[m] ? 'var(--ok)' : 'var(--redFg)'};font-weight:700">${E.ITEM_NAMES[m]} ${g.items[m]}/${rc.in[m]}</span>`).join('　');
         tip.innerHTML = `<div class="tn">${esc(rc.name)}を作る<span class="grow"></span><span style="font-size:12px;color:var(--muted2);font-weight:400">行動力 ${rc.ap}</span></div>
-          <div class="tt"><b>必要な材料</b>（持っている数/必要）<br>${mats}</div><div class="tt">できるもの：${Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}</div>
-          <div class="th">${E.BUILD[rc.station].name}の上かすぐ隣で作れます</div>`;
+          <div class="tt"><b>必要な材料</b>（持っている数/必要）<br>${mats}</div><div class="tt">できるもの：${rc.gear ? E.GEAR[rc.gear].name + '（' + E.GEAR[rc.gear].desc + (E.GEAR[rc.gear].slot === 'tool' ? `。耐久度${R.toolDur}` : '') + '）' : Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}</div>
+          <div class="th">${E.STATION_NAMES[rc.station]}の上かすぐ隣で作れます</div>`;
         tip.hidden = false;
         const r = rcEl.getBoundingClientRect();
         tip.style.left = Math.min(r.right + 10, window.innerWidth - 246) + 'px';

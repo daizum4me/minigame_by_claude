@@ -20,7 +20,15 @@
     igloo: ['M3 19a9 9 0 0 1 18 0z', 'M10 19v-3a2 2 0 0 1 4 0v3'],
     storage: ['M3 10l9-6 9 6v10H3z', 'M9 20v-6h6v6'],
     tower: ['M8 21l2-12h4l2 12', 'M7 9h10l-1-4H8z', 'M9 15h6'],
-    woodshed: ['M5 20h14', 'M7 20V12h10v8', 'M12 12V4', 'M9 6l3-2 3 2'],     // 切り株と斧
+    workshop: ['M3 15h18v3H3z', 'M6 18v3M18 18v3', 'M8 15V9l4-3 4 3v6', 'M11 11h2'],     // 作業台
+    fur: ['M5 6c3-2 11-2 14 0l2 5-3 2v6l-3-1-3 2-3-2-3 1v-6l-3-2z'],
+    steak: ['M5 12c0-4 4-7 9-7a5 5 0 0 1 5 5c0 5-5 9-10 8-2-.5-4-2-4-6z', C(13, 11, 2)],
+    soup: ['M3 12h18a9 9 0 0 1-18 0z', 'M9 8c0-2 2-2 2-4M14 8c0-2 2-2 2-4'],
+    coat: ['M8 4L3 8l2 4 3-1v9h8v-9l3 1 2-4-5-4-2 2h-4z'],
+    axe: ['M4 20L14 9', 'M13 4l7 3-3 4-6-2z'],
+    pick: ['M4 9c4-4 12-4 16 0', 'M12 6v14'],
+    shovel: ['M12 3v9', 'M8 12h8l-1 6a3 3 0 0 1-6 0z'],
+    spear: ['M5 20L18 7', 'M13 4h7v7z'],
     firewood: [RC(3, 6, 18, 5), RC(3, 13, 18, 5), 'M6 8.5h5M6 15.5h5'],
     // ルール説明などで使う絵
     road: ['M4 20L9 4M20 20L15 4', 'M12 5v3M12 11v3M12 17v3'],
@@ -54,7 +62,7 @@
     sapling: ['M12 21v-9', 'M12 12l-4-3M12 15l4-3', C(8, 7.5, 2.5), C(16, 9, 2.5), C(12, 5, 2.5)],
   };
   ICONS.vegItem = ICONS.veg;
-  const ITEM_ICON = { wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
+  const ITEM_ICON = { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
   const P2D = {};
   function svgIcon(name, size) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name].map(d => `<path d="${d}"/>`).join('')}</svg>`;
@@ -75,11 +83,11 @@
       road: '#c3cfd8', roadBd: '#8497a8', hpTrack: 'rgba(36,50,63,.16)', hpOk: '#3c8f66', hpLow: '#c0463b', penA: '#2d5b88', penB: '#8a97a3',
       temp: '#4a90c8', tempLow: '#c0463b', food: '#e0a030', foodLow: '#c0463b', redFg: '#a8312a', ok: '#2f9a6a', ng: '#c0463b',
       bg: '#e9eff4', tile: '#f8fafc', reach: '#e8f1f7', grid: '#dbe5ed', accent: '#2f6fb5', text: '#24323f', panel: '#ffffff',
-      card: { fire: ['#fff1e4', '#e9722f', '#5c2a0c'], igloo: ['#e6f0f8', '#8fb2cf', '#24323f'], storage: ['#e7eaee', '#8a97a5', '#24323f'], tower: ['#eef0e6', '#9aa684', '#33402a'], woodshed: ['#f3ebe0', '#a88b62', '#4a3820'], off: ['#eceff1', '#b7c0c8', '#5d6f7e'] },
+      card: { fire: ['#fff1e4', '#e9722f', '#5c2a0c'], igloo: ['#e6f0f8', '#8fb2cf', '#24323f'], storage: ['#e7eaee', '#8a97a5', '#24323f'], tower: ['#eef0e6', '#9aa684', '#33402a'], workshop: ['#f3ebe0', '#a88b62', '#4a3820'], off: ['#eceff1', '#b7c0c8', '#5d6f7e'] },
       chip: { ok: ['#dcf0e4', '#1d5a3a'], lost: ['#fbe0dd', '#8f261e'], fire: ['#ffe0c8', '#8a3a0e'] },
       fireOn: '#e9722f', fireOff: '#f3d9c6',
       res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'], plantTree: ['#e1f3e6', '#2f8f5a', '#1f6b43'], plantVeg: ['#fff3d6', '#c9a227', '#8a6a0a'] },
-      item: { wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
+      item: { fur: ['#efe6e0', '#7a5a48'], steak: ['#f8dcd4', '#a3392b'], soup: ['#fdf0d0', '#b07a10'], wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
       tint: { clear: 'rgba(255,236,190,0.10)', snow: 'rgba(120,150,185,0.10)', blizzard: 'rgba(120,150,185,0.22)', rain: 'rgba(70,105,150,0.18)', storm: 'rgba(55,85,130,0.34)' },
       flake: '#7fa3c2', rain: '#4b79a8',
     },
@@ -87,11 +95,11 @@
       road: '#3a4958', roadBd: '#7089a0', hpTrack: 'rgba(255,255,255,.16)', hpOk: '#4fb27f', hpLow: '#ff6b5e', penA: '#7fb4e8', penB: '#9fb0bf',
       temp: '#5aaee8', tempLow: '#ff6b5e', food: '#f0b94a', foodLow: '#ff6b5e', redFg: '#ff9a90', ok: '#4fb27f', ng: '#ff6b5e',
       bg: '#0f1620', tile: '#121b26', reach: '#1b2a3b', grid: '#25364a', accent: '#5aa0e6', text: '#e6edf3', panel: '#17212d',
-      card: { fire: ['#3a2314', '#e9722f', '#ffd9bd'], igloo: ['#1b2e42', '#4a7aa6', '#dbe9f6'], storage: ['#252e39', '#6f7f90', '#e6edf3'], tower: ['#2a3220', '#7c8a5f', '#dfe8cf'], woodshed: ['#33291c', '#a8895a', '#f0e0c4'], off: ['#1f2730', '#4a5663', '#8d9dab'] },
+      card: { fire: ['#3a2314', '#e9722f', '#ffd9bd'], igloo: ['#1b2e42', '#4a7aa6', '#dbe9f6'], storage: ['#252e39', '#6f7f90', '#e6edf3'], tower: ['#2a3220', '#7c8a5f', '#dfe8cf'], workshop: ['#33291c', '#a8895a', '#f0e0c4'], off: ['#1f2730', '#4a5663', '#8d9dab'] },
       chip: { ok: ['#1c3d2e', '#8fe0b3'], lost: ['#4a2224', '#ffab9f'], fire: ['#4a2f1a', '#ffc9a0'] },
       fireOn: '#f08a4b', fireOff: '#4a3526',
       res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], plant: ['#24331a', '#8cc25a', '#c4e89a'], plantTree: ['#16301f', '#3fbf7a', '#9be8bd'], plantVeg: ['#3a3314', '#e0c040', '#fff0a0'] },
-      item: { wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
+      item: { fur: ['#3a2f2a', '#d8b8a0'], steak: ['#4a2420', '#ff9a88'], soup: ['#40361a', '#f5d070'], wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
       tint: { clear: 'rgba(0,0,0,0)', snow: 'rgba(150,185,225,0.07)', blizzard: 'rgba(170,200,235,0.16)', rain: 'rgba(40,80,140,0.22)', storm: 'rgba(190,215,245,0.26)' },
       flake: '#b8d4ee', rain: '#6f9fd0',
     },
@@ -399,7 +407,7 @@
         if (z < 0.5) continue;
         const px = x + 8 * z; let py = y + 7 * z + 9 * z;
         icon(ctx, b.t, px + 9 * z, py, 18 * z, col[2]);
-        text(({ fire: '焚き火', igloo: 'かまくら', storage: '倉庫', tower: '見張り台', woodshed: '薪割り台' })[b.t], px + 24 * z, py, 13 * z, col[2], 700);
+        text(({ fire: '焚き火', igloo: 'かまくら', storage: '倉庫', tower: '見張り台', workshop: '作業場' })[b.t], px + 24 * z, py, 13 * z, col[2], 700);
         py += 16 * z;
         let chip = null, label = '';
         if (isFire) { chip = th.chip.fire; label = `火力 ${g.fire} / ${E.RULES.fireMax}`; }
