@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const E = require('../shared/engine');
 
 const P3 = [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue' }));
-const mk = (seed = 1) => E.createGame({ seed, players: P3 });
+const mk = (seed = 1) => { const st = E.createGame({ seed, players: P3 }); st.items.veg = 0; return st; };   // 最初の野菜は別のテストで確かめる
 const me = st => E.cur(st);
 // 建てられる場所を探す
 const spotFor = (st, t, skip = 0) => { let n = 0; for (let y = -8; y < 8; y++) for (let x = -8; x < 8; x++) if (!E.buildWhy(st, t, x, y) && n++ >= skip) return [x, y]; return null; };
@@ -81,7 +81,7 @@ test('移動：雪原に入るたび体温-1・建物の上は0・範囲外や�
   assert.strictEqual(p.temp, 9);
   assert.ok(doIt(st, { type: 'move', x: 1, y: 1 }).ok);     // 焚き火の上へ戻る（体温は減らない）
   assert.strictEqual(p.temp, 9);
-  assert.match(doIt(st, { type: 'move', x: 20, y: 20 }).why, /1マス以内/);
+  assert.match(doIt(st, { type: 'move', x: 20, y: 20 }).why, /マス.*以内/);
   const a = st.animals[0]; a.x = 2; a.y = 0;
   assert.match(doIt(st, { type: 'move', x: 2, y: 0 }).why, /動物/);
   assert.match(doIt(st, { type: 'move', x: 1, y: -1 }).why, /重なれません/);
@@ -344,4 +344,84 @@ test('猛吹雪を生き延びるのに必要な食料', () => {
   assert.strictEqual(n.need, 3 * (3 * 3 + 1 - 10));
   st.players[0].food = 2;
   assert.strictEqual(E.foodNeed(st).need, (3 * 3 + 1 - 2) + 0 + 0);
+});
+
+test('ゲーム開始：人数ぶんの野菜が配られる', () => {
+  const st = E.createGame({ seed: 1, players: P3 });
+  assert.strictEqual(st.items.veg, 3);
+  assert.strictEqual(E.createGame({ seed: 1, players: [...P3, { id: 'p4', name: 'P4', color: 'red' }] }).items.veg, 4);
+});
+
+test('薪割り台：建てる・木材1→薪2・薪を先に焚べる・壊れる', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  const sp = spotFor(st, 'woodshed');
+  st.items.wood = 5; st.items.stone = 1;
+  assert.ok(doIt(st, { type: 'build', t: 'woodshed', x: sp[0], y: sp[1] }).ok);
+  const sh = st.b.find(b => b.t === 'woodshed');
+  assert.deepStrictEqual([sh.hp, sh.max, st.items.wood, st.items.stone], [4, 4, 2, 0]);
+  p.ap = 7;
+  // 離れていると作れない
+  p.x = sh.x + 5; p.y = sh.y + 5;
+  assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /薪割り台/);
+  p.x = sh.x + 1; p.y = sh.y;                       // 上
+  assert.ok(doIt(st, { type: 'craft', recipe: 'firewood' }).ok);
+  assert.deepStrictEqual([st.items.wood, st.items.firewood, p.ap], [1, 2, 6]);
+  p.x = sh.x + 2; p.y = sh.y;                       // すぐ隣
+  assert.ok(doIt(st, { type: 'craft', recipe: 'firewood' }).ok);
+  assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /木材が足りません/);
+  assert.strictEqual(st.items.firewood, 4);
+  // 焚べるときは、薪を先に使う
+  st.items.wood = 2; st.fire = 1; p.x = 0; p.y = 0;
+  assert.ok(doIt(st, { type: 'stoke' }).ok);
+  assert.deepStrictEqual([st.items.firewood, st.items.wood], [3, 2]);
+  st.items.firewood = 0;
+  assert.ok(doIt(st, { type: 'stoke' }).ok);
+  assert.strictEqual(st.items.wood, 1);
+  // 持ち物がいっぱいなら作れない（木材1が薪2になると +1 個）
+  p.x = sh.x + 1; p.y = sh.y;
+  st.items = { wood: 1, firewood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }; st.items.snow = 15;
+  assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /いっぱい/);
+  // 猛吹雪で壊れる（HPがある）
+  st.weather = 'storm'; st.next = 'storm';
+  for (let i = 0; i < 12; i++) doIt(st, { type: 'end' }, me(st).id);
+  assert.ok(!st.b.some(b => b.t === 'woodshed'));
+});
+
+test('見張り台からは2マス以内に移動できる', () => {
+  const st = mk();
+  st.b.push({ id: 90, t: 'tower', x: 6, y: 0, w: 2, h: 2, hp: 4, max: 4 });
+  assert.ok(E.reach(st, 9, 0));        // 見張り台から2マス
+  assert.ok(!E.reach(st, 10, 0));
+  assert.ok(E.reach(st, 2, 0));        // 焚き火から1マス
+  assert.ok(!E.reach(st, 3, 0));       // 見張り台からは3マス、焚き火からは2マスなので届かない
+});
+
+test('手番を終えたときの予測', () => {
+  const st = mk(); st.weather = 'snow';
+  const p = me(st);
+  let e = E.endProjection(st, p.id);
+  assert.deepStrictEqual([e.food, e.temp, e.fire, e.place, e.collapse], [7, 9, 2, 'fire', false]);
+  const [x, y] = freeSpot(st);
+  p.x = x; p.y = y; p.temp = 3; p.food = 3;
+  e = E.endProjection(st, p.id);
+  assert.deepStrictEqual([e.food, e.temp, e.collapse, e.loss], [0, 0, true, 3]);
+  st.weather = 'rain';
+  assert.strictEqual(E.endProjection(st, p.id).fire, 1);
+});
+
+test('結果画面の統計：行動の集計', () => {
+  const st = mk(); st.weather = 'clear';
+  const p = me(st);
+  p.temp = 5; st.items.meat = 1;
+  doIt(st, { type: 'warm' });
+  doIt(st, { type: 'eat', k: 'meat' });
+  const ps = st.stats.players[p.id];
+  assert.deepStrictEqual([ps.ap, ps.warmed, ps.eaten], [2, 3, 0]);   // 満腹度は10なので食べても増えない
+  p.food = 4; st.items.meat = 1;
+  doIt(st, { type: 'eat', k: 'meat' });
+  assert.strictEqual(ps.eaten, 3);
+  st.items.wood = 1; st.fire = 0;
+  doIt(st, { type: 'stoke' });
+  assert.strictEqual(ps.stoked, 1);
 });

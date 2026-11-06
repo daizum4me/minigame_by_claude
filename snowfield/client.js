@@ -300,6 +300,7 @@
     if (msg.type !== 'state') return;
     app.me = msg.you;
     app.room = msg.room;
+    app.roomAt = Date.now();
     app.game = msg.game;
     if (board) board.liveClear();
     if (msg.room.code) {
@@ -379,6 +380,36 @@
     if (E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
   }
 
+  // このまま手番を終えたときの予測
+  function renderEndProj(g) {
+    const el = $('#endproj');
+    if (!myTurn()) { el.hidden = true; return; }
+    const e = E.endProjection(g, app.me);
+    el.hidden = false;
+    const place = { fire: '焚き火の上', warm: '防寒の中', out: '屋外' }[e.place];
+    const wn = E.WEATHER_NAMES[g.weather];
+    const cls = (v, lim) => (v <= lim ? 'bad' : '');
+    el.innerHTML = `<b class="t">このまま手番を終えると</b>
+      <div class="ep-row"><span class="k">満腹度</span><span class="v ${cls(e.food, 0)}">${e.food0} → ${e.food}</span><span class="n">−${e.hunger}</span></div>
+      <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}）</span></div>
+      <div class="ep-row"><span class="k">火力</span><span class="v">${e.fire0} → ${e.fire}</span><span class="n">−${e.fireLoss}</span></div>
+      ${e.collapse ? `<div class="warnbox">${e.temp <= 0 && e.food <= 0 ? '体温と満腹度が0になり' : e.temp <= 0 ? '体温が0になり' : '満腹度が0になり'}、行動不能になります！</div>` : ''}`;
+  }
+
+  // 手番の制限時間の表示
+  function updateTimer() {
+    const chip = $('#chip-turn'), g = app.game;
+    if (!g || !app.room) return;
+    const base = chip.dataset.base || '';
+    let left = app.room.turnLeft;
+    if (left != null) left = Math.max(0, left - (Date.now() - app.roomAt));
+    const secs = left == null ? null : Math.ceil(left / 1000);
+    chip.classList.toggle('timer', secs != null);
+    chip.classList.toggle('low', secs != null && secs <= 10);
+    chip.textContent = secs == null ? base : `${base}　残り ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    if (secs != null && secs <= 10 && myTurn() && app.warnedKey !== g.round + ':' + g.turn) { app.warnedKey = g.round + ':' + g.turn; SnowSound.play('warn'); }
+  }
+
   // 上限を超えたアイテム：既存の物を捨てて持つか、新しい物をあきらめるかを選ぶ
   function renderOverflow(g, th) {
     const el = $('#overflow'), pd = g.pending && g.pending[0];
@@ -429,7 +460,9 @@
     if (show === !el.hidden) return;
     el.hidden = !show;
     if (show) {
-      el.innerHTML = '<b>行動力がなくなりました</b><span>手番を終えますか？（移動や食べるは、まだできます）</span><div><button class="primary" data-endpop-end>手番を終える</button><button data-endpop-close>あとで</button></div>';
+      const pj = E.endProjection(g, app.me);
+      const warn = pj && pj.collapse ? '<span style="color:var(--redFg);font-weight:700">このまま終えると行動不能になります！ 食べる・温まる・焚き火へ移動を先に</span>' : '';
+      el.innerHTML = '<b>行動力がなくなりました</b><span>手番を終えますか？（移動や食べるは、まだできます）</span>' + warn + '<div><button class="primary" data-endpop-end>手番を終える</button><button data-endpop-close>あとで</button></div>';
       SnowSound.play('warn');
     }
   }
@@ -522,8 +555,10 @@
       eff: ['体温低下 -1＋天候補正（補正は最大2まで軽減）', '温まる回復量 +1', 'HPが半分以下になると防寒が消える'], build: null, repair: null },
     storage: { name: '倉庫', tip: '防寒施設。共有アイテムの上限が+10される。', desc: '大きな防寒施設。',
       eff: ['共有アイテムの上限 +10', '防寒効果はかまくらと同じ'], build: null, repair: null },
-    tower: { name: '見張り台', tip: '建てると1ラウンド先の天候予報が見える。', desc: '高い場所から先を見渡す。屋外扱いで防寒はない。',
-      eff: ['1ラウンド先の天候の予報が見える'], build: null, repair: null },
+    tower: { name: '見張り台', tip: '1ラウンド先の天候予報が見え、ここから2マス以内に移動できる。', desc: '高い場所から先を見渡す。屋外扱いで防寒はない。',
+      eff: ['1ラウンド先の天候の予報が見える', '見張り台からは2マス以内に移動できる（ほかの建物は1マス）'], build: null, repair: null },
+    woodshed: { name: '薪割り台', tip: '上かすぐ隣で「作る」と、木材1が薪2になる。', desc: '木材を薪に割る作業台。屋外扱いで防寒はなく、猛吹雪ではHPが減る。',
+      eff: ['作る：木材1 → 薪2（行動力1。上かすぐ隣にいるとき）', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
   };
   const IDESC = {
     wood: '焚き火に焚べると火力+1。倉庫・見張り台の建設に使う。',
@@ -532,6 +567,7 @@
     meat: '食べると満腹度+3。',
     snow: 'かまくら・道の建設に使う。雪原で資源を集めると1個ついてくる。',
     sapling: '植えると樹木の苗になる。木を集めたとき50%で落ちる。',
+    firewood: '焚べると火力+1。木材より先に使われる。薪割り台で、木材1から2本作れる。',
   };
   const costText = d => '行動力' + d.ap + '・' + Object.keys(d.cost).map(k => E.ITEM_NAMES[k] + d.cost[k]).join(' ');
   const iconOf = k => B.ITEM_ICON[k];
@@ -551,19 +587,21 @@
     renderEndPop(g);
     renderOverflow(g, th);
     renderFoodNeed(g);
+    renderEndProj(g);
+    updateTimer();
     renderHint();
     board.request();
   }
 
   function renderBar(g) {
     const r = g.round, fin = r > R.prepRounds;
-    $('#chip-round').textContent = fin ? `最終猛吹雪 ${r - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${r} / ${R.prepRounds}（準備期間）`;
-    $('#chip-final').textContent = fin ? `生き延びるまで あと${E.TOTAL_ROUNDS - r + 1}ラウンド` : `最終猛吹雪まで あと${R.prepRounds - r + 1}ラウンド`;
+    $('#chip-round').textContent = fin ? `最終猛吹雪 ${r - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${r} / ${R.prepRounds}（準備）`;
+    $('#chip-final').textContent = fin ? `あと${E.TOTAL_ROUNDS - r + 1}ラウンドで クリア` : `猛吹雪まで あと${R.prepRounds - r + 1}ラウンド`;
     const fore = $('#chip-fore');
     fore.hidden = !E.hasTower(g);
-    fore.textContent = g.next ? `予報（見張り台）：次ラウンドは${E.WEATHER_NAMES[g.next]}` : '予報（見張り台）：これが最後のラウンド';
+    fore.textContent = g.next ? `予報：次は${E.WEATHER_NAMES[g.next]}` : '予報：最後のラウンド';
     const c = E.cur(g);
-    $('#chip-turn').textContent = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー');
+    $('#chip-turn').dataset.base = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー');
     $('#weather').innerHTML = `現在の天候：<b>${E.WEATHER_NAMES[g.weather]}</b>（${FX[g.weather]}）`;
     $('#btn-endturn').disabled = !myTurn();
     $('#btn-endturn').textContent = myTurn() ? '手番を終える' : '手番を待っています';
@@ -689,14 +727,29 @@
     $('#z-pct').textContent = Math.round((board ? board.state.cam.z : 1) * 100) + '%';
   }
 
-  // 建設カード
+  // 建設カード／レシピ（「建てる」「作る」で共用）
   function renderTray(g, th) {
-    const open = app.tray;
-    $('#btn-tray-close').hidden = !open;
+    const mode = app.tray;
+    $('#btn-tray-close').hidden = !mode;
+    $('#tray-title').textContent = mode === 'craft' ? '作る（レシピ）' : '建設カード';
     const el = $('#tray');
-    if (!open) { el.innerHTML = '<div class="small muted" style="line-height:1.6">駒をクリック →「建てる」を選ぶと、ここに建設カードの一覧が出ます。</div>'; return; }
+    if (!mode) { el.innerHTML = '<div class="small muted" style="line-height:1.6">駒をクリック →「建てる」か「作る」を選ぶと、ここに一覧が出ます。</div>'; return; }
     const me = myP();
-    const cards = ['road', 'igloo', 'storage', 'tower'].map(k => {
+    if (mode === 'craft') {
+      const cards = Object.keys(E.RECIPES).map(k => {
+        const rc = E.RECIPES[k], lack = E.lacking(g, rc.in);
+        const nIn = Object.values(rc.in).reduce((a, b) => a + b, 0), nOut = Object.values(rc.out).reduce((a, b) => a + b, 0);
+        const why = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません'
+          : !E.nearStation(g, me, rc.station) ? `${E.BUILD[rc.station].name}の上かすぐ隣で` : me.ap < rc.ap ? '行動力が足りません'
+          : lack ? E.ITEM_NAMES[lack] + 'が足りません' : nOut - nIn > E.room(g) ? '持ち物がいっぱいです' : '';
+        const c = th.card.woodshed;
+        return `<div class="bcard" data-recipe="${k}" data-why="${esc(why)}" style="border-color:${c[1]};background:${c[0]};color:${c[2]};opacity:${why ? .55 : 1};cursor:${why ? 'not-allowed' : 'pointer'}">
+          <b>${esc(rc.name)}を作る</b><span style="color:${why ? th.redFg : 'inherit'}">${esc(why || recipeText(rc))}</span></div>`;
+      }).join('');
+      el.innerHTML = '<div class="small muted" style="line-height:1.5">レシピをクリックすると作ります。</div>' + cards;
+      return;
+    }
+    const cards = ['road', 'igloo', 'storage', 'tower', 'woodshed'].map(k => {
       const d = E.BUILD[k], c = th.card[k === 'road' ? 'storage' : k], isR = k === 'road';
       const lack = E.lacking(g, d.cost);
       const why = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は建てられません' : me.ap < d.ap ? '行動力が足りません' : lack ? E.ITEM_NAMES[lack] + 'が足りません' : '';
@@ -705,6 +758,7 @@
     }).join('');
     el.innerHTML = '<div class="small muted" style="line-height:1.5">カードを盤面へドラッグして置くと建設します。</div>' + cards;
   }
+  const recipeText = rc => `行動力${rc.ap}・${Object.keys(rc.in).map(k => E.ITEM_NAMES[k] + rc.in[k]).join('・')} → ${Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}`;
 
   // 駒のメニュー
   function renderMenu(g, th) {
@@ -722,7 +776,7 @@
     };
     const w = E.where(g, me);
     add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${g.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
-    if (E.nearFire(g, me)) add('焚べる', `行動力${R.ap.stoke}・木材1`, { type: 'stoke' });
+    if (E.nearFire(g, me)) add('焚べる', `行動力${R.ap.stoke}・薪（なければ木材）1`, { type: 'stoke' });
     if (res) add('集める', `行動力${R.ap.collect}`, { type: 'collect' });
     [['上', 0, -1], ['下', 0, 1], ['左', -1, 0], ['右', 1, 0]].forEach(d => {
       const a = E.animalAt(g, me.x + d[1], me.y + d[2]);
@@ -736,9 +790,12 @@
     head = '持ち物';
     add('食べる：肉', `行動力0・満腹+${R.eat.meat}`, { type: 'eat', k: 'meat' });
     add('食べる：野菜', `行動力0・満腹+${R.eat.veg}`, { type: 'eat', k: 'veg' });
-    head = '建設';
+    head = '建設・製作';
     const canBuild = myTurn() && me.down !== 2;
-    entries.push({ label: '建てる', cost: canBuild ? 'カード一覧を左下に表示' : (myTurn() ? '復帰中は建てられません' : '自分の手番ではありません'), ok: canBuild, head, fn: () => { app.tray = true; mapToast('左下に建設カードの一覧を出しました。盤面へドラッグして置いてください'); renderGame(); } });
+    entries.push({ label: '建てる', cost: canBuild ? 'カード一覧を左下に表示' : (myTurn() ? '復帰中は建てられません' : '自分の手番ではありません'), ok: canBuild, head, fn: () => { app.tray = 'build'; mapToast('左下に建設カードの一覧を出しました。盤面へドラッグして置いてください'); renderGame(); } });
+    const hasShed = g.b.some(b => b.t === 'woodshed');
+    const craftWhy = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません' : !hasShed ? '薪割り台を建てると作れます' : '';
+    entries.push({ label: '作る', cost: craftWhy || 'レシピ一覧を左下に表示', ok: !craftWhy, head: '', fn: () => { app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
     void it;
     app.menuEntries = entries;
     const nm = here ? DESC[here.t].name + 'の上' : res ? ({ tree: '木', stone: '石', veg: '野菜' })[res.t] + 'のマス' : '雪原';
@@ -785,7 +842,16 @@
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
     $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`;
-    $('#result-players').innerHTML = g.players.map(p => `<li>${pawnIco(p, 22)}<b>${esc(p.name)}</b><span class="muted">体温 ${p.temp}・満腹度 ${p.food}${p.down ? '・行動不能' : ''}</span></li>`).join('');
+    const S = g.stats, cols = [['ap', '行動力', '使った行動力'], ['collect', '集めた', '集めた回数'], ['kills', '狩り', '倒した動物'], ['built', '建てた', '建てた建物'], ['crafted', '作った', '作った回数'], ['stoked', '焚べた', '焚べた回数'], ['planted', '植えた', '植えた苗'], ['repaired', '直した', '直した回数'], ['eaten', '食べた', '食べて増えた満腹度'], ['warmed', '温まり', '温まって増えた体温'], ['downs', '行動不能', '行動不能になった回数']];
+    const top = {};
+    cols.forEach(([k]) => { const m = Math.max(...g.players.map(p => S.players[p.id][k])); top[k] = k === 'downs' ? -1 : m; });
+    const rows = g.players.map(p => `<tr><td style="white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:4px">${pawnIco(p, 18)}${esc(p.name)}</span></td>${cols.map(([k]) => { const v = S.players[p.id][k]; return `<td class="${v > 0 && v === top[k] ? 'top' : ''}">${v}</td>`; }).join('')}</tr>`).join('');
+    const gained = S.team.gained, gtxt = E.ITEMS.filter(k => gained[k]).map(k => `${E.ITEM_NAMES[k]}${gained[k]}`).join('　') || 'なし';
+    $('#result-players').innerHTML = `<div class="team-stats">
+        <div>生き延びたラウンド<b>${g.over.round} / ${E.TOTAL_ROUNDS}</b></div><div>建てた建物<b>${S.team.built}</b></div><div>壊れた建物<b>${S.team.destroyed}</b></div><div>捨てた物<b>${S.team.discarded}</b></div></div>
+      <div class="small muted">手に入れた物：${gtxt}</div>
+      <div style="overflow:auto"><table class="stat-table"><thead><tr><th>プレイヤー</th>${cols.map(c => `<th title="${c[2]}">${c[1]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="small muted">濃い色は、その項目でいちばん多い人（行動不能は数えません）</div>`;
     const host = app.room.hostId === app.me;
     $('#btn-result-lobby').hidden = !host;
     $('#result-wait').hidden = host;
@@ -964,8 +1030,27 @@
       if (!ent.ok) { mapToast(ent.cost, 'bad'); return; }
       if (ent.fn) ent.fn(); else act(ent.a);
     });
+    $('#tray').addEventListener('click', e => {
+      const c = e.target.closest('[data-recipe]');
+      if (!c) return;
+      if (c.dataset.why) { mapToast(c.dataset.why, 'bad'); return; }
+      act({ type: 'craft', recipe: c.dataset.recipe });
+    });
     $('#tray').addEventListener('pointermove', e => {
-      const c = e.target.closest('[data-card]'), tip = $('#itip');
+      const rcEl = e.target.closest('[data-recipe]'), tip = $('#itip');
+      if (rcEl && app.game) {
+        const rc = E.RECIPES[rcEl.dataset.recipe], g = app.game;
+        const mats = Object.keys(rc.in).map(m => `<span style="color:${g.items[m] >= rc.in[m] ? 'var(--ok)' : 'var(--redFg)'};font-weight:700">${E.ITEM_NAMES[m]} ${g.items[m]}/${rc.in[m]}</span>`).join('　');
+        tip.innerHTML = `<div class="tn">${esc(rc.name)}を作る<span class="grow"></span><span style="font-size:12px;color:var(--muted2);font-weight:400">行動力 ${rc.ap}</span></div>
+          <div class="tt"><b>必要な材料</b>（持っている数/必要）<br>${mats}</div><div class="tt">できるもの：${Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}</div>
+          <div class="th">${E.BUILD[rc.station].name}の上かすぐ隣で作れます</div>`;
+        tip.hidden = false;
+        const r = rcEl.getBoundingClientRect();
+        tip.style.left = Math.min(r.right + 10, window.innerWidth - 246) + 'px';
+        tip.style.top = Math.max(4, Math.min(r.top, window.innerHeight - tip.offsetHeight - 8)) + 'px';
+        return;
+      }
+      const c = e.target.closest('[data-card]');
       if (!c || !app.game || app.card) { tip.hidden = true; return; }
       const k = c.dataset.card, d = E.BUILD[k], ds = DESC[k], g = app.game;
       const mats = Object.keys(d.cost).map(m => `<span style="color:${g.items[m] >= d.cost[m] ? 'var(--ok)' : 'var(--redFg)'};font-weight:700">${E.ITEM_NAMES[m]} ${g.items[m]}/${d.cost[m]}</span>`).join('　');
@@ -1026,6 +1111,7 @@
     if (room) { $('#in-code').value = room.toUpperCase().slice(0, 6); }
     setupBoard();
     bind();
+    setInterval(() => { if (app.game && !$('#game').hidden) updateTimer(); }, 250);
     show('top');
     // テスト用：ブラウザの検証から状態を見られるようにする
     window.__snowfield = { app, E, get board() { return board; } };

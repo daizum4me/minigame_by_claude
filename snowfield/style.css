@@ -182,3 +182,16 @@ button.sw:disabled { opacity: .25; }
 .ovr-row button { width: 28px; height: 28px; padding: 0; font-size: 16px; font-weight: 700; }
 .ovr-n { min-width: 20px; text-align: center; }
 .food-need { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--pb); padding-top: 8px; line-height: 1.5; }
+
+/* 手番を終えたときの予測・制限時間・統計 */
+.endproj { gap: 4px; padding: 8px 12px; font-size: 12px; line-height: 1.5; }
+.endproj b.t { font-size: 12px; }
+.endproj .ep-row { display: flex; align-items: baseline; gap: 6px; } .endproj .ep-row .k { width: 44px; color: var(--muted); } .endproj .ep-row .v { font-weight: 700; } .endproj .ep-row .n { color: var(--muted); font-size: 11px; }
+.endproj .bad { color: var(--redFg); } .endproj .warnbox { background: var(--redBg); color: var(--redFg); border-radius: 8px; padding: 4px 8px; font-weight: 700; }
+.chip.timer { font-variant-numeric: tabular-nums; } .chip.timer.low { background: var(--redBg); color: var(--redFg); font-weight: 700; }
+.result-card.wide { width: min(720px, 100%); max-height: 92vh; overflow: auto; }
+.stat-table { width: 100%; border-collapse: collapse; font-size: 12px; } .stat-table th, .stat-table td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--pb); white-space: nowrap; }
+.stat-table th:first-child, .stat-table td:first-child { text-align: left; } .stat-table th { color: var(--muted); font-weight: 500; } .stat-table td.top { font-weight: 700; color: var(--accFg); background: var(--accBg); }
+.team-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; } .team-stats div { background: var(--btn2); border: 1px solid var(--pb); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); } .team-stats b { display: block; font-size: 16px; color: var(--text); }
+
+.bar { gap: 8px; padding: 0 14px; } .chip { font-size: 12px; padding: 4px 10px; }

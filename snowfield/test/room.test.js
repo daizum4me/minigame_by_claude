@@ -184,3 +184,24 @@ test('CPUは、同じ場所を行ったり来たりしない（1手番に、仕�
     }
   }
 });
+
+test('手番の制限時間：人間の手番は120秒で自動的に終わる。CPUには制限がない', () => {
+  const { room, timers, last, clock, inbox } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  const first = E.cur(room.game);
+  assert.strictEqual(first.id, h);
+  assert.strictEqual(last(h).room.turnLeft, E.RULES.turnLimitMs);
+  clock.t += 60000;
+  assert.strictEqual(room.view().turnLeft, 60000);
+  const t = timers.find(x => x.ms === E.RULES.turnLimitMs);
+  assert.ok(t);
+  timers.splice(timers.indexOf(t), 1);
+  t.fn();                                              // 時間切れ
+  assert.notStrictEqual(E.cur(room.game).id, h);
+  assert.strictEqual(room.view().turnLeft, null);       // CPUの手番
+  assert.match(room.game.log.map(l => l.t).join('|'), /制限時間/);
+  void inbox;
+});

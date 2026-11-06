@@ -22,6 +22,9 @@
     base: { fire: 0, warm: 1, out: 2 }, // 手番終了時の体温低下の基本値
     relief: 2,                          // 防寒施設の中で天候補正を軽減する量
     moveRange: 1,                       // 建物（道を含む）からこのマス以内に移動できる
+    towerRange: 2,                      // 見張り台からは、このマス以内に移動できる
+    turnLimitMs: 120000,                // 手番の制限時間（人間のプレイヤーだけ。ルームで使う）
+    startVegPerPlayer: 1,               // ゲーム開始時に、人数 × この数の野菜を配る
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
     resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
@@ -43,9 +46,14 @@
     igloo: { name: 'かまくら', size: 2, ap: 2, cost: { snow: 5 } },
     storage: { name: '倉庫', size: 4, ap: 4, cost: { wood: 4, stone: 4 } },
     tower: { name: '見張り台', size: 2, ap: 2, cost: { wood: 5, stone: 3 } },
+    woodshed: { name: '薪割り台', size: 2, ap: 2, cost: { wood: 3, stone: 1 } },
   };
-  const ITEMS = ['wood', 'stone', 'veg', 'meat', 'snow', 'sapling'];
-  const ITEM_NAMES = { wood: '木材', stone: '石材', veg: '野菜', meat: '肉', snow: '雪', sapling: '苗木' };
+  // 「作る」のレシピ：station の上かすぐ隣にいるときに作れる
+  const RECIPES = {
+    firewood: { name: '薪', station: 'woodshed', ap: 1, in: { wood: 1 }, out: { firewood: 2 } },
+  };
+  const ITEMS = ['wood', 'firewood', 'stone', 'veg', 'meat', 'snow', 'sapling'];
+  const ITEM_NAMES = { wood: '木材', firewood: '薪', stone: '石材', veg: '野菜', meat: '肉', snow: '雪', sapling: '苗木' };
   const WEATHER_NAMES = { clear: '晴れ', snow: '雪', blizzard: '吹雪', rain: '雨', storm: '猛吹雪' };
   const RES_ITEM = { tree: 'wood', stone: 'stone', veg: 'veg' };
   const DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
@@ -83,7 +91,9 @@
   const playerAt = (st, x, y, skipId) => st.players.find(p => p.id !== skipId && p.x === x && p.y === y) || null;
   const rectGap = (b, x, y) => ({ dx: Math.max(b.x - x, 0, x - (b.x + b.w - 1)), dy: Math.max(b.y - y, 0, y - (b.y + b.h - 1)) });
   const inGen = (st, x, y) => st.gen.some(r => x >= r[0] && x <= r[1] && y >= r[2] && y <= r[3]);
-  const reach = (st, x, y) => st.b.some(b => { const g = rectGap(b, x, y); return g.dx <= RULES.moveRange && g.dy <= RULES.moveRange; });
+  const rangeOf = b => (b.t === 'tower' ? RULES.towerRange : RULES.moveRange);
+  const reach = (st, x, y) => st.b.some(b => { const g = rectGap(b, x, y), m = rangeOf(b); return g.dx <= m && g.dy <= m; });
+  const nearStation = (st, p, t) => st.b.some(b => { if (b.t !== t) return false; const g = rectGap(b, p.x, p.y); return g.dx <= 1 && g.dy <= 1; });
   const insul = b => !!b && (b.t === 'igloo' || b.t === 'storage') && b.hp * 2 > b.max;
   const fireOf = st => st.b.find(b => b.t === 'fire');
   const nearFire = (st, p) => { const g = rectGap(fireOf(st), p.x, p.y); return g.dx <= 1 && g.dy <= 1; };
@@ -108,6 +118,7 @@
   function addItem(st, k, n) {
     const a = Math.max(0, Math.min(n, room(st)));
     st.items[k] += a;
+    if (st.stats) st.stats.team.gained[k] = (st.stats.team.gained[k] || 0) + a;
     return a;
   }
 
@@ -197,7 +208,8 @@
     const st = {
       v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null,
       weather: 'clear', next: 'clear', fire: RULES.fireInit,
-      items: Object.assign({ wood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }, RULES.startItems),
+      items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }, RULES.startItems),
+      stats: { players: {}, team: { gained: {}, built: 0, destroyed: 0, discarded: 0 } },
       b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, pending: [], log: [],
       players: [],
     };
@@ -205,6 +217,8 @@
     expandGen(st, f);
     guaranteeStart(st);
     const spots = [[-1, 1], [1, 1], [0, 1], [-1, 0], [1, 0]];   // 焚き火の下側から（上側は焚き火のカードの文字がある）
+    st.items.veg += opts.players.length * RULES.startVegPerPlayer;   // 最初の食料
+    opts.players.forEach(p => { st.stats.players[p.id] = { ap: 0, collect: 0, kills: 0, built: 0, crafted: 0, stoked: 0, planted: 0, repaired: 0, eaten: 0, warmed: 0, downs: 0 }; });
     opts.players.forEach((p, i) => st.players.push({
       id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
       x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0,
@@ -243,6 +257,7 @@
       for (const b of st.b) if (b.hp !== null) { b.hp--; if (b.hp <= 0) gone.push(b); }
       if (gone.length) {
         st.b = st.b.filter(b => !gone.includes(b));
+        st.stats.team.destroyed += gone.length;
         for (const b of gone) log(st, `猛吹雪で${BUILD[b.t].name}が壊れた`);
       }
     }
@@ -274,6 +289,7 @@
       if (p.temp <= 0) p.temp = RULES.recoverTo;
       if (p.food <= 0) p.food = RULES.recoverTo;
       p.down = 1;
+      if (st.stats.players[p.id]) st.stats.players[p.id].downs++;
       moveToFire(st, p);
       log(st, `${p.name}：${what}が0になり行動不能。焚き火へ運ばれた`);
     }
@@ -300,7 +316,7 @@
   function moveWhy(st, p, x, y) {
     if (p.down > 0) return '行動不能中は移動できません';
     if (x === p.x && y === p.y) return 'いまいるマスです';
-    if (!reach(st, x, y)) return `建物から${RULES.moveRange}マス以内の雪原にだけ移動できます`;
+    if (!reach(st, x, y)) return `建物から${RULES.moveRange}マス（見張り台からは${RULES.towerRange}マス）以内の雪原にだけ移動できます`;
     if (animalAt(st, x, y)) return '動物のいるマスには入れません';
     if (playerAt(st, x, y, p.id)) return '他のプレイヤーと重なれません';
     return null;
@@ -311,7 +327,7 @@
     if (p.down > 0) return dist;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const b of st.b) { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x + b.w - 1); y0 = Math.min(y0, b.y); y1 = Math.max(y1, b.y + b.h - 1); }
-    const M = RULES.moveRange;
+    const M = Math.max(RULES.moveRange, RULES.towerRange);
     x0 -= M; x1 += M; y0 -= M; y1 += M;
     const heap = [[0, p.x, p.y]];
     dist.set(key(p.x, p.y), 0);
@@ -454,7 +470,7 @@
       else if (x < 0 || p.away) no++;      // 切断中の人は反対として扱う
     }
     if (yes * 2 > n) {
-      if (st.items[v.k] > 0) st.items[v.k]--;
+      if (st.items[v.k] > 0) { st.items[v.k]--; st.stats.team.discarded++; }
       st.vote = null;
       log(st, `投票で可決：${ITEM_NAMES[v.k]}を1個捨てた`);
     } else if (no * 2 >= n) {
@@ -497,6 +513,7 @@
       st.items[pend.k] += total;
       st.pending.shift();
       const lost = pend.n - total;
+      st.stats.team.discarded += total + lost;
       const parts = Object.keys(drop).filter(k => drop[k] > 0).map(k => `${ITEM_NAMES[k]}${drop[k]}個`);
       r = { ok: true, sfx: 'tick', msg: total ? `${parts.join('・')}を捨てて、${ITEM_NAMES[pend.k]}${total}個を持った${lost ? `（${ITEM_NAMES[pend.k]}${lost}個は捨てた）` : ''}` : `${ITEM_NAMES[pend.k]}${pend.n}個を捨てた` };
       log(st, `${p.name}：${r.msg}`);
@@ -532,10 +549,27 @@
     } else {
       if (!mine) return fail('自分の手番ではありません');
       if (p.down === 2 && !RECOVER_OK.includes(t)) return fail('復帰中の手番は「温まる」「食べる」だけできます');
+      const b0 = { ap: p.ap, temp: p.temp, food: p.food };
       r = doTurnAction(st, p, a);
+      if (r.ok && st.stats.players[pid] && t !== 'end') tally(st, p, t, r, b0);
     }
     if (r.ok) { st.v++; if (!r.sfx) r.sfx = SFX[t] || ''; }
     return r;
+  }
+
+  // 結果画面の統計
+  function tally(st, p, t, r, b0) {
+    const ps = st.stats.players[p.id];
+    ps.ap += Math.max(0, b0.ap - p.ap);
+    if (t === 'warm') ps.warmed += Math.max(0, p.temp - b0.temp);
+    else if (t === 'eat') ps.eaten += Math.max(0, p.food - b0.food);
+    else if (t === 'collect') ps.collect++;
+    else if (t === 'attack' && r.sfx === 'kill') ps.kills++;
+    else if (t === 'plant') ps.planted++;
+    else if (t === 'build') { ps.built++; st.stats.team.built++; }
+    else if (t === 'craft') ps.crafted++;
+    else if (t === 'repair') ps.repaired++;
+    else if (t === 'stoke') ps.stoked++;
   }
 
   function doMove(st, p, a) {
@@ -566,12 +600,14 @@
         return { ok: true, msg: `温まる：体温 +${amt}`, good: amt > 0 };
       }
       case 'stoke': {
-        if (it.wood < 1) return fail('木材がありません');
+        if (it.firewood < 1 && it.wood < 1) return fail('薪も木材もありません');
         if ((e = needAp(ap.stoke))) return fail(e);
         if (!nearFire(st, p)) return fail('焚き火の上か、すぐ隣に移動してください');
         if (st.fire >= RULES.fireMax) return fail(`火力は最大（${RULES.fireMax}）です`);
-        p.ap -= ap.stoke; it.wood--; st.fire++;
-        return { ok: true, msg: `焚べる：火力 ${st.fire - 1} → ${st.fire}` };
+        p.ap -= ap.stoke;
+        const used = it.firewood > 0 ? 'firewood' : 'wood';      // 薪は建物に使えないので、先に使う
+        it[used]--; st.fire++;
+        return { ok: true, msg: `焚べる：${ITEM_NAMES[used]}1 → 火力 ${st.fire - 1} → ${st.fire}` };
       }
       case 'eat': {
         const k = a.k;
@@ -635,6 +671,21 @@
         for (const k of Object.keys(d.cost)) it[k] -= d.cost[k];
         return { ok: true, msg: `${d.name}を建てた`, id: b.id };
       }
+      case 'craft': {
+        const rc = RECIPES[a.recipe];
+        if (!rc) return fail('不正な操作です');
+        if ((e = needAp(rc.ap))) return fail(e);
+        if (!nearStation(st, p, rc.station)) return fail(`${BUILD[rc.station].name}の上か、すぐ隣に移動してください`);
+        const lack = lacking(st, rc.in);
+        if (lack) return fail(`${ITEM_NAMES[lack]}が足りません`);
+        const nIn = Object.values(rc.in).reduce((x, y) => x + y, 0), nOut = Object.values(rc.out).reduce((x, y) => x + y, 0);
+        if (nOut - nIn > room(st)) return fail('持ち物がいっぱいです');
+        p.ap -= rc.ap;
+        for (const k of Object.keys(rc.in)) it[k] -= rc.in[k];
+        for (const k of Object.keys(rc.out)) it[k] += rc.out[k];
+        const txt = o => Object.keys(o).map(k => `${ITEM_NAMES[k]}${o[k]}`).join('・');
+        return { ok: true, msg: `作る：${txt(rc.in)} → ${txt(rc.out)}`, sfx: 'craft' };
+      }
       case 'repair': {
         const b = st.b.find(x => x.id === a.id);
         if (!b || b.hp === null) return fail('直せる建物ではありません');
@@ -649,6 +700,21 @@
       default:
         return fail('不正な操作です');
     }
+  }
+
+  // このまま手番を終えたときの予測（満腹度 -3、体温の低下、火力 -1（雨は -2））
+  function endProjection(st, pid) {
+    const p = pl(st, pid);
+    if (!p) return null;
+    const w = where(st, p), loss = tempLoss(st, p);
+    const fireLoss = 1 + (st.weather === 'rain' ? 1 : 0);
+    const out = {
+      place: w.kind, loss, hunger: RULES.hunger, fireLoss,
+      temp0: p.temp, temp: Math.max(0, p.temp - loss), food0: p.food, food: Math.max(0, p.food - RULES.hunger),
+      fire0: st.fire, fire: Math.max(0, st.fire - fireLoss),
+    };
+    out.collapse = out.temp <= 0 || out.food <= 0;
+    return out;
   }
 
   // 最終猛吹雪（最終3ラウンド）を生き延びるのに必要な食料（満腹度ぶん）。手番の終わりごとに3減り、0になると行動不能になる
@@ -673,7 +739,7 @@
   }
 
   return {
-    RULES, BUILD, gain, foodNeed, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    RULES, BUILD, RECIPES, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

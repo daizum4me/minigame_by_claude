@@ -93,6 +93,7 @@
     kill(t) { SOUNDS.attack(t); ring(t + 0.12, [110, 170], { gain: 0.35, decay: 0.3 }); },
     plant(t) { burst(t, { dur: 0.2, f: 480, type: 'lowpass', q: 0.5, gain: 0.3 }); burst(t + 0.05, { dur: 0.12, f: 1500, q: 0.7, gain: 0.1 }); },
     build(t) { [0, 0.17, 0.34].forEach((d, i) => knock(t + d, 300 * (1 + i * 0.04))); },
+    craft(t) { [0, 0.13].forEach((d, i) => knock(t + d, 340 + i * 30, { gain: 0.3, decay: 0.08 })); pops(t + 0.2, 3, 0.15, 0.6); },
     repair(t) { [0, 0.18].forEach((d, i) => knock(t + d, 360 + i * 20, { gain: 0.3 })); },
     end(t) { knock(t, 300, { gain: 0.22, decay: 0.07 }); },
     tick(t) { ring(t, [1250], { gain: 0.14, decay: 0.03, wet: 0.2 }); },

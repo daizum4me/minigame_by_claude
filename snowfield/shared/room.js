@@ -39,6 +39,9 @@
       this.game = null;
       this.seq = 0;
       this.timer = null;
+      this.turnTimer = null;     // 手番の制限時間
+      this.turnKey = '';
+      this.turnEndsAt = 0;
       this.mem = {};          // CPU ごとの覚え書き
       this.cpuActs = 0;
       this.voteCool = 0;
@@ -101,6 +104,7 @@
 
     view() {
       return {
+        turnLeft: this.turnEndsAt ? Math.max(0, this.turnEndsAt - this.now()) : null,
         code: this.code, phase: this.phase, hostId: this.hostId, min: E.RULES.minPlayers, max: E.RULES.maxPlayers,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, shape: p.shape, cpu: p.cpu, connected: p.connected })),
       };
@@ -113,7 +117,33 @@
         this.sendFn(p.id, { type: 'state', you: p.id, room, game: this.game });
       }
     }
-    changed() { this.broadcast(); this.schedule(); }
+    changed() { this.syncTurnTimer(); this.broadcast(); this.schedule(); }
+
+    // 人間のプレイヤーの手番には制限時間がある（切れたら、自動で手番を終える）
+    syncTurnTimer() {
+      const g = this.game;
+      const c = this.phase === 'game' && g && g.phase === 'play' ? E.cur(g) : null;
+      const key = c ? g.round + ':' + g.turn : '';
+      if (key === this.turnKey) return;
+      this.turnKey = key;
+      if (this.turnTimer) { this.clearTimer(this.turnTimer); this.turnTimer = null; }
+      this.turnEndsAt = 0;
+      if (c && !c.cpu && !c.away) {
+        const ms = E.RULES.turnLimitMs;
+        this.turnEndsAt = this.now() + ms;
+        this.turnTimer = this.setTimer(() => this.turnTimeout(key), ms);
+      }
+    }
+    turnTimeout(key) {
+      this.turnTimer = null;
+      const g = this.game;
+      if (this.closed || this.phase !== 'game' || !g || g.phase !== 'play' || key !== this.turnKey) return;
+      const c = E.cur(g);
+      this.note(`${c.name}：手番の制限時間が切れた`);
+      const pd = g.pending && g.pending[0];
+      if (pd && pd.pid === c.id) this.doAct(c.id, { type: 'overflow', drop: {} });
+      this.doAct(c.id, { type: 'end' });
+    }
     human(id) { const p = this.players.find(x => x.id === id); return !!p && !p.cpu; }
     toast(id, text, tone, sfx) { if (this.human(id)) this.sendFn(id, { type: 'toast', text, tone: tone || '', sfx: sfx || '' }); }
     error(id, text) { if (this.human(id)) this.sendFn(id, { type: 'error', text }); }
@@ -240,6 +270,7 @@
 
     close() {
       this.closed = true;
+      if (this.turnTimer) { this.clearTimer(this.turnTimer); this.turnTimer = null; }
       this.clearCpuTimer();
     }
   }
