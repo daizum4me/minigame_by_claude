@@ -290,6 +290,78 @@ test('川：焚き火の周りにはなく、建設も移動もできない。�
   assert.ok(st.fish.every(f => E.isRiver(st, f.x, f.y)));
 });
 
+test('川は、途切れずにつながって流れる（ほとんどのマスに、上下左右の川のマスが隣にある）', () => {
+  let cells = 0, joined = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const st = { seed };
+    for (let y = -40; y <= 40; y++) for (let x = -40; x <= 40; x++) {
+      if (!E.isRiver(st, x, y)) continue;
+      cells++;
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => E.isRiver(st, x + dx, y + dy))) joined++;
+    }
+  }
+  assert.ok(cells > 500, `川が少なすぎる：${cells}`);
+  assert.ok(joined / cells > 0.93, `川が途切れている：${(joined / cells).toFixed(2)}`);
+});
+
+test('橋：川にだけ木材1で建てられ、道と同じように歩ける。橋の上には建物を建てて上書きできる。川に道や建物は直接建てられない', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  // 焚き火から川へ向かって道を伸ばし、川に橋をかける
+  const cells = []; for (let y = -14; y <= 14; y++) for (let x = -14; x <= 14; x++) if (E.isRiver(st, x, y)) cells.push([x, y]);
+  st.items.wood = 6; st.items.snow = 12; p.ap = 20;
+  const target = cells.find(([x, y]) => !E.isRiver(st, x - 1, y));      // 左隣が雪原の川のマス
+  assert.ok(target);
+  // 川の左隣に道を置いて（テストなので直接）、その周りを生成済みにする
+  st.b.push({ id: 95, t: 'road', x: target[0] - 1, y: target[1], w: 1, h: 1, hp: null, max: null });
+  st.gen.push([target[0] - 4, target[0] + 4, target[1] - 4, target[1] + 4]);
+  assert.match(E.buildWhy(st, 'road', target[0], target[1]), /川/);
+  assert.match(E.buildWhy(st, 'igloo', target[0], target[1]), /川/);
+  const nonRiver = [target[0] - 1, target[1]];
+  assert.match(E.buildWhy(st, 'bridge', nonRiver[0], nonRiver[1]), /重なり|川にだけ/);
+  assert.strictEqual(E.buildWhy(st, 'bridge', target[0], target[1]), null);
+  const w = st.items.wood;
+  p.x = target[0] - 1; p.y = target[1];
+  assert.ok(doIt(st, { type: 'build', t: 'bridge', x: target[0], y: target[1] }).ok);
+  assert.strictEqual(st.items.wood, w - 1);
+  assert.ok(E.bridgeAt(st, target[0], target[1]));
+  assert.ok(E.moveMap(st, p).has(E.key(target[0], target[1])));        // 橋の上へ歩ける
+  assert.ok(!E.moveMap(st, p).has(E.key(target[0] + 1, target[1])) || !E.isRiver(st, target[0] + 1, target[1]) || E.bAt(st, target[0] + 1, target[1]));
+  assert.match(E.buildWhy(st, 'bridge', target[0], target[1]), /重なり/);
+});
+
+test('橋の上には、ほかの建物を建てて上書きできる（橋がないと川には建てられない）', () => {
+  const st = mk();
+  let spot = null;
+  for (let y = -14; y <= 14 && !spot; y++) for (let x = -14; x <= 14 && !spot; x++) {
+    if (E.isRiver(st, x, y) && !E.isRiver(st, x - 1, y) && !E.isRiver(st, x - 1, y + 1) && !E.isRiver(st, x, y + 1)) spot = [x, y];
+  }
+  assert.ok(spot);
+  const [x, y] = spot;
+  st.gen.push([x - 5, x + 5, y - 5, y + 5]);
+  st.b.push({ id: 90, t: 'road', x: x - 2, y, w: 1, h: 1, hp: null, max: null });
+  assert.match(E.buildWhy(st, 'igloo', x - 1, y), /川/);
+  st.b.push({ id: 91, t: 'bridge', x, y, w: 1, h: 1, hp: null, max: null });
+  assert.strictEqual(E.buildWhy(st, 'igloo', x - 1, y), null);
+  const p = me(st); p.ap = 9; p.x = x - 2; p.y = y; st.items.snow = 5;
+  assert.ok(doIt(st, { type: 'build', t: 'igloo', x: x - 1, y }).ok);
+  assert.ok(!st.b.some(b => b.t === 'bridge'));                 // 橋は、建物に置き換わる
+  assert.ok(E.bAt(st, x, y) && E.bAt(st, x, y).t === 'igloo');
+});
+
+test('焼き魚：焚き火で魚1から作れて、食べると満腹度+5（ステーキと同じ）', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  const f = E.fireOf(st);
+  p.x = f.x; p.y = f.y; p.ap = 5; p.food = 2;
+  st.items.fish = 1;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'grilled' }).ok);
+  assert.deepStrictEqual([st.items.fish, st.items.grilled, p.ap], [0, 1, 4]);
+  assert.ok(doIt(st, { type: 'eat', k: 'grilled' }).ok);
+  assert.strictEqual(p.food, 2 + E.RULES.eat.steak);
+  assert.strictEqual(E.RULES.eat.grilled, E.RULES.eat.steak);
+});
+
 test('釣り竿：木材1石材1で作れて、3マス以内の魚を攻撃できる。倒すと魚1〜3個。竿なしでは攻撃できない', () => {
   const st = mk(); st.weather = 'clear'; st.next = 'clear';
   const p = me(st);

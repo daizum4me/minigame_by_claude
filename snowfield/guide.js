@@ -81,6 +81,7 @@
         [withIc('fish', '食べる（魚）'), 0, `満腹度 +${R.eat.fish}`],
         [withIc('veg', '食べる（野菜）'), 0, `満腹度 +${R.eat.veg}`],
         [withIc('steak', '食べる（ステーキ）'), 0, `満腹度 +${R.eat.steak}（焚き火で、肉1から作れます）`],
+        [withIc('grilled', '食べる（焼き魚）'), 0, `満腹度 +${R.eat.grilled}（焚き火で、魚1から作れます）`],
         [withIc('soup', '食べる（スープ）'), 0, `満腹度 +${R.eat.soup}（焚き火で、野菜2と雪1から3個作れます）`],
       ])}
       <p>${ic('coat')}<b>防寒着</b>を着ると、手番の終わりの体温の低下が${R.coatRelief}減ります（0より下にはなりません）。</p>
@@ -142,18 +143,19 @@
       ])}
       <h4>${ic('fish')}川と魚</h4>
       ${ul([
-        `マップには<b>川</b>（青いマス）があります。雪原ではないので、<b>移動も建設もできません</b>（焚き火の周り${R.riverClear}マスには川はありません）`,
+        `マップには、つながって流れる<b>川</b>（青いマス）があります。雪原ではないので、<b>移動も建設もできません</b>（焚き火の周り${R.riverClear}マスには川はありません）`,
+        `${ic('bridge', 16)}<b>橋</b>（木材1）を川にだけ建てると、道と同じように歩けます。橋の上には、ほかの建物を建てて上書きもできます`,
         `川には、常に（人数×${R.fishPerPlayer}）匹の<b>魚</b>がいます。体力${R.fishHpMin}〜${R.fishHpMax}。川の上だけを、手番の終わりに1マス動きます`,
-        `魚は、${ic('rod', 16)}<b>釣り竿</b>（作業場で、木材1・石材1）を着けると、<b>${R.fishRange}マス以内</b>から攻撃できます。倒すと${ic('fish', 16)}魚が${R.fishMin}〜${R.fishMax}個。倒された魚は、別の川に新しく現れます`,
+        `魚は、${ic('rod', 16)}<b>釣り竿</b>（作業場で、木材1・石材1）を着けると、<b>${R.fishRange}マス以内</b>から攻撃できます。倒すと${ic('fish', 16)}魚が${R.fishMin}〜${R.fishMax}個（食べると満腹度+${R.eat.fish}。焚き火で${ic('grilled', 16)}焼き魚にすると+${R.eat.grilled}）。倒された魚は、別の川に新しく現れます`,
       ])}
       <h4>苗</h4>
       <table class="gt"><tbody><tr><td>${ic('sapling', 22)}<b>木の苗</b>（苗木1個で植える）→ 木になる</td><td>${ic('plant', 22)}<b>野菜の苗</b>（野菜2個で植える）→ 野菜になる</td></tr></tbody></table>
       ${ul([`植えてから<b>${R.growMin}〜${R.growMax}ラウンド後</b>に、資源になります（外側の線の区切り1つが「あと1ラウンド」）`, `育つと、体力${R.resHpMin}〜${R.resHpMax}の資源になります`])}` },
 
     { id: 'buildings', icon: 'hammer', title: '建物と作る', html: () => {
-      const feat = { road: '建物の仲間。移動できる範囲を広げ、体温を減らさず歩ける', igloo: '防寒施設（HPが半分以下で防寒が消える）', storage: '防寒施設。共有アイテムの上限+10', tower: `屋外。1ラウンド先の天候予報。ここから${R.towerRange}マス以内に移動できる`, workshop: '屋外。上かすぐ隣で「作る」と、薪・防寒着・道具が作れる' };
+      const feat = { road: '建物の仲間。移動できる範囲を広げ、体温を減らさず歩ける', bridge: '川にだけ建てられる。道と同じ。橋の上には、ほかの建物を建てられる（上書き）', igloo: '防寒施設（HPが半分以下で防寒が消える）', storage: '防寒施設。共有アイテムの上限+10', tower: `屋外。1ラウンド先の天候予報。ここから${R.towerRange}マス以内に移動できる`, workshop: '屋外。上かすぐ隣で「作る」と、薪・防寒着・道具が作れる' };
       const rows = [[withIc('fire', '焚き火'), '人数で変わる', '最初からある', '—', '壊れない', `火力${R.fireInit}から（最大${R.fireMax}）。上で温まると火力ぶん回復`]];
-      Object.keys(E.BUILD).forEach(k => { const d = E.BUILD[k]; rows.push([withIc(k, d.name), `${d.size}×${d.size}`, costStr(d.cost), d.ap, k === 'road' ? '壊れない' : d.size * 2, feat[k]]); });
+      Object.keys(E.BUILD).forEach(k => { const d = E.BUILD[k]; rows.push([withIc(k, d.name), `${d.size}×${d.size}`, costStr(d.cost), d.ap, E.isPath(k) ? '壊れない' : d.size * 2, feat[k]]); });
       return `
       <p>建設は、カードを盤面へドラッグして置くか、カードをクリックで選んでマップをクリックして置きます（自分の手番のみ。選んだままなら続けて置けます。Escか右クリックで解除）。</p>
       ${table(['建物', 'サイズ', '材料', '行動力', 'HP', '特徴'], rows)}
@@ -172,7 +174,7 @@
       const rows = Object.keys(E.RECIPES).map(k => {
         const rc = E.RECIPES[k], g = rc.gear ? E.GEAR[rc.gear] : null;
         const out = g ? withIc(rc.gear, g.name) : Object.keys(rc.out).map(o => `${ii(o)}${N[o]}${rc.out[o]}`).join('・');
-        return [E.STATION_NAMES[rc.station], Object.keys(rc.in).map(i => `${ii(i)}${N[i]}${rc.in[i]}`).join('・'), out, rc.ap, g ? g.desc + (g.slot === 'tool' ? `（耐久度${R.toolDur}）` : '') : ({ steak: `食べると満腹度 +${R.eat.steak}`, soup: `食べると満腹度 +${R.eat.soup}`, firewood: '焚べるとき、木材より先に使う' })[k]];
+        return [E.STATION_NAMES[rc.station], Object.keys(rc.in).map(i => `${ii(i)}${N[i]}${rc.in[i]}`).join('・'), out, rc.ap, g ? g.desc + (g.slot === 'tool' ? `（耐久度${R.toolDur}）` : '') : ({ steak: `食べると満腹度 +${R.eat.steak}`, grilled: `食べると満腹度 +${R.eat.grilled}`, soup: `食べると満腹度 +${R.eat.soup}`, firewood: '焚べるとき、木材より先に使う' })[k]];
       });
       return `
       <p>「作る」は、焚き火か作業場の<b>上かすぐ隣</b>にいるときに、行動力1でできます（駒をクリック →「作る」→ 左の一覧）。</p>
@@ -189,7 +191,7 @@
     } },
 
     { id: 'items', icon: 'wood', title: '共有アイテム', html: () => `
-      <p>${['wood', 'firewood', 'stone', 'veg', 'meat', 'fish', 'fur', 'steak', 'soup', 'snow', 'sapling'].map(k => `${ii(k)}${N[k]}`).join('　')}と、作った防寒着・道具は、<b>全員で共有</b>します（着けるまでは、持ち物として上限に数えます）。</p>
+      <p>${['wood', 'firewood', 'stone', 'veg', 'meat', 'fish', 'fur', 'steak', 'grilled', 'soup', 'snow', 'sapling'].map(k => `${ii(k)}${N[k]}`).join('　')}と、作った防寒着・道具は、<b>全員で共有</b>します（着けるまでは、持ち物として上限に数えます）。</p>
       ${ul([
         `所持上限は <b>2×人数＋${R.capBase}＋${R.capPerStorage}×倉庫の数</b>（苗木も上限に含みます）`,
         `ゲーム開始時に、人数ぶんの野菜と薪、雪${R.startSnow}個が配られます`,

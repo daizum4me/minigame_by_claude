@@ -598,6 +598,8 @@
   const DESC = {
     fire: { name: '焚き火', tip: '上で温まると火力ぶん回復。薪を焚べると火力+1。', desc: '唯一の本格的な暖房。上に立って「温まる」と、火力の値だけ体温が回復する。',
       eff: ['焚き火の上の体温低下は 0＋天候補正（軽減なし）', `温まる：行動力${R.ap.warm}、火力の値だけ体温回復`, `焚べる：行動力${R.ap.stoke}＋木材1 → 火力+1（最大${R.fireMax}）`], build: '最初からある', repair: '壊れない' },
+    bridge: { name: '橋', tip: '川にだけ建てられる。木材1。道と同じように歩ける。', desc: '川の上にかける橋。道と同じ扱い（建物の仲間・体温が減らない・壊れない）。橋の上には、ほかの建物を建てて上書きできる。',
+      eff: ['川にだけ建てられる', '建物の仲間として扱われ、橋から1マス以内に移動できる', '橋の上には、ほかの建物を建てられる（上書き）'], build: null, repair: '壊れない' },
     road: { name: '道', tip: '雪1個で作れる最小の建物。移動できる範囲が広がる。', desc: '雪1個で作れる最小の建物。建物の仲間として扱われ、道から1マス以内に移動できる。',
       eff: ['道・建物の上に入るときは体温が減らない', '隣り合う道は一つにつながって表示される'], build: null, repair: '壊れない' },
     igloo: { name: 'かまくら', tip: '防寒施設。中では体温低下が軽くなる。', desc: '雪で作る防寒施設。',
@@ -614,7 +616,8 @@
     stone: '建物の修理に使う（1個でHP+2）。倉庫・見張り台の建設に使う。',
     veg: '食べると満腹度+2。2個で野菜の苗を植えられる。',
     meat: '食べると満腹度+3。',
-    fish: '食べると満腹度+3。川で、釣り竿で釣れる。',
+    fish: '食べると満腹度+3。川で、釣り竿で釣れる。焚き火で焼き魚にできる。',
+    grilled: '食べると満腹度+5。焚き火で、魚1から作れる。',
     snow: 'かまくら・道の建設に使う。雪原で資源を集めると1個ついてくる。',
     sapling: '植えると樹木の苗になる。木を集めたとき50%で落ちる。',
     firewood: '焚べると火力+1。木材より先に使われる。作業場で、木材1から2本作れる。',
@@ -744,7 +747,7 @@
     const meta = [['サイズ', `${b.w}×${b.h}`]];
     let status = '', chip = null;
     if (b.t === 'fire') { meta.push(['火力', `${g.fire} / ${R.fireMax}`]); status = '壊れない'; chip = th.chip.fire; }
-    else if (b.t === 'road') { status = '壊れない'; chip = ['var(--chip)', 'var(--muted2)']; }
+    else if (E.isPath(b.t)) { status = '壊れない'; chip = ['var(--chip)', 'var(--muted2)']; }
     else {
       meta.push(['HP', `${b.hp} / ${b.max}`]);
       if (warm) { status = ins ? '防寒 有効' : '防寒 消失'; chip = ins ? th.chip.ok : th.chip.lost; meta.push(['防寒', ins ? '有効' : '消失（HPが半分以下）']); }
@@ -813,11 +816,11 @@
       el.innerHTML = '<div class="small muted" style="line-height:1.5">レシピをクリックすると作ります（焚き火・作業場の上かすぐ隣で）。</div>' + group('fire') + group('workshop');
       return;
     }
-    const cards = ['road', 'igloo', 'storage', 'tower', 'workshop'].map(k => {
-      const d = E.BUILD[k], c = th.card[k === 'road' ? 'storage' : k], isR = k === 'road';
+    const cards = ['road', 'bridge', 'igloo', 'storage', 'tower', 'workshop'].map(k => {
+      const d = E.BUILD[k], c = th.card[E.isPath(k) ? 'storage' : k], isR = E.isPath(k), rBd = k === 'bridge' ? th.bridgeBd : th.roadBd, rBg = k === 'bridge' ? th.bridge : th.road;
       const lack = E.lacking(g, d.cost);
       const why = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は建てられません' : me.ap < d.ap ? '行動力が足りません' : lack ? E.ITEM_NAMES[lack] + 'が足りません' : '';
-      return `<div class="bcard ${app.armed === k ? 'armed' : ''}" data-card="${k}" data-why="${esc(why)}" style="border-color:${isR ? th.roadBd : c[1]};background:${isR ? th.road : c[0]};color:${isR ? 'var(--text)' : c[2]};opacity:${why ? .55 : 1};cursor:${why ? 'not-allowed' : 'grab'}">
+      return `<div class="bcard ${app.armed === k ? 'armed' : ''}" data-card="${k}" data-why="${esc(why)}" style="border-color:${isR ? rBd : c[1]};background:${isR ? rBg : c[0]};color:${isR ? 'var(--text)' : c[2]};opacity:${why ? .55 : 1};cursor:${why ? 'not-allowed' : 'grab'}">
         <b>${d.name}（${d.size}×${d.size}）</b><span style="color:${why ? th.redFg : 'inherit'}">${esc(why || costText(d))}</span></div>`;
     }).join('');
     el.innerHTML = '<div class="small muted" style="line-height:1.5">カードを盤面へドラッグして置くか、クリックで選んでマップをクリックすると建設します（選んだままなら続けて置けます）。</div>' + cards;
@@ -1202,7 +1205,7 @@
       if (!c || !app.game || app.card) { tip.hidden = true; return; }
       const k = c.dataset.card, d = E.BUILD[k], ds = DESC[k], g = app.game;
       const mats = Object.keys(d.cost).map(m => `<span style="color:${g.items[m] >= d.cost[m] ? 'var(--ok)' : 'var(--redFg)'};font-weight:700">${E.ITEM_NAMES[m]} ${g.items[m]}/${d.cost[m]}</span>`).join('　');
-      const hp = k === 'road' ? '壊れない' : `HP ${d.size * 2}`;
+      const hp = E.isPath(k) ? '壊れない' : `HP ${d.size * 2}`;
       tip.innerHTML = `<div class="tn">${d.name}<span class="grow"></span><span style="font-size:12px;color:var(--muted2);font-weight:400">${d.size}×${d.size}・${hp}</span></div>
         <div class="tt"><b>必要な材料</b>（持っている数/必要）<br>${mats}<br>行動力 ${d.ap}</div>
         <div class="tt">${esc(ds.desc)}</div>${ds.eff.map(t => `<div class="tt">・${esc(t)}</div>`).join('')}
@@ -1222,9 +1225,9 @@
       const k = c.dataset.card, d = E.BUILD[k], th = TH();
       const w = Math.max(40, d.size * B.T * board.state.cam.z - 6);
       app.card = { t: k, w, sx: e.clientX, sy: e.clientY };
-      const gh = $('#ghost'), col = th.card[k === 'road' ? 'storage' : k];
+      const gh = $('#ghost'), col = th.card[E.isPath(k) ? 'storage' : k];
       gh.textContent = d.name;
-      gh.style.cssText = `width:${w}px;height:${w}px;background:${k === 'road' ? th.road : col[0]};border-color:${k === 'road' ? th.roadBd : col[1]};color:${k === 'road' ? th.text : col[2]}`;
+      gh.style.cssText = `width:${w}px;height:${w}px;background:${k === 'road' ? th.road : k === 'bridge' ? th.bridge : col[0]};border-color:${k === 'road' ? th.roadBd : k === 'bridge' ? th.bridgeBd : col[1]};color:${E.isPath(k) ? th.text : col[2]}`;
       gh.hidden = false;
       window.addEventListener('pointermove', onCardMove);
       window.addEventListener('pointerup', onCardUp);

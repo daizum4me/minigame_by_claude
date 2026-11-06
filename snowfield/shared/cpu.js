@@ -23,12 +23,13 @@
   const USE_BOW = true;     // 弓を作る
   const STEAK_FIRST = true;  // 焚き火のそばでは、肉を先にステーキにする
   const VEG_MIN = 2, VEG_FOOD = 0, VEG_LATE = 5;   // 野菜の苗を植える：野菜2個から・食料が足りていても・準備期間の終わり5ラウンド前まで
+  const BRIDGE_WOOD = 6;   // 橋をかけるのに必要な木材の持ち数（これ以上あれば、川の向こうへ橋をかける）
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
   const MIN_END_TEMP = 4;   // 手番の終わりにこれ以上は残しておきたい体温
   // これを超えた分は「余り」として捨ててよい
-  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9, fish: 9, firewood: 99, fur: 12, steak: 99, soup: 99 };
+  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9, fish: 9, firewood: 99, fur: 12, steak: 99, grilled: 99, soup: 99 };
 
   const surplus = (st, k) => st.items[k] > SURPLUS[k];
   const foodStock = st => Object.keys(E.RULES.eat).reduce((x, k) => x + st.items[k] * E.RULES.eat[k], 0);
@@ -65,7 +66,7 @@
   }
 
   // 範囲の外にある目当てへ向かって道を置く場所（道は既存の建物に隣接する場所にだけ置ける）
-  function roadToward(st, goals, far) {
+  function roadToward(st, goals, far, bridgeOk) {
     const near = goals.filter(([x, y]) => gapOf(st, x, y) <= far);   // 道を数本つなげて届くものだけ
     if (!near.length) return null;
     near.sort((u, v) => gapOf(st, u[0], u[1]) - gapOf(st, v[0], v[1]));
@@ -75,9 +76,10 @@
     let best = null;
     for (let y = y0 - 1; y <= y1 + 1; y++) {
       for (let x = x0 - 1; x <= x1 + 1; x++) {
-        if (E.buildWhy(st, 'road', x, y) || E.resAt(st, x, y)) continue;
+        const t = E.isRiver(st, x, y) ? 'bridge' : 'road';
+        if ((t === 'bridge' && !bridgeOk) || E.buildWhy(st, t, x, y) || E.resAt(st, x, y)) continue;
         const d = Math.max(Math.abs(x - tx), Math.abs(y - ty)) * 10 + Math.abs(x - tx) + Math.abs(y - ty);
-        if (!best || d < best.d) best = { x, y, d };
+        if (!best || d < best.d) best = { x, y, d, t };
       }
     }
     return best;
@@ -95,6 +97,7 @@
       case 'sapling': return cnt.sapling < 2 ? 3 : 0.5;
       case 'fur': return cnt.fur < 4 ? 4 : 1;
       case 'steak': return 8;
+      case 'grilled': return 8;
       case 'soup': return 4;
       case 'snow': return cnt.snow < 2 ? 4 : (cnt.snow < 5 ? 1.5 : 0.2);
       default: return 0;
@@ -140,7 +143,7 @@
 
     // 食べるもの：満腹度の空きに収まるものの中で、いちばん回復が大きいもの（ステーキ・肉・スープ）
     const miss = R.maxFood - p.food;
-    const cooked = ['steak', 'meat', 'fish', 'soup'].filter(k => it[k] > 0 && R.eat[k] <= miss + 1).sort((a, b) => R.eat[b] - R.eat[a])[0];
+    const cooked = ['steak', 'grilled', 'meat', 'fish', 'soup'].filter(k => it[k] > 0 && R.eat[k] <= miss + 1).sort((a, b) => R.eat[b] - R.eat[a])[0];
 
     // 復帰中の手番は「温まる」「食べる」だけ
     if (p.down === 2) {
@@ -156,6 +159,7 @@
 
     // 肉は、焚き火のそばでステーキにしてから食べると満腹度が5（行動力1で+2）
     if (STEAK_FIRST && it.meat >= 1 && p.ap >= 2 && E.nearFire(st, p)) return { type: 'craft', recipe: 'steak' };
+    if (STEAK_FIRST && it.fish >= 1 && p.ap >= 2 && E.nearFire(st, p)) return { type: 'craft', recipe: 'grilled' };
 
     const map = E.moveMap(st, p);
     const costAt = (x, y) => { const d = map.get(E.key(x, y)); return d == null ? null : E.moveCost(d); };
@@ -383,15 +387,15 @@
     }
 
     // 範囲の中に目当てがない：道を伸ばして範囲を広げる
-    if (p.ap >= E.BUILD.road.ap && it.snow >= 1 && mem.roads < MAX_ROADS) {
+    if (p.ap >= E.BUILD.road.ap && (it.snow >= 1 || it.wood >= BRIDGE_WOOD) && mem.roads < MAX_ROADS) {
       const goals = [];
       if (wantMeat) for (const a of st.animals) if (!E.reach(st, a.x, a.y)) goals.push([a.x, a.y]);
       for (const k of Object.keys(st.res)) {
         const [x, y] = E.parseKey(k);
         if (!E.reach(st, x, y) && resValue(st.res[k]) > 0) goals.push([x, y]);
       }
-      const spot = roadToward(st, goals, it.snow >= 4 ? 9 : 5);   // 雪が余っているなら、遠くまで道を伸ばす
-      if (spot) { mem.roads++; return { type: 'build', t: 'road', x: spot.x, y: spot.y }; }
+      const spot = roadToward(st, goals, it.snow >= 4 ? 9 : 5, it.wood >= BRIDGE_WOOD);   // 雪が余っているなら、遠くまで道を伸ばす
+      if (spot && (spot.t === 'bridge' || it.snow >= 1)) { mem.roads++; return { type: 'build', t: spot.t, x: spot.x, y: spot.y }; }
     }
 
     // 手番の終わりじたく：暖かい場所に戻り、必要なら焚べて温まる
@@ -404,6 +408,7 @@
     // 焚き火のそばで、余った行動力で料理（肉→ステーキ、野菜2＋雪1→スープ3）
     if (p.ap >= 1 && nearFire && E.room(st) >= 0) {
       if (it.meat >= 1) return { type: 'craft', recipe: 'steak' };
+      if (it.fish >= 1) return { type: 'craft', recipe: 'grilled' };
       if (it.veg >= 2 && it.snow >= 1 && !farmVeg) return { type: 'craft', recipe: 'soup' };
     }
     // 猛吹雪：温まってから、防寒が有効な建物の上へ移る（焚き火の上は−4、防寒の中は−3）。歩いて体温が減らない所だけ
