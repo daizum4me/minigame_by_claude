@@ -112,7 +112,7 @@
   function decide(st, pid, mem) {
     const p = E.pl(st, pid), it = st.items, R = E.RULES, nP = st.players.length;
     const tk = st.round + ':' + st.turn;
-    if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; }
+    if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; mem.noTrip = false; mem.tripped = {}; }
     // 上限を超えたアイテムの扱いを選ぶ
     const pend = st.pending && st.pending[0];
     if (pend && pend.pid === pid) return { type: 'overflow', drop: overflowDrop(st, pend) };
@@ -137,7 +137,7 @@
     const map = E.moveMap(st, p);
     const costAt = (x, y) => { const d = map.get(E.key(x, y)); return d == null ? null : E.moveCost(d); };
     const canMove = mem.moves < MAX_MOVES;
-    const go = (x, y) => { mem.moves++; return { type: 'move', x, y }; };
+    const go = (x, y, why) => { mem.moves++; return { type: 'move', x, y, why }; };
     const nearFire = E.nearFire(st, p);
     const wMod = R.tempMod[st.weather];
 
@@ -156,13 +156,6 @@
     const lowest = Math.min(...st.players.map(q => q.temp));
     const wantFire = Math.max(T.fire, lowest <= 4 ? 3 : 0, p.temp <= 5 ? 2 : 0);
     const stoke = () => nearFire && p.ap >= R.ap.stoke && it.wood > 0 && st.fire < Math.min(R.fireMax, wantFire);
-
-    // 体温が低い：暖かい場所へ戻って、薪を焚べて温まる
-    if (p.temp <= SAFE_TEMP) {
-      if (here.kind === 'out' && canMove) { const w = warmSpot(); if (w) return go(w.x, w.y); }
-      if (stoke() && st.fire < 3) return { type: 'stoke' };
-      if (p.ap >= R.ap.warm && warmHere > 0 && p.temp < R.maxTemp) return { type: 'warm' };
-    }
 
     // 火力：必要なぶんだけ焚べる
     if (stoke()) return { type: 'stoke' };
@@ -191,8 +184,9 @@
     const farmVeg = it.veg >= 4 && foodStock(st) >= T.food * 0.8 && st.round <= R.prepRounds - 1;
     const farmTree = it.sapling > 0 && st.round <= R.prepRounds + 1;
 
-    if (p.ap >= 1) {
-      // いまの場所に資源があれば集める
+    // いまの場所でできる仕事（集める・攻撃・植える）
+    const workHere = () => {
+      if (p.ap < 1) return null;
       const onTile = E.resAt(st, p.x, p.y);
       if (onTile && resValue(onTile) > 0 && canSwap(st, E.RES_ITEM[onTile.t], T)) return { type: 'collect' };
       // 隣に動物がいれば、体力が少ないものから攻撃
@@ -206,7 +200,26 @@
         if (farmTree) return { type: 'plant', kind: 'tree' };
         if (farmVeg) return { type: 'plant', kind: 'veg' };
       }
+      return null;
+    };
+
+    // 体温が低い：暖かい場所へ戻って、薪を焚べて温まる。ただし、来たついでの仕事は済ませてから戻る
+    // （仕事を残したまま戻ると、また同じ場所へ出かけて、行ったり来たりを繰り返してしまう）
+    if (p.temp <= SAFE_TEMP) {
+      if (here.kind === 'out' && canMove) {
+        const w = warmSpot();
+        if (w) {
+          const wk = workHere();
+          if (wk && p.temp - Math.max(0, w.c) >= 2) return wk;
+          mem.noTrip = true;                    // 戻ったあとは、この手番ではもう出かけない
+          return go(w.x, w.y, 'cold');
+        }
+      }
+      if (stoke() && st.fire < 3) return { type: 'stoke' };
+      if (p.ap >= R.ap.warm && warmHere > 0 && p.temp < R.maxTemp) return { type: 'warm' };
     }
+
+    { const wk = workHere(); if (wk) return wk; }
 
     // 体温の予算：帰り道ぶんと、手番の終わりの低下ぶんを残す
     // 薪も火力もないときは、少しの無理をしてでも薪を探しに行く
@@ -216,23 +229,23 @@
     const tripCost = c => (c > 0 ? 2 * c - 1 : 0);
 
     // 苗を植えに行く（いちばん近い空きの雪原）
-    if (p.ap >= 2 && canMove && budget >= 1 && (farmTree || farmVeg)) {
+    if (p.ap >= 2 && canMove && !mem.noTrip && budget >= 1 && (farmTree || farmVeg)) {
       let best = null;
       for (const [k, d] of map) {
         const [x, y] = E.parseKey(k), c = E.moveCost(d);
-        if (c > 1 || E.bAt(st, x, y) || E.resAt(st, x, y) || E.plantAt(st, x, y) || (x === p.x && y === p.y)) continue;
+        if (c > 1 || E.bAt(st, x, y) || E.resAt(st, x, y) || E.plantAt(st, x, y) || (x === p.x && y === p.y) || mem.tripped[x + ',' + y]) continue;
         const sc = c * 10 + gapOf(st, x, y);
         if (!best || sc < best.sc) best = { x, y, sc };
       }
-      if (best) return go(best.x, best.y);
+      if (best) { mem.tripped[best.x + ',' + best.y] = true; return go(best.x, best.y, 'plant'); }
     }
 
     // 集める・狩るために出かける：価値が高く、体温コストの小さいものを選ぶ
-    if (p.ap >= 1 && canMove) {
+    if (p.ap >= 1 && canMove && !mem.noTrip) {
       let best = null;
       const consider = (x, y, value) => {
         const c = costAt(x, y);
-        if (c == null || (x === p.x && y === p.y) || tripCost(c) > budget) return;
+        if (c == null || (x === p.x && y === p.y) || mem.tripped[x + ',' + y] || tripCost(c) > budget) return;
         const sc = value - 2.5 * c;
         if (sc > 0 && (!best || sc > best.sc)) best = { x, y, sc };
       };
@@ -251,7 +264,7 @@
           consider(x, y, v * Math.min(r.hp, Math.max(1, p.ap - 1)));
         }
       }
-      if (best) return go(best.x, best.y);
+      if (best) { mem.tripped[best.x + ',' + best.y] = true; return go(best.x, best.y, 'trip'); }
     }
 
     // 範囲の中に目当てがない：道を伸ばして範囲を広げる
@@ -269,7 +282,7 @@
     // 手番の終わりじたく：暖かい場所に戻り、必要なら焚べて温まる
     if (here.kind === 'out' && canMove) {
       const w = warmSpot();
-      if (w) return go(w.x, w.y);
+      if (w) return go(w.x, w.y, 'home');
     }
     if (stoke()) return { type: 'stoke' };
     if (p.ap >= R.ap.warm && warmHere > 0 && p.temp <= R.maxTemp - Math.min(2, warmHere)) return { type: 'warm' };
