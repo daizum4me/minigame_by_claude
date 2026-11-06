@@ -239,3 +239,13 @@ test('移動のお願い：CPUはすぐに道を空け、人間には確認が�
   assert.ok(!(human.x === f.x + f.w + 2 && human.y === f.y));
   assert.ok(last(h).game.players.find(p => p.id === g).x !== f.x + f.w + 2 || last(h).game.players.find(p => p.id === g).y !== f.y);
 });
+
+test('バージョン：違うバージョンの人は部屋に入れない', () => {
+  const { room, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  assert.strictEqual(last(h).room.version, E.VERSION);
+  assert.match(room.join('t2', 'B', '0.9').error, /バージョンが違います/);
+  assert.match(room.join('t3', 'C', '0').error, /古い版/);
+  assert.ok(room.join('t4', 'D', E.VERSION).id);
+  assert.strictEqual(room.players.length, 2);
+});

@@ -10,6 +10,9 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // バージョン。違うバージョンの人とは遊べない（変えるときは changelog.js にも書く）
+  const VERSION = '1.0';
+
   const RULES = {
     minPlayers: 3, maxPlayers: 5,
     prepRounds: 10, finalRounds: 3,
@@ -431,7 +434,6 @@
       for (let i = 0; i < d.size; i++) {
         const tx = x + i, ty = y + j, b = bAt(st, tx, ty);
         if (!inGen(st, tx, ty)) return '生成されていない場所には建てられません';
-        if (resAt(st, tx, ty)) return '資源のあるマスには建てられません';
         if (plantAt(st, tx, ty)) return '苗のあるマスには建てられません';
         if (b && (t === 'road' || b.t !== 'road')) return '他の建物と重なります';
       }
@@ -717,7 +719,7 @@
         const sfx = 'collect_' + r.t;
         if (!gain(st, p.id, k, dmg)) m += '（上限で入りません）';
         if (tool) m += wearTool(st, p);
-        if (onSnow) m += addItem(st, 'snow', 1) ? '、雪 +1' : '（雪は上限で入らず）';   // 雪は自動で付いてくるので、入らなくても選ばせない
+        if (onSnow) m += gain(st, p.id, 'snow', 1) ? '、雪 +1' : '、雪も入りません';   // 雪も、入らなければ「入れ替えるか捨てるか」を選ぶ（自動では捨てない）
         if (r.hp <= 0) {
           delete st.res[key(p.x, p.y)];
           m += '。資源が消えた';
@@ -759,12 +761,16 @@
         const why = buildWhy(st, a.t, a.x, a.y);
         if (why) return fail(why);
         st.b = st.b.filter(b => !(b.t === 'road' && inRect({ x: a.x, y: a.y, w: d.size, h: d.size }, b.x, b.y)));
-        for (let j = 0; j < d.size; j++) for (let i = 0; i < d.size; i++) delete st.draw[key(a.x + i, a.y + j)];
+        let gone = 0;                           // 建物の下になった資源は消える
+        for (let j = 0; j < d.size; j++) for (let i = 0; i < d.size; i++) {
+          delete st.draw[key(a.x + i, a.y + j)];
+          if (st.res[key(a.x + i, a.y + j)]) { delete st.res[key(a.x + i, a.y + j)]; gone++; }
+        }
         const b = addBuilding(st, a.t, a.x, a.y);
         expandGen(st, b);
         p.ap -= d.ap;
         for (const k of Object.keys(d.cost)) it[k] -= d.cost[k];
-        return { ok: true, msg: `${d.name}を建てた`, id: b.id };
+        return { ok: true, msg: `${d.name}を建てた${gone ? `（下の資源${gone}個は消えた）` : ''}`, id: b.id };
       }
       case 'craft': {
         const rc = RECIPES[a.recipe];
@@ -864,7 +870,7 @@
   }
 
   return {
-    RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

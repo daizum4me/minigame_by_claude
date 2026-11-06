@@ -52,8 +52,10 @@
     }
 
     // 戻り値 { id } または { error }
-    join(token, name) {
+    // version：参加者のバージョン（ホスト自身・CPU対戦は渡さない）。違うと入れない
+    join(token, name, version) {
       if (this.closed) return { error: '部屋が見つかりません' };
+      if (version !== undefined && version !== E.VERSION) return { error: `バージョンが違います（この部屋は v${E.VERSION}、あなたは v${version === '0' ? '不明（古い版）' : version}）。ページを再読み込みして、最新版にしてください` };
       const back = this.players.find(p => !p.cpu && p.token === token);
       if (back) {
         back.connected = true;
@@ -108,7 +110,7 @@
     view() {
       return {
         turnLeft: this.turnEndsAt ? Math.max(0, this.turnEndsAt - this.now()) : null,
-        code: this.code, phase: this.phase, hostId: this.hostId, min: E.RULES.minPlayers, max: E.RULES.maxPlayers,
+        version: E.VERSION, code: this.code, phase: this.phase, hostId: this.hostId, min: E.RULES.minPlayers, max: E.RULES.maxPlayers,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, shape: p.shape, cpu: p.cpu, connected: p.connected })),
       };
     }
