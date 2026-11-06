@@ -1,0 +1,14 @@
+{
+  "name": "snowfield",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Snowfield — 協力型サバイバルボードゲーム",
+  "workspaces": ["packages/core", "packages/web"],
+  "scripts": {
+    "dev": "npm run dev -w @snowfield/web",
+    "build": "npm run build -w @snowfield/web",
+    "test": "npm run test -w @snowfield/core",
+    "typecheck": "npm run typecheck -w @snowfield/core && npm run typecheck -w @snowfield/web"
+  },
+  "engines": { "node": ">=18" }
+}
