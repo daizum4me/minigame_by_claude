@@ -199,7 +199,7 @@
     guaranteeStart(st);
     const spots = [[-1, 1], [1, 1], [0, 1], [-1, 0], [1, 0]];   // 焚き火の下側から（上側は焚き火のカードの文字がある）
     opts.players.forEach((p, i) => st.players.push({
-      id: p.id, name: p.name, color: p.color, cpu: !!p.cpu, no: i + 1, away: false,
+      id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
       x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0,
     }));
     for (let i = 0; i < RULES.animals; i++) spawnAnimal(st);

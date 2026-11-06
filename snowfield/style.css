@@ -163,3 +163,12 @@ button.slot { border-style: solid; }
 .endpop { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 7; padding: 12px 18px; border-radius: 14px; background: var(--menu); border: 2px solid var(--accent); box-shadow: var(--shadow); backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 6px; text-align: center; animation: pop-in .25s both; }
 .endpop b { font-size: 16px; } .endpop span { font-size: 12px; color: var(--muted2); } .endpop div { display: flex; gap: 8px; justify-content: center; margin-top: 2px; }
 @keyframes pop-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* 駒の形・色 */
+.pawn-ico { flex: none; display: block; }
+.style-box { display: flex; flex-direction: column; gap: 8px; }
+.style-row { display: flex; flex-wrap: wrap; gap: 6px; }
+button.sty { width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
+button.sty.on, button.sw.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+button.sw { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid rgba(150,165,180,.8); }
+button.sw:disabled { opacity: .25; }

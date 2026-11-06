@@ -263,6 +263,7 @@
   const myP = () => (app.game ? E.pl(app.game, app.me) : null);
   const myTurn = () => !!app.game && app.game.phase === 'play' && E.cur(app.game).id === app.me;
   const pcol = c => B.PLAYER_COLORS[c] || '#888';
+  const pawnIco = (p, size) => B.shapeSvg(p.shape, p.color, size || 22);
   const send = msg => { if (app.conn) app.conn.send(msg); };
   const act = a => send({ type: 'act', a });
 
@@ -413,7 +414,7 @@
 
   function leaveRoom(text) {
     if (app.conn) { app.conn.close(); app.conn = null; }
-    app.room = null; app.game = null; app.me = null; app.gameKey = null;
+    app.room = null; app.game = null; app.me = null; app.gameKey = null; app.styleSent = false;
     $('#result').hidden = true;
     setReconnecting(false);
     const url = new URL(location.href);
@@ -438,11 +439,26 @@
     $('#host-warn').hidden = !(host && !local);
     $('#lobby-count').textContent = `${r.players.length} / ${r.max}人`;
     $('#lobby-players').innerHTML = r.players.map((p, i) => `<li>
-        <span class="dot" style="background:${pcol(p.color)}">${i + 1}</span>
+        ${pawnIco(p, 24)}
         <span class="name">${esc(p.name)}</span>
         ${p.id === r.hostId ? '<span class="tag">ホスト</span>' : ''}${p.cpu ? '<span class="tag">CPU</span>' : ''}${p.id === app.me ? '<span class="tag">あなた</span>' : ''}
         ${host && p.cpu ? `<button data-rm-cpu="${p.id}">外す</button>` : ''}
       </li>`).join('');
+    const mine = r.players.find(p => p.id === app.me);
+    if (mine && !app.styleSent) {
+      app.styleSent = true;
+      const sh = store.get('shape'), co = store.get('color');
+      if (sh && sh !== mine.shape) send({ type: 'style', shape: sh });
+      if (co && co !== mine.color && !r.players.some(p => p !== mine && p.color === co) && B.PLAYER_COLORS[co]) send({ type: 'style', color: co });
+    }
+    $('#style-box').hidden = !mine;
+    if (mine) {
+      $('#style-shapes').innerHTML = Object.keys(B.SHAPE_NAMES).map(k => `<button class="sty ${mine.shape === k ? 'on' : ''}" data-shape="${k}" title="${B.SHAPE_NAMES[k]}" aria-label="${B.SHAPE_NAMES[k]}">${B.shapeSvg(k, mine.color, 26)}</button>`).join('');
+      $('#style-colors').innerHTML = Object.keys(B.PLAYER_COLORS).map(k => {
+        const taken = r.players.some(p => p !== mine && p.color === k);
+        return `<button class="sw ${mine.color === k ? 'on' : ''}" data-color="${k}" ${taken ? 'disabled' : ''} title="${B.COLOR_NAMES[k]}${taken ? '（使用中）' : ''}" aria-label="${B.COLOR_NAMES[k]}" style="background:${B.PLAYER_COLORS[k]}"></button>`;
+      }).join('');
+    }
     $('#btn-add-cpu').hidden = !host || r.players.length >= r.max;
     $('#btn-start').hidden = !host;
     $('#btn-start').disabled = r.players.length < r.min;
@@ -526,11 +542,11 @@
         turn ? '<span class="badge">手番中</span>' : '',
       ].join('');
       return `<div class="pcard ${me ? 'me' : ''}">
-        <div class="phead"><span class="dot" style="background:${pcol(p.color)}">${p.no}</span><span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span><span class="grow"></span>${tags}</div>
-        <div class="pstats ${me ? 'three' : ''}">
+        <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span><span class="grow"></span>${tags}</div>
+        <div class="pstats ${turn ? 'three' : ''}">
           ${mini('体温', p.temp, p.temp * 10, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
           ${mini('満腹', p.food, p.food * 10, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
-          ${me ? mini('行動', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)') : ''}
+          ${turn ? mini('行動', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)') : ''}
         </div>
       </div>`;
     }).join('');
@@ -725,7 +741,7 @@
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
     $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`;
-    $('#result-players').innerHTML = g.players.map(p => `<li><span class="dot" style="background:${pcol(p.color)}">${p.no}</span><b>${esc(p.name)}</b><span class="muted">体温 ${p.temp}・満腹度 ${p.food}${p.down ? '・行動不能' : ''}</span></li>`).join('');
+    $('#result-players').innerHTML = g.players.map(p => `<li>${pawnIco(p, 22)}<b>${esc(p.name)}</b><span class="muted">体温 ${p.temp}・満腹度 ${p.food}${p.down ? '・行動不能' : ''}</span></li>`).join('');
     const host = app.room.hostId === app.me;
     $('#btn-result-lobby').hidden = !host;
     $('#result-wait').hidden = host;
@@ -816,6 +832,11 @@
       (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('招待URLをコピーしました'), () => { $('#invite-url').select(); toast('URLを選択しました。コピーしてください'); });
     };
     $('#btn-add-cpu').onclick = () => send({ type: 'addCpu' });
+    $('#style-box').addEventListener('click', e => {
+      const a = e.target.closest('[data-shape]'), c = e.target.closest('[data-color]');
+      if (a) { store.set('shape', a.dataset.shape); send({ type: 'style', shape: a.dataset.shape }); }
+      if (c && !c.disabled) { store.set('color', c.dataset.color); send({ type: 'style', color: c.dataset.color }); }
+    });
     $('#btn-start').onclick = () => send({ type: 'start' });
     $('#btn-leave').onclick = () => leaveRoom('');
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-rm-cpu]'); if (b) send({ type: 'removeCpu', id: b.dataset.rmCpu }); });

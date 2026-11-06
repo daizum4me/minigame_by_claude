@@ -37,7 +37,7 @@ test('参加・CPU追加・人数・開始', () => {
   room.handle(h, { type: 'addCpu' });
   room.handle(h, { type: 'addCpu' });                       // 6人目は入れない
   assert.strictEqual(last(h).room.players.length, 5);
-  assert.deepStrictEqual(last(h).room.players.map(p => p.color), ['blue', 'purple', 'green', 'orange', 'rose']);
+  assert.deepStrictEqual(last(h).room.players.map(p => p.color), ['blue', 'red', 'green', 'orange', 'purple']);
   room.handle(h, { type: 'removeCpu', id: last(h).room.players[4].id });
   assert.strictEqual(last(h).room.players.length, 4);
   room.handle(g, { type: 'start' });
@@ -131,4 +131,37 @@ test('CPU：食べる・復帰中は温まる/食べるだけ・捨てる投票'
   assert.deepStrictEqual(CPU.voteIntent(st, 'p2'), { type: 'vote', k: 'snow' });
   E.act(st, 'p1', { type: 'vote', k: 'snow' });
   assert.deepStrictEqual(CPU.voteIntent(st, 'p2'), { type: 'voteCast', val: 1 });
+});
+
+test('駒の形と色：選べる・ほかの人と同じ色は不可・ゲーム中は変えられない', () => {
+  const { room, inbox, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(g, { type: 'style', shape: 'hex', color: 'black' });
+  assert.deepStrictEqual([last(h).room.players[1].shape, last(h).room.players[1].color], ['hex', 'black']);
+  room.handle(h, { type: 'style', color: 'black' });
+  assert.match(inbox[h].at(-1).text, /使っている/);
+  room.handle(h, { type: 'style', shape: 'nope', color: 'zzz' });
+  assert.strictEqual(last(g).room.players[0].color, 'blue');
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  room.handle(g, { type: 'style', shape: 'up' });
+  assert.strictEqual(last(g).game.players[1].shape, 'hex');
+  assert.strictEqual(last(g).game.players[1].color, 'black');
+});
+
+test('CPUだけでもクリアできる（3人・20通りのマップのうち、複数回）', () => {
+  let wins = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    const st = E.createGame({ seed, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+    const mem = {};
+    for (let n = 0; st.phase === 'play' && n < 30000; n++) {
+      const p = E.cur(st);
+      for (const q of st.players) { const v = CPU.voteIntent(st, q.id); if (v) E.act(st, q.id, v); }
+      const a = CPU.decide(st, p.id, mem[p.id] || (mem[p.id] = {}));
+      if (!E.act(st, p.id, a).ok) E.act(st, p.id, { type: 'end' });
+    }
+    if (st.phase === 'won') wins++;
+  }
+  assert.ok(wins >= 4, `クリアは${wins}/20回`);
 });

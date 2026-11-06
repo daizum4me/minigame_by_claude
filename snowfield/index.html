@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -56,6 +56,11 @@
     <h3>参加者 <span id="lobby-count" class="muted"></span></h3>
     <ul id="lobby-players" class="lobby-players"></ul>
     <button id="btn-add-cpu" class="add-cpu" hidden>＋ CPUを追加</button>
+    <div id="style-box" class="style-box" hidden>
+      <h3>あなたの駒</h3>
+      <div id="style-shapes" class="style-row"></div>
+      <div id="style-colors" class="style-row"></div>
+    </div>
     <p id="lobby-hint" class="note muted"></p>
     <div class="row">
       <button id="btn-start" class="primary big" hidden>ゲーム開始</button>
@@ -203,11 +208,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
 
-<script src="shared/engine.js?v=2"></script>
-<script src="shared/cpu.js?v=2"></script>
-<script src="shared/room.js?v=2"></script>
+<script src="shared/engine.js?v=3"></script>
+<script src="shared/cpu.js?v=3"></script>
+<script src="shared/room.js?v=3"></script>
 <script src="sound.js?v=1"></script>
-<script src="board.js?v=2"></script>
-<script src="client.js?v=2"></script>
+<script src="board.js?v=3"></script>
+<script src="client.js?v=4"></script>
 </body>
 </html>
