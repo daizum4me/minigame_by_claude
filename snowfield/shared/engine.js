@@ -11,7 +11,7 @@
   'use strict';
 
   // バージョン。違うバージョンの人とは遊べない（変えるときは changelog.js にも書く）
-  const VERSION = '1.0';
+  const VERSION = '2.0';
 
   const RULES = {
     minPlayers: 3, maxPlayers: 5,
