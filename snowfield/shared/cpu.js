@@ -2,7 +2,13 @@
  * Snowfield — CPU の考え方
  * decide(state, playerId, mem) は「いまやる行動」を1つ返す（やることがなければ { type:'end' }）。
  * mem は CPU ごとの覚え書き（同じ手番で何度も行ったり来たりしないための回数）。
- * 方針：食べる → 体温が低ければ暖かい場所へ → 防寒施設を建てる → 資源を集める・動物を狩る → 焚き火へ戻って温まる
+ *
+ * 方針（このゲームで生き延びるための要点）
+ *  ・手番の終わりは焚き火の上にいる（焚き火の上は体温の低下が天候補正だけ）。火力が0でも、準備期間なら体温はほとんど減らない
+ *  ・雪原に入るたび体温 -1。建物・道の上は減らないので、資源や動物に向かって道を伸ばし、遠出の体温コストをなくす
+ *  ・火力は「必要なときだけ」焚べる（毎手番-1されるので、焚べすぎは薪のむだ）。最終猛吹雪の前に薪を貯め、最終は火力5を保つ
+ *  ・満腹度は毎手番-3。動物（肉1〜7）と野菜で食料を貯める。苗木・野菜の苗を焚き火のそばで育てて、食料と薪を増やす
+ *  ・上限いっぱいで集められないときは、余ったアイテム（雪・石材など）を多数決で捨てる
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine'));
@@ -10,60 +16,57 @@
 })(typeof self !== 'undefined' ? self : this, function (E) {
   'use strict';
 
-  const MAX_MOVES = 4;      // 1手番に動く回数の上限
-  const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻る
-  const MOVE_MARGIN = 3;    // 移動した後に残しておきたい体温
+  const MAX_MOVES = 6;      // 1手番に動く回数の上限
+  const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
+  const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
+  const MIN_END_TEMP = 4;   // 手番の終わりにこれ以上は残しておきたい体温
   // これを超えた分は「余り」として捨ててよい
-  const SURPLUS = { snow: 6, sapling: 2, stone: 9, veg: 9, wood: 11, meat: 10 };
-  const WANT = { wood: 10, stone: 8, veg: 8 };
-  const MAX_ROADS = 2;      // 1手番に道を建てる数の上限
+  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9 };
 
-  const FOOD_STOCK = 4;       // 1人あたりこれだけ（満腹度ぶん）の食料を持っていたい
   const surplus = (st, k) => st.items[k] > SURPLUS[k];
   const foodStock = st => st.items.meat * E.RULES.eat.meat + st.items.veg * E.RULES.eat.veg;
+  const last = st => st.round > E.RULES.prepRounds;
 
+  // 必要な量の目安（人数・ラウンドで変わる）
+  function targets(st) {
+    const nP = st.players.length, cap = E.cap(st);
+    const fin = last(st);
+    return {
+      food: (fin ? 6 : (st.round >= 8 ? 5 : 3)) * nP,                                    // 食料（満腹度ぶん）
+      wood: Math.min(cap - 4, 2 + st.round + Math.max(0, nP - 3)), // 薪：最終猛吹雪に向けて増やす
+      fire: fin ? E.RULES.fireMax : (st.round >= E.RULES.prepRounds ? 4 : 0),
+    };
+  }
+
+  const gapOf = (st, x, y) => Math.min(...st.b.map(b => { const g = E.rectGap(b, x, y); return Math.max(g.dx, g.dy); }));
+
+  // 新しい建物を置く場所（既存の建物に隣接する場所のうち、焚き火に近いもの）
   function findSpot(st, t) {
     const d = E.BUILD[t], f = E.fireOf(st);
     let best = null;
-    for (let y = f.y - 6; y <= f.y + f.h + 5; y++) {
-      for (let x = f.x - 6; x <= f.x + f.w + 5; x++) {
+    for (let y = f.y - 7; y <= f.y + f.h + 6; y++) {
+      for (let x = f.x - 7; x <= f.x + f.w + 6; x++) {
         if (E.buildWhy(st, t, x, y)) continue;
-        let gap = Infinity;
-        for (const b of st.b) {
-          const gx = Math.max(x - (b.x + b.w), b.x - (x + d.size), 0), gy = Math.max(y - (b.y + b.h), b.y - (y + d.size), 0);
-          gap = Math.min(gap, gx + gy);
-        }
         const far = Math.abs(x + d.size / 2 - (f.x + 1.5)) + Math.abs(y + d.size / 2 - (f.y + 1.5));
-        const score = gap * 10 + far;
-        if (!best || score < best.score) best = { x, y, score };
+        if (!best || far < best.score) best = { x, y, score: far };
       }
     }
     return best;
   }
 
-  // 範囲の外にある資源・動物のうち、建物にいちばん近いものへ向かって道を置く場所
-  function roadToward(st, p, needFood) {
-    const it = st.items, gapOf = (x, y) => Math.min(...st.b.map(b => { const g = E.rectGap(b, x, y); return Math.max(g.dx, g.dy); }));
-    const targets = [];
-    for (const k of Object.keys(st.res)) {
-      const [x, y] = E.parseKey(k), item = E.RES_ITEM[st.res[k].t];
-      if (it[item] < WANT[item] && !E.reach(st, x, y) && (!needFood || item === 'veg')) targets.push([x, y]);
-    }
-    if (it.meat < 5 || needFood) for (const a of st.animals) if (!E.reach(st, a.x, a.y)) targets.push([a.x, a.y]);
-    const near = targets.filter(([x, y]) => gapOf(x, y) <= 6);   // 道1本で届くものだけ
+  // 範囲の外にある目当てへ向かって道を置く場所（道は既存の建物に隣接する場所にだけ置ける）
+  function roadToward(st, goals, far) {
+    const near = goals.filter(([x, y]) => gapOf(st, x, y) <= far);   // 道を数本つなげて届くものだけ
     if (!near.length) return null;
-    targets.length = 0; targets.push(...near);
-    targets.sort((u, v) => gapOf(u[0], u[1]) - gapOf(v[0], v[1]));
-    const [tx, ty] = targets[0];
+    near.sort((u, v) => gapOf(st, u[0], u[1]) - gapOf(st, v[0], v[1]));
+    const [tx, ty] = near[0];
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const b of st.b) { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x + b.w - 1); y0 = Math.min(y0, b.y); y1 = Math.max(y1, b.y + b.h - 1); }
     let best = null;
-    for (let y = y0 - 5; y <= y1 + 5; y++) {
-      for (let x = x0 - 5; x <= x1 + 5; x++) {
-        if (E.reach(st, x, y) || E.buildWhy(st, 'road', x, y)) continue;
-        const g = gapOf(x, y);
-        if (g > 5) continue;
-        const d = Math.max(Math.abs(x - tx), Math.abs(y - ty)) * 10 + (5 - g);
+    for (let y = y0 - 1; y <= y1 + 1; y++) {
+      for (let x = x0 - 1; x <= x1 + 1; x++) {
+        if (E.buildWhy(st, 'road', x, y)) continue;
+        const d = Math.max(Math.abs(x - tx), Math.abs(y - ty)) * 10 + Math.abs(x - tx) + Math.abs(y - ty);
         if (!best || d < best.d) best = { x, y, d };
       }
     }
@@ -71,12 +74,14 @@
   }
 
   function decide(st, pid, mem) {
-    const p = E.pl(st, pid), it = st.items, R = E.RULES;
+    const p = E.pl(st, pid), it = st.items, R = E.RULES, nP = st.players.length;
     const tk = st.round + ':' + st.turn;
     if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; }
     const here = E.where(st, p);
     const warmHere = E.warmAmount(st, p);
     const end = { type: 'end' };
+    const T = targets(st);
+    const fin = last(st);
 
     // 復帰中の手番は「温まる」「食べる」だけ
     if (p.down === 2) {
@@ -86,15 +91,18 @@
       return end;
     }
 
+    // 食べる（手番の終わりに満腹度が3減るので、3以下で終わらないように）
     if (p.food <= 7 && it.meat > 0) return { type: 'eat', k: 'meat' };
-    if (p.food <= 8 && it.veg > 0) return { type: 'eat', k: 'veg' };
+    if (p.food <= 8 && it.veg > 0 && (it.meat === 0 || p.food <= 4)) return { type: 'eat', k: 'veg' };
 
-    const needFood = foodStock(st) < FOOD_STOCK * st.players.length;
     const map = E.moveMap(st, p);
     const costAt = (x, y) => { const d = map.get(E.key(x, y)); return d == null ? null : E.moveCost(d); };
     const canMove = mem.moves < MAX_MOVES;
     const go = (x, y) => { mem.moves++; return { type: 'move', x, y }; };
-    // いちばん近い暖かい場所（焚き火を優先）
+    const nearFire = E.nearFire(st, p);
+    const wMod = R.tempMod[st.weather];
+
+    // 暖かい場所（焚き火を優先）
     const warmSpot = () => {
       let best = null;
       for (const [k, d] of map) {
@@ -106,90 +114,125 @@
       }
       return best;
     };
+    const lowest = Math.min(...st.players.map(q => q.temp));
+    const wantFire = Math.max(T.fire, lowest <= 4 ? 3 : 0, p.temp <= 5 ? 2 : 0);
+    const stoke = () => nearFire && p.ap >= R.ap.stoke && it.wood > 0 && st.fire < Math.min(R.fireMax, wantFire);
 
-    if (E.nearFire(st, p) && p.ap >= R.ap.stoke && it.wood > 0 && st.fire < (it.wood >= 4 ? R.fireMax : 3)) return { type: 'stoke' };
-
-    // 体温が低い：暖かい場所へ戻って温まる
+    // 体温が低い：暖かい場所へ戻って、薪を焚べて温まる
     if (p.temp <= SAFE_TEMP) {
       if (here.kind === 'out' && canMove) { const w = warmSpot(); if (w) return go(w.x, w.y); }
+      if (stoke() && st.fire < 3) return { type: 'stoke' };
       if (p.ap >= R.ap.warm && warmHere > 0 && p.temp < R.maxTemp) return { type: 'warm' };
     }
 
-    // 防寒施設・倉庫・見張り台を建てる
-    const tryBuild = t => {
-      const d = E.BUILD[t];
-      if (p.ap < d.ap || E.lacking(st, d.cost)) return null;
-      const s = findSpot(st, t);
-      return s ? { type: 'build', t, x: s.x, y: s.y } : null;
+    // 火力：必要なぶんだけ焚べる
+    if (stoke()) return { type: 'stoke' };
+    // 焚き火の上で、温まる効果が大きいなら先に温まっておく（遠出の体温の備え）
+    if (warmHere >= 2 && p.ap >= R.ap.warm + 1 && p.temp <= R.maxTemp - Math.min(3, warmHere)) return { type: 'warm' };
+
+    // 倉庫（共有アイテムの上限+10）：人数が多いとき
+    if (!fin && E.count(st, 'storage') < 1 && it.wood >= 8 && it.stone >= 4 && p.ap >= E.BUILD.storage.ap && nP >= 4) {
+      const s = findSpot(st, 'storage');
+      if (s) return { type: 'build', t: 'storage', x: s.x, y: s.y };
+    }
+
+    // 目当ての価値
+    const stoneWant = E.count(st, 'storage') < 1 && nP >= 4 && it.stone < 4;
+    const needSnow = it.snow < 2;
+    const resValue = r => {
+      const item = E.RES_ITEM[r.t];
+      let v = 0;
+      if (item === 'wood') v = it.wood < 3 ? 10 : (it.wood < T.wood ? 7 : 0);
+      else if (item === 'veg') v = foodStock(st) < T.food ? 5 : (it.veg < 4 ? 2 : 0);
+      else if (item === 'stone') v = stoneWant ? 3 : 0;
+      if (needSnow) v += 2;
+      return v;
     };
-    let a;
-    if (!needFood && it.snow >= 6 && !st.b.some(b => E.insul(b)) && (a = tryBuild('igloo'))) return a;
-    if (E.count(st, 'storage') < 1 && it.wood >= 8 && (a = tryBuild('storage'))) return a;
-    if (!E.hasTower(st) && it.wood >= 10 && (a = tryBuild('tower'))) return a;
+    const wantMeat = foodStock(st) < T.food;
+    const farmVeg = it.veg >= 4 && foodStock(st) >= T.food * 0.8 && st.round <= R.prepRounds - 1;
+    const farmTree = it.sapling > 0 && st.round <= R.prepRounds + 1;
 
-    // 壊れかけの防寒施設を直す
-    if (it.stone > 0) {
-      for (const b of st.b) {
-        if (b.hp === null || b.hp >= b.max || b.hp * 2 > b.max + 2) continue;
-        if (E.nearB(b, p) && p.ap >= b.w) return { type: 'repair', id: b.id };
-        if (canMove && p.ap >= b.w && p.temp >= MOVE_MARGIN + 2) {
-          let best = null;
-          for (const [k, d] of map) {
-            const [x, y] = E.parseKey(k);
-            if (!E.nearB(b, { x, y })) continue;
-            const c = E.moveCost(d);
-            if (!best || c < best.c) best = { x, y, c };
-          }
-          if (best && p.temp - best.c >= MOVE_MARGIN) return go(best.x, best.y);
-        }
-      }
-    }
-
-    // 集める・狩る・植える
     if (p.ap >= 1) {
+      // いまの場所に資源があれば集める
       const onTile = E.resAt(st, p.x, p.y);
-      if (onTile && E.room(st) >= 1 && it[E.RES_ITEM[onTile.t]] < WANT[E.RES_ITEM[onTile.t]]) return { type: 'collect' };
-      if (it.meat < 5) {
-        for (const [dx, dy] of E.DIRS) if (E.animalAt(st, p.x + dx, p.y + dy)) return { type: 'attack', x: p.x + dx, y: p.y + dy };
+      if (onTile && E.room(st) >= 1 && resValue(onTile) > 0) return { type: 'collect' };
+      // 隣に動物がいれば、体力が少ないものから攻撃
+      if (wantMeat) {
+        let target = null;
+        for (const [dx, dy] of E.DIRS) { const a = E.animalAt(st, p.x + dx, p.y + dy); if (a && (!target || a.hp < target.hp)) target = a; }
+        if (target && (target.hp <= p.ap + 1 || p.ap >= 4)) return { type: 'attack', x: target.x, y: target.y };
       }
-      if (it.veg >= 4 && here.kind === 'out' && !here.b && !onTile && !E.plantAt(st, p.x, p.y)) return { type: 'plant', kind: 'veg' };
-      if (it.sapling > 0 && here.kind === 'out' && !here.b && !onTile && !E.plantAt(st, p.x, p.y)) return { type: 'plant', kind: 'tree' };
+      // 苗木・野菜の苗を、いる場所（雪原の空きマス）に植える
+      if (!here.b && !onTile && !E.plantAt(st, p.x, p.y)) {
+        if (farmTree) return { type: 'plant', kind: 'tree' };
+        if (farmVeg) return { type: 'plant', kind: 'veg' };
+      }
     }
-    if (p.ap >= 1 && canMove && p.temp - MOVE_MARGIN > 0) {
+
+    // 体温の予算：帰り道ぶんと、手番の終わりの低下ぶんを残す
+    // 薪も火力もないときは、少しの無理をしてでも薪を探しに行く
+    const urgent = it.wood === 0 && st.fire <= 1;
+    const budget = p.temp - (urgent ? 1 : MIN_END_TEMP) - Math.max(0, wMod) - (fin ? 1 : 0);
+    // 往復の体温コスト：行きは雪原に入る回数、帰りは目当ての雪原を除いた回数（道・建物の上は0）
+    const tripCost = c => (c > 0 ? 2 * c - 1 : 0);
+
+    // 苗を植えに行く（いちばん近い空きの雪原）
+    if (p.ap >= 2 && canMove && budget >= 1 && (farmTree || farmVeg)) {
       let best = null;
-      const consider = (x, y, bonus) => {
+      for (const [k, d] of map) {
+        const [x, y] = E.parseKey(k), c = E.moveCost(d);
+        if (c > 1 || E.bAt(st, x, y) || E.resAt(st, x, y) || E.plantAt(st, x, y) || (x === p.x && y === p.y)) continue;
+        const sc = c * 10 + gapOf(st, x, y);
+        if (!best || sc < best.sc) best = { x, y, sc };
+      }
+      if (best) return go(best.x, best.y);
+    }
+
+    // 集める・狩るために出かける：価値が高く、体温コストの小さいものを選ぶ
+    if (p.ap >= 1 && canMove) {
+      let best = null;
+      const consider = (x, y, value) => {
         const c = costAt(x, y);
-        if (c == null || p.temp - 2 * c < MOVE_MARGIN) return;   // 帰り道の分も残す
-        const s = c - bonus;
-        if (!best || s < best.s) best = { x, y, s };
+        if (c == null || (x === p.x && y === p.y) || tripCost(c) > budget) return;
+        const sc = value - 2.5 * c;
+        if (sc > 0 && (!best || sc > best.sc)) best = { x, y, sc };
       };
-      if (it.meat < 5 || needFood) {
-        for (const an of st.animals) for (const [dx, dy] of E.DIRS) consider(an.x + dx, an.y + dy, 8);
+      if (wantMeat) {
+        for (const a of st.animals) {
+          if (a.hp > p.ap + 1) continue;
+          for (const [dx, dy] of E.DIRS) consider(a.x + dx, a.y + dy, 40 / a.hp + 4);
+        }
       }
       if (E.room(st) >= 1) {
         for (const k of Object.keys(st.res)) {
-          const r = st.res[k], item = E.RES_ITEM[r.t];
-          if (it[item] >= WANT[item]) continue;
+          const r = st.res[k], v = resValue(r);
+          if (v <= 0) continue;
           const [x, y] = E.parseKey(k);
-          consider(x, y, item === 'veg' && needFood ? 6 : item === 'wood' && it.wood < 4 ? 3 : 0);
+          consider(x, y, v * Math.min(r.hp, Math.max(1, p.ap - 1)));
         }
       }
-      if (best && (best.x !== p.x || best.y !== p.y)) return go(best.x, best.y);
+      if (best) return go(best.x, best.y);
     }
 
-    // 移動できる範囲に目当てがない：道を伸ばして範囲を広げる（道から2マス以内に移動できる）
+    // 範囲の中に目当てがない：道を伸ばして範囲を広げる
     if (p.ap >= E.BUILD.road.ap && it.snow >= 1 && mem.roads < MAX_ROADS) {
-      const spot = roadToward(st, p, needFood);
+      const goals = [];
+      if (wantMeat) for (const a of st.animals) if (!E.reach(st, a.x, a.y)) goals.push([a.x, a.y]);
+      for (const k of Object.keys(st.res)) {
+        const [x, y] = E.parseKey(k);
+        if (!E.reach(st, x, y) && resValue(st.res[k]) > 0) goals.push([x, y]);
+      }
+      const spot = roadToward(st, goals, it.snow >= 4 ? 9 : 5);   // 雪が余っているなら、遠くまで道を伸ばす
       if (spot) { mem.roads++; return { type: 'build', t: 'road', x: spot.x, y: spot.y }; }
     }
 
-    // 手番の終わりじたく：余った行動力で温まり、暖かい場所に戻る
+    // 手番の終わりじたく：暖かい場所に戻り、必要なら焚べて温まる
     if (here.kind === 'out' && canMove) {
       const w = warmSpot();
-      if (w && p.temp - w.c > 0) return go(w.x, w.y);
+      if (w) return go(w.x, w.y);
     }
-    if (E.nearFire(st, p) && p.ap >= R.ap.stoke && it.wood > 0 && st.fire < R.fireMax) return { type: 'stoke' };
-    if (p.ap >= R.ap.warm && warmHere > 0 && p.temp <= R.maxTemp - 2) return { type: 'warm' };
+    if (stoke()) return { type: 'stoke' };
+    if (p.ap >= R.ap.warm && warmHere > 0 && p.temp <= R.maxTemp - Math.min(2, warmHere)) return { type: 'warm' };
     return end;
   }
 
@@ -199,7 +242,7 @@
       if (st.vote.v[pid]) return null;
       return { type: 'voteCast', val: surplus(st, st.vote.k) ? 1 : -1 };
     }
-    if (E.room(st) > 0) return null;
+    if (E.room(st) > 2) return null;
     const k = Object.keys(SURPLUS).find(x => st.items[x] > SURPLUS[x]);
     return k ? { type: 'vote', k } : null;
   }

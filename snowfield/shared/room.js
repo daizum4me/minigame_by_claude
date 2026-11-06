@@ -12,11 +12,13 @@
 })(typeof self !== 'undefined' ? self : this, function (E, CPU) {
   'use strict';
 
-  const COLORS = ['blue', 'purple', 'green', 'orange', 'rose'];
+  // 駒の色（先頭から順に、空いている色が割り当てられる）と形
+  const COLORS = ['blue', 'red', 'green', 'orange', 'purple', 'yellow', 'cyan', 'pink', 'indigo', 'brown', 'white', 'black'];
+  const SHAPES = ['circle', 'square', 'diamond', 'up', 'down', 'hex'];
   const CPU_MS = [600, 1100];     // CPU が次の行動をするまでの間隔
   const AWAY_MS = 4000;           // 切断中の人の手番を自動で終えるまでの時間
   const CPU_ACTION_LIMIT = 60;    // CPU が1手番に行動する回数の上限（無限ループよけ）
-  const VOTE_COOL_MS = 20000;     // 投票が終わってから、CPU が次の投票を言い出すまでの間隔
+  const VOTE_COOL_MS = 6000;      // 投票が終わってから、CPU が次の投票を言い出すまでの間隔
 
   function cleanName(s) {
     const t = Array.from(String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, 12).join('').trim();
@@ -65,7 +67,11 @@
     addPlayer({ token, name, cpu }) {
       let n = name, i = 2;
       while (this.players.some(p => p.name === n)) n = name + (i++);
-      const p = { id: 'p' + (++this.seq), token, name: n, color: COLORS.find(c => !this.players.some(x => x.color === c)), connected: true, cpu };
+      const p = {
+        id: 'p' + (++this.seq), token, name: n, connected: true, cpu,
+        color: COLORS.find(c => !this.players.some(x => x.color === c)),
+        shape: SHAPES.find(sh => !this.players.some(x => x.shape === sh)) || SHAPES[0],
+      };
       this.players.push(p);
       return p;
     }
@@ -96,7 +102,7 @@
     view() {
       return {
         code: this.code, phase: this.phase, hostId: this.hostId, min: E.RULES.minPlayers, max: E.RULES.maxPlayers,
-        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, cpu: p.cpu, connected: p.connected })),
+        players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, shape: p.shape, cpu: p.cpu, connected: p.connected })),
       };
     }
 
@@ -109,7 +115,7 @@
     }
     changed() { this.broadcast(); this.schedule(); }
     human(id) { const p = this.players.find(x => x.id === id); return !!p && !p.cpu; }
-    toast(id, text, tone) { if (this.human(id)) this.sendFn(id, { type: 'toast', text, tone: tone || '' }); }
+    toast(id, text, tone, sfx) { if (this.human(id)) this.sendFn(id, { type: 'toast', text, tone: tone || '', sfx: sfx || '' }); }
     error(id, text) { if (this.human(id)) this.sendFn(id, { type: 'error', text }); }
 
     handle(id, msg) {
@@ -131,6 +137,16 @@
           if (p) { this.players = this.players.filter(x => x !== p); this.changed(); }
           return;
         }
+        case 'style': {      // 自分の駒の形と色（ロビーで）
+          if (this.phase !== 'lobby') return;
+          if (SHAPES.includes(msg.shape)) me.shape = msg.shape;
+          if (msg.color !== undefined) {
+            if (!COLORS.includes(msg.color)) return;
+            if (this.players.some(p => p !== me && p.color === msg.color)) return this.error(id, 'ほかの人が使っている色です');
+            me.color = msg.color;
+          }
+          return this.changed();
+        }
         case 'start': {
           if (!host || this.phase !== 'lobby') return;
           if (this.players.length < E.RULES.minPlayers) return this.error(id, `${E.RULES.minPlayers}人以上で始められます（CPUも入れられます）`);
@@ -139,7 +155,7 @@
           this.voteCool = 0;
           this.game = E.createGame({
             seed: Math.floor(this.rng() * 4294967296),
-            players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, cpu: p.cpu })),
+            players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, shape: p.shape, cpu: p.cpu })),
           });
           for (const p of this.players) if (!p.cpu && !p.connected) E.pl(this.game, p.id).away = true;
           return this.changed();
@@ -165,7 +181,7 @@
       const had = !!g.vote;
       const r = E.act(g, id, a);
       if (!r.ok) { this.error(id, r.why); return r; }
-      if (r.msg) this.toast(id, r.msg, r.good === false ? 'bad' : '');
+      if (r.msg || r.sfx) this.toast(id, r.msg, r.good === false ? 'bad' : '', r.sfx);
       if (had && !g.vote) this.voteCool = this.now() + VOTE_COOL_MS;
       this.changed();
       return r;
@@ -227,5 +243,5 @@
     }
   }
 
-  return { Room, COLORS, CPU_MS, AWAY_MS, VOTE_COOL_MS };
+  return { Room, COLORS, SHAPES, CPU_MS, AWAY_MS, VOTE_COOL_MS };
 });

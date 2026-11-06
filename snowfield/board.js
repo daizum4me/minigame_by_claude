@@ -73,7 +73,38 @@
       flake: '#b8d4ee', rain: '#6f9fd0',
     },
   };
-  const PLAYER_COLORS = { blue: '#2f6fb5', purple: '#8059c4', green: '#2e8a74', orange: '#c26a2a', rose: '#b8467a' };
+  // 駒の色と形（ロビーで選ぶ）
+  const PLAYER_COLORS = {
+    red: '#e5534b', orange: '#f08a2e', yellow: '#f0c020', green: '#3fae74', cyan: '#2dbfc7', blue: '#3b82d6',
+    indigo: '#3f4db0', purple: '#a066db', pink: '#e56ab0', white: '#f4f4f4', brown: '#8b5a3c', black: '#1b1b1f',
+  };
+  const COLOR_NAMES = { red: '赤', orange: '橙', yellow: '黄', green: '緑', cyan: '水', blue: '青', indigo: '藍', purple: '紫', pink: '桃', white: '白', brown: '茶', black: '黒' };
+  const SHAPE_NAMES = { circle: '丸', square: '四角', diamond: 'ひし形', up: '上向き三角形', down: '下向き三角形', hex: '六角形' };
+  // 形の輪郭（中心 (0,0)・半径 1 の点列。丸は null）
+  const hexPts = [0, 1, 2, 3, 4, 5].map(i => [Math.cos(Math.PI / 3 * i - Math.PI / 2), Math.sin(Math.PI / 3 * i - Math.PI / 2)]);
+  const SHAPE_PTS = {
+    circle: null,
+    square: [[-0.82, -0.82], [0.82, -0.82], [0.82, 0.82], [-0.82, 0.82]],
+    diamond: [[0, -1.1], [1.1, 0], [0, 1.1], [-1.1, 0]],
+    up: [[0, -1.05], [1.05, 0.82], [-1.05, 0.82]],
+    down: [[0, 1.05], [1.05, -0.82], [-1.05, -0.82]],
+    hex: hexPts,
+  };
+  const isLight = c => { const h = PLAYER_COLORS[c] || '#888888'; const n = parseInt(h.slice(1), 16); return ((n >> 16) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114) > 170; };
+  function shapePath(ctx, shape, cx, cy, r) {
+    ctx.beginPath();
+    const pts = SHAPE_PTS[shape];
+    if (!pts) { ctx.arc(cx, cy, r, 0, 7); return; }
+    pts.forEach((p, i) => (i ? ctx.lineTo(cx + p[0] * r, cy + p[1] * r) : ctx.moveTo(cx + p[0] * r, cy + p[1] * r)));
+    ctx.closePath();
+  }
+  // 画面の部品（ロビー・プレイヤー一覧）に使う駒の絵
+  function shapeSvg(shape, color, size) {
+    const fill = PLAYER_COLORS[color] || '#888', stroke = isLight(color) ? '#555' : '#fff';
+    const pts = SHAPE_PTS[shape || 'circle'];
+    const body = pts ? `<polygon points="${pts.map(p => (12 + p[0] * 9).toFixed(1) + ',' + (12 + p[1] * 9).toFixed(1)).join(' ')}"` : '<circle cx="12" cy="12" r="9"';
+    return `<svg class="pawn-ico" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${body} fill="${fill}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  }
   const FONT = "'Noto Sans JP', system-ui, sans-serif";
 
   function rr(ctx, x, y, w, h, r) {
@@ -361,9 +392,9 @@
       // 資源・動物・苗・駒（同じマスに重なるときは位置をずらす）
       const tiles = new Map();
       const put = (x, y, v) => { if (!vis(x, y)) return; const k = E.key(x, y); (tiles.get(k) || tiles.set(k, []).get(k)).push(v); };
-      for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, badge: String(g.res[k].hp) }); }
+      for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, hp: g.res[k].hp, max: g.res[k].max || E.RULES.resHpMax }); }
       for (const p of g.plants) put(p.x, p.y, { kind: 'plant', badge: '苗' });
-      for (const a of g.animals) put(a.x, a.y, { kind: 'animal', badge: String(a.hp) });
+      for (const a of g.animals) put(a.x, a.y, { kind: 'animal', hp: a.hp, max: a.max || E.RULES.animalHpMax });
       g.players.forEach(p => put(p.x, p.y, { kind: 'pawn', p }));
       for (const [k, list] of tiles) {
         const [tx, ty] = E.parseKey(k), n = list.length;
@@ -375,11 +406,11 @@
             const [ax, ay] = n === 1 ? [13, 13] : [3, T - 29];
             const dragging = s.drag && me && p.id === me.id;
             ctx.globalAlpha = dragging ? 0.35 : 1;
-            pawn(ox + ax * z, oy + ay * z, 26 * z, PLAYER_COLORS[p.color] || '#888', p.no, me && p.id === me.id, th, p.down > 0);
+            pawn(ox + ax * z, oy + ay * z, 26 * z, p, me && p.id === me.id, th, p.down > 0);
             ctx.globalAlpha = 1;
           } else {
             const [ax, ay] = n === 1 ? [11, 11] : (entIdx++ === 0 ? [T - 33, 3] : [3, 3]);
-            entity(ox + ax * z, oy + ay * z, 30 * z, v.kind, v.badge, th);
+            entity(ox + ax * z, oy + ay * z, 30 * z, v.kind, v.badge, v, th);
           }
         }
       }
@@ -397,32 +428,50 @@
         ctx.strokeStyle = d.ok ? th.ok : th.ng; ctx.lineWidth = 2; rr(ctx, X(d.x) + 1, Y(d.y) + 1, S - 2, S - 2, 8 * z); ctx.stroke();
         if (me) {
           ctx.globalAlpha = .92;
-          pawn(X(d.wx) - 15 * z, Y(d.wy) - 15 * z, 30 * z, th.accent, me.no, true, th, false);
+          pawn(X(d.wx) - 15 * z, Y(d.wy) - 15 * z, 30 * z, me, true, th, false);
           ctx.globalAlpha = 1;
         }
       }
     };
 
-    function pawn(x, y, size, color, no, mine, th, down) {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, 7); ctx.fill();
-      if (mine) { ctx.strokeStyle = th.text; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 + 2, 0, 7); ctx.stroke(); }
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 - 1, 0, 7); ctx.stroke();
-      text(String(no), x + size / 2, y + size / 2 + 1, size * 0.5, '#fff', 700, 'center');
-      if (down) { ctx.fillStyle = 'rgba(15,22,32,.6)'; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 - 1, 0, 7); ctx.fill(); text('zz', x + size / 2, y + size / 2, size * 0.42, '#fff', 700, 'center'); }
+    // 駒：プレイヤーが選んだ形と色（数字は付けない）。自分の駒は外側にリング
+    function pawn(x, y, size, p, mine, th, down) {
+      const cx = x + size / 2, cy = y + size / 2, r = size / 2 * 0.92;
+      ctx.fillStyle = PLAYER_COLORS[p.color] || '#888';
+      shapePath(ctx, p.shape || 'circle', cx, cy, r); ctx.fill();
+      ctx.strokeStyle = isLight(p.color) ? '#4a5560' : '#fff'; ctx.lineWidth = Math.max(1.5, size / 13); ctx.lineJoin = 'round';
+      shapePath(ctx, p.shape || 'circle', cx, cy, r); ctx.stroke();
+      if (mine) {
+        ctx.strokeStyle = th.text; ctx.lineWidth = Math.max(1.5, size / 13);
+        ctx.beginPath(); ctx.arc(cx, cy, size / 2 + 3 * (size / 26), 0, 7); ctx.stroke();
+      }
+      if (down) { ctx.fillStyle = 'rgba(15,22,32,.6)'; shapePath(ctx, p.shape || 'circle', cx, cy, r); ctx.fill(); text('zz', cx, cy, size * 0.42, '#fff', 700, 'center'); }
     }
-    function entity(x, y, size, kind, badge, th) {
-      const c = th.res[kind];
-      ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, 7); ctx.fill();
-      ctx.strokeStyle = c[1]; ctx.lineWidth = Math.max(1, size / 15); ctx.stroke();
-      icon(ctx, kind, x + size / 2, y + size / 2, size * 0.57, c[2]);
-      const bw = Math.max(16, ctx.measureText(badge).width + 6) * (size / 30);
-      ctx.font = `700 ${size * 0.4}px ${FONT}`;
-      const w = Math.max(size * 0.53, ctx.measureText(badge).width + size * 0.2);
-      const bx = x + size - w + size * 0.23, by = y + size - size * 0.3;
-      ctx.fillStyle = '#0f1620'; rr(ctx, bx, by, w, size * 0.53, size * 0.27); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.stroke();
-      text(badge, bx + w / 2, by + size * 0.28, size * 0.4, '#fff', 700, 'center');
-      void bw;
+    // 資源・動物：円の外側の破線。線1本が体力1（なくなった分はうすく残す）。苗は「苗」の札
+    function entity(x, y, size, kind, badge, v, th) {
+      const c = th.res[kind], cx = x + size / 2, cy = y + size / 2;
+      ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, 7); ctx.fill();
+      icon(ctx, kind, cx, cy, size * 0.57, c[2]);
+      ctx.lineCap = 'round';
+      if (v && v.max) {
+        const n = v.max, step = Math.PI * 2 / n, span = step * 0.62, rr_ = size / 2 + size * 0.07;
+        ctx.lineWidth = Math.max(1.6, size / 9); ctx.strokeStyle = c[1];
+        for (let i = 0; i < n; i++) {
+          const a0 = -Math.PI / 2 + i * step + (step - span) / 2;
+          ctx.globalAlpha = i < v.hp ? 1 : 0.18;
+          ctx.beginPath(); ctx.arc(cx, cy, rr_, a0, a0 + span); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.strokeStyle = c[1]; ctx.lineWidth = Math.max(1, size / 15); ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, 7); ctx.stroke();
+        if (badge) {
+          ctx.font = `700 ${size * 0.4}px ${FONT}`;
+          const w = Math.max(size * 0.53, ctx.measureText(badge).width + size * 0.2);
+          const bx = x + size - w + size * 0.23, by = y + size - size * 0.3;
+          ctx.fillStyle = '#0f1620'; rr(ctx, bx, by, w, size * 0.53, size * 0.27); ctx.fill();
+          text(badge, bx + w / 2, by + size * 0.28, size * 0.4, '#fff', 700, 'center');
+        }
+      }
     }
 
     if (window.ResizeObserver) new ResizeObserver(() => board.resize()).observe(cv);
@@ -430,5 +479,5 @@
     return board;
   }
 
-  window.SnowBoard = { create, THEMES, PLAYER_COLORS, ICONS, ITEM_ICON, svgIcon, T };
+  window.SnowBoard = { create, THEMES, PLAYER_COLORS, COLOR_NAMES, SHAPE_NAMES, shapeSvg, ICONS, ITEM_ICON, svgIcon, T };
 })();

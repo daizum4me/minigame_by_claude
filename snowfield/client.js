@@ -263,6 +263,7 @@
   const myP = () => (app.game ? E.pl(app.game, app.me) : null);
   const myTurn = () => !!app.game && app.game.phase === 'play' && E.cur(app.game).id === app.me;
   const pcol = c => B.PLAYER_COLORS[c] || '#888';
+  const pawnIco = (p, size) => B.shapeSvg(p.shape, p.color, size || 22);
   const send = msg => { if (app.conn) app.conn.send(msg); };
   const act = a => send({ type: 'act', a });
 
@@ -292,10 +293,10 @@
   function onMessage(msg) {
     if (msg.type === 'error') {
       if (msg.fatal) leaveRoom(msg.text);
-      else mapToast(msg.text, 'bad');
+      else { mapToast(msg.text, 'bad'); SnowSound.play('error'); }
       return;
     }
-    if (msg.type === 'toast') { mapToast(msg.text, msg.tone); return; }
+    if (msg.type === 'toast') { if (msg.text) mapToast(msg.text, msg.tone); if (msg.sfx) SnowSound.play(msg.sfx); return; }
     if (msg.type !== 'state') return;
     app.me = msg.you;
     app.room = msg.room;
@@ -318,7 +319,7 @@
     show('game');
     const g = app.game;
     if (app.gameKey !== g.seed) {
-      app.gameKey = g.seed; app.lastLogN = -1; app.sel = null; app.menu = false; app.tray = false; app.resultHidden = false;
+      app.gameKey = g.seed; app.turnKey = null; app.annRound = null; app.over = null; app.endPopDismiss = null; app.lastLogN = -1; app.sel = null; app.menu = false; app.tray = false; app.resultHidden = false;
       setMode('play');
       requestAnimationFrame(() => { board.resize(); board.reset(); });
     }
@@ -326,6 +327,7 @@
     if (!myTurn()) app.tray = false;
     if (app.menu && !myP()) app.menu = false;
     toastNewLog(g);
+    announce(g);
     renderGame();
   }
 
@@ -334,8 +336,60 @@
     const first = app.lastLogN < 0;
     app.lastLogN = g.log.length ? g.log[g.log.length - 1].n : 0;
     if (first) return;
+    if (fresh.some(l => /行動不能になり/.test(l.t))) SnowSound.play('collapse');
+    if (fresh.some(l => /壊れた/.test(l.t))) SnowSound.play('crack');
     const imp = fresh.filter(l => /行動不能|壊れた|クリア|ゲームオーバー|育って|投票|復帰|戻って|切れ|ラウンド/.test(l.t));
     if (imp.length) mapToast(imp[imp.length - 1].t, /行動不能|壊れた|ゲームオーバー/.test(imp[imp.length - 1].t) ? 'bad' : '');
+  }
+
+  // ---------- 手番・ラウンドのお知らせ ----------
+
+  const bannerQ = [];
+  let bannerBusy = false;
+  function banner(title, sub, tone, sfx) {
+    bannerQ.push({ title, sub, tone, sfx });
+    if (!bannerBusy) nextBanner();
+  }
+  function nextBanner() {
+    const b = bannerQ.shift(), el = $('#banner');
+    if (!b) { bannerBusy = false; el.hidden = true; return; }
+    bannerBusy = true;
+    el.className = 'banner ' + (b.tone || '');
+    el.innerHTML = `<b>${esc(b.title)}</b><span>${esc(b.sub)}</span>`;
+    el.hidden = false;
+    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    (b.sfx || []).forEach((n, i) => setTimeout(() => SnowSound.play(n), i * 450));
+    setTimeout(nextBanner, 1900);
+  }
+  // 手番が変わったとき・ラウンドが変わったときに、画面の中央でお知らせする
+  function announce(g) {
+    if (g.phase !== 'play') {
+      if (app.over !== g.phase) { app.over = g.phase; SnowSound.play(g.phase === 'won' ? 'win' : 'lose'); }
+      return;
+    }
+    const key = g.round + ':' + g.turn;
+    if (app.turnKey === key) return;
+    const roundChanged = app.annRound !== g.round;
+    app.turnKey = key; app.annRound = g.round;
+    if (roundChanged) {
+      const fin = g.round > R.prepRounds, storm = g.weather === 'storm';
+      banner(fin ? `最終猛吹雪 ${g.round - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${g.round}`,
+        `${fin ? '' : `準備期間 ${g.round} / ${R.prepRounds}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
+    }
+    if (E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
+  }
+
+  // 行動力がなくなったら、手番を終えるよう促す
+  function renderEndPop(g) {
+    const el = $('#endpop'), me = myP();
+    const key = g.round + ':' + g.turn;
+    const show = !!(myTurn() && me && me.ap === 0 && app.endPopDismiss !== key && !app.card);
+    if (show === !el.hidden) return;
+    el.hidden = !show;
+    if (show) {
+      el.innerHTML = '<b>行動力がなくなりました</b><span>手番を終えますか？（移動や食べるは、まだできます）</span><div><button class="primary" data-endpop-end>手番を終える</button><button data-endpop-close>あとで</button></div>';
+      SnowSound.play('warn');
+    }
   }
 
   // ---------- トップ・ロビー ----------
@@ -360,7 +414,7 @@
 
   function leaveRoom(text) {
     if (app.conn) { app.conn.close(); app.conn = null; }
-    app.room = null; app.game = null; app.me = null; app.gameKey = null;
+    app.room = null; app.game = null; app.me = null; app.gameKey = null; app.styleSent = false;
     $('#result').hidden = true;
     setReconnecting(false);
     const url = new URL(location.href);
@@ -385,11 +439,26 @@
     $('#host-warn').hidden = !(host && !local);
     $('#lobby-count').textContent = `${r.players.length} / ${r.max}人`;
     $('#lobby-players').innerHTML = r.players.map((p, i) => `<li>
-        <span class="dot" style="background:${pcol(p.color)}">${i + 1}</span>
+        ${pawnIco(p, 24)}
         <span class="name">${esc(p.name)}</span>
         ${p.id === r.hostId ? '<span class="tag">ホスト</span>' : ''}${p.cpu ? '<span class="tag">CPU</span>' : ''}${p.id === app.me ? '<span class="tag">あなた</span>' : ''}
         ${host && p.cpu ? `<button data-rm-cpu="${p.id}">外す</button>` : ''}
       </li>`).join('');
+    const mine = r.players.find(p => p.id === app.me);
+    if (mine && !app.styleSent) {
+      app.styleSent = true;
+      const sh = store.get('shape'), co = store.get('color');
+      if (sh && sh !== mine.shape) send({ type: 'style', shape: sh });
+      if (co && co !== mine.color && !r.players.some(p => p !== mine && p.color === co) && B.PLAYER_COLORS[co]) send({ type: 'style', color: co });
+    }
+    $('#style-box').hidden = !mine;
+    if (mine) {
+      $('#style-shapes').innerHTML = Object.keys(B.SHAPE_NAMES).map(k => `<button class="sty ${mine.shape === k ? 'on' : ''}" data-shape="${k}" title="${B.SHAPE_NAMES[k]}" aria-label="${B.SHAPE_NAMES[k]}">${B.shapeSvg(k, mine.color, 26)}</button>`).join('');
+      $('#style-colors').innerHTML = Object.keys(B.PLAYER_COLORS).map(k => {
+        const taken = r.players.some(p => p !== mine && p.color === k);
+        return `<button class="sw ${mine.color === k ? 'on' : ''}" data-color="${k}" ${taken ? 'disabled' : ''} title="${B.COLOR_NAMES[k]}${taken ? '（使用中）' : ''}" aria-label="${B.COLOR_NAMES[k]}" style="background:${B.PLAYER_COLORS[k]}"></button>`;
+      }).join('');
+    }
     $('#btn-add-cpu').hidden = !host || r.players.length >= r.max;
     $('#btn-start').hidden = !host;
     $('#btn-start').disabled = r.players.length < r.min;
@@ -405,7 +474,7 @@
   const DESC = {
     fire: { name: '焚き火', tip: '上で温まると火力ぶん回復。薪を焚べると火力+1。', desc: '唯一の本格的な暖房。上に立って「温まる」と、火力の値だけ体温が回復する。',
       eff: ['焚き火の上の体温低下は 0＋天候補正（軽減なし）', `温まる：行動力${R.ap.warm}、火力の値だけ体温回復`, `焚べる：行動力${R.ap.stoke}＋木材1 → 火力+1（最大${R.fireMax}）`], build: '最初からある', repair: '壊れない' },
-    road: { name: '道', tip: '雪1個で作れる最小の建物。移動できる範囲が広がる。', desc: '雪1個で作れる最小の建物。建物の仲間として扱われ、道から2マス以内に移動できる。',
+    road: { name: '道', tip: '雪1個で作れる最小の建物。移動できる範囲が広がる。', desc: '雪1個で作れる最小の建物。建物の仲間として扱われ、道から1マス以内に移動できる。',
       eff: ['道・建物の上に入るときは体温が減らない', '隣り合う道は一つにつながって表示される'], build: null, repair: '壊れない' },
     igloo: { name: 'かまくら', tip: '防寒施設。中では体温低下が軽くなる。', desc: '雪で作る防寒施設。',
       eff: ['体温低下 -1＋天候補正（補正は最大2まで軽減）', '温まる回復量 +1', 'HPが半分以下になると防寒が消える'], build: null, repair: null },
@@ -437,6 +506,7 @@
     renderMenu(g, th);
     renderWeather(g, th);
     renderResult(g);
+    renderEndPop(g);
     renderHint();
     board.request();
   }
@@ -458,28 +528,26 @@
   }
   const logHtml = g => g.log.slice().reverse().slice(0, 50).map(l => `<div><span>R${l.r}</span>${esc(l.t)}</div>`).join('');
 
-  function bar(label, v, color, fg) {
-    return `<div class="stat"><div class="k">${label}</div><div class="tr"><i style="width:${v * 10}%;background:${color}"></i></div><div class="v" style="color:${fg}">${v}</div></div>`;
+  function mini(label, v, pct, color, fg) {
+    return `<div class="ms"><span class="k">${label}</span><span class="tr"><i style="width:${pct}%;background:${color}"></i></span><b style="color:${fg}">${v}</b></div>`;
   }
   function renderPlayers(g, th) {
     $('#players').innerHTML = g.players.map(p => {
       const turn = g.phase === 'play' && E.cur(g).id === p.id;
       const me = p.id === app.me;
-      const room = app.room.players.find(x => x.id === p.id) || {};
       const tags = [
-        me ? '<span class="badge gray">あなた</span>' : '',
         p.cpu ? '<span class="badge gray">CPU</span>' : '',
         p.away ? '<span class="badge red">切断中</span>' : '',
         p.down === 1 ? '<span class="badge red">行動不能</span>' : p.down === 2 ? '<span class="badge red">復帰中</span>' : '',
         turn ? '<span class="badge">手番中</span>' : '',
       ].join('');
-      void room;
       return `<div class="pcard ${me ? 'me' : ''}">
-        <div class="phead"><span class="dot" style="background:${pcol(p.color)}">${p.no}</span><span>${esc(p.name)}</span><span class="grow"></span></div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">${tags}</div>
-        ${bar('体温', p.temp, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
-        ${bar('満腹度', p.food, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
-        ${me ? `<div class="stat"><div class="k">行動力</div><div class="tr"><i style="width:${Math.round(p.ap / R.maxAp * 100)}%;background:var(--ap)"></i></div><div class="v">${p.ap}</div></div>` : ''}
+        <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span><span class="grow"></span>${tags}</div>
+        <div class="pstats ${turn ? 'three' : ''}">
+          ${mini('体温', p.temp, p.temp * 10, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
+          ${mini('満腹', p.food, p.food * 10, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
+          ${turn ? mini('行動', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)') : ''}
+        </div>
       </div>`;
     }).join('');
   }
@@ -673,7 +741,7 @@
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
     $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`;
-    $('#result-players').innerHTML = g.players.map(p => `<li><span class="dot" style="background:${pcol(p.color)}">${p.no}</span><b>${esc(p.name)}</b><span class="muted">体温 ${p.temp}・満腹度 ${p.food}${p.down ? '・行動不能' : ''}</span></li>`).join('');
+    $('#result-players').innerHTML = g.players.map(p => `<li>${pawnIco(p, 22)}<b>${esc(p.name)}</b><span class="muted">体温 ${p.temp}・満腹度 ${p.food}${p.down ? '・行動不能' : ''}</span></li>`).join('');
     const host = app.room.hostId === app.me;
     $('#btn-result-lobby').hidden = !host;
     $('#result-wait').hidden = host;
@@ -764,6 +832,11 @@
       (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('招待URLをコピーしました'), () => { $('#invite-url').select(); toast('URLを選択しました。コピーしてください'); });
     };
     $('#btn-add-cpu').onclick = () => send({ type: 'addCpu' });
+    $('#style-box').addEventListener('click', e => {
+      const a = e.target.closest('[data-shape]'), c = e.target.closest('[data-color]');
+      if (a) { store.set('shape', a.dataset.shape); send({ type: 'style', shape: a.dataset.shape }); }
+      if (c && !c.disabled) { store.set('color', c.dataset.color); send({ type: 'style', color: c.dataset.color }); }
+    });
     $('#btn-start').onclick = () => send({ type: 'start' });
     $('#btn-leave').onclick = () => leaveRoom('');
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-rm-cpu]'); if (b) send({ type: 'removeCpu', id: b.dataset.rmCpu }); });
@@ -772,6 +845,14 @@
     $$('[data-close]').forEach(b => { b.onclick = () => { $('#' + b.dataset.close).hidden = true; }; });
     $('#rules').addEventListener('click', e => { if (e.target === $('#rules')) $('#rules').hidden = true; });
     $$('[data-act="theme"]').forEach(b => { b.onclick = () => applyTheme(theme() === 'dark' ? 'light' : 'dark'); });
+    const soundLabel = () => $$('[data-act="sound"]').forEach(b => { b.textContent = SnowSound.isMuted() ? '音：OFF' : '音：ON'; });
+    $$('[data-act="sound"]').forEach(b => { b.onclick = () => { SnowSound.setMuted(!SnowSound.isMuted()); soundLabel(); SnowSound.play('tick'); }; });
+    soundLabel();
+    document.addEventListener('pointerdown', () => SnowSound.unlock(), { once: true });
+    $('#endpop').addEventListener('click', e => {
+      if (e.target.closest('[data-endpop-end]')) { app.menu = false; act({ type: 'end' }); }
+      else if (e.target.closest('[data-endpop-close]')) { app.endPopDismiss = app.game.round + ':' + app.game.turn; $('#endpop').hidden = true; }
+    });
 
     $('#btn-endturn').onclick = () => { app.menu = false; act({ type: 'end' }); renderMenu(app.game, TH()); };
     $('#btn-log').onclick = () => { const p = $('#log-pop'); p.hidden = !p.hidden; if (!p.hidden && app.game) p.innerHTML = logHtml(app.game); };
