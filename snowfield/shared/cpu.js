@@ -19,6 +19,7 @@
   const FIREWOOD_MAX = 8;   // 薪をこれ以上は貯めない（持ち物の枠がもったいない）
   const FUEL_RESERVE = 2;   // 焚き火を保つために残しておく薪の数
   const SWAP_GAP = 2;       // 持ち物を入れ替えるのは、価値がこれ以上違うときだけ（往復を防ぐ）
+  const USE_ROD = true;     // 釣り竿を作る
   const USE_BOW = true;     // 弓を作る
   const STEAK_FIRST = true;  // 焚き火のそばでは、肉を先にステーキにする
   const VEG_MIN = 2, VEG_FOOD = 0, VEG_LATE = 5;   // 野菜の苗を植える：野菜2個から・食料が足りていても・準備期間の終わり5ラウンド前まで
@@ -27,7 +28,7 @@
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
   const MIN_END_TEMP = 4;   // 手番の終わりにこれ以上は残しておきたい体温
   // これを超えた分は「余り」として捨ててよい
-  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9, firewood: 99, fur: 12, steak: 99, soup: 99 };
+  const SURPLUS = { snow: 3, stone: 4, sapling: 3, veg: 9, wood: 15, meat: 9, fish: 9, firewood: 99, fur: 12, steak: 99, soup: 99 };
 
   const surplus = (st, k) => st.items[k] > SURPLUS[k];
   const foodStock = st => Object.keys(E.RULES.eat).reduce((x, k) => x + st.items[k] * E.RULES.eat[k], 0);
@@ -88,6 +89,7 @@
       case 'wood': return woodEq(st, cnt) < 3 ? 10 : (woodEq(st, cnt) < T.wood ? 7 : 1);
       case 'firewood': return woodEq(st, cnt) < 3 ? 10 : (woodEq(st, cnt) < T.wood ? 6 : 1);
       case 'meat': return foodStock(st) < T.food ? 7 : 2;
+      case 'fish': return foodStock(st) < T.food ? 7 : 2;
       case 'veg': return cnt.veg < 4 ? 5 : 2;
       case 'stone': return cnt.stone < 4 && E.count(st, 'storage') < 1 ? 3 : 0.5;
       case 'sapling': return cnt.sapling < 2 ? 3 : 0.5;
@@ -138,7 +140,7 @@
 
     // 食べるもの：満腹度の空きに収まるものの中で、いちばん回復が大きいもの（ステーキ・肉・スープ）
     const miss = R.maxFood - p.food;
-    const cooked = ['steak', 'meat', 'soup'].filter(k => it[k] > 0 && R.eat[k] <= miss + 1).sort((a, b) => R.eat[b] - R.eat[a])[0];
+    const cooked = ['steak', 'meat', 'fish', 'soup'].filter(k => it[k] > 0 && R.eat[k] <= miss + 1).sort((a, b) => R.eat[b] - R.eat[a])[0];
 
     // 復帰中の手番は「温まる」「食べる」だけ
     if (p.down === 2) {
@@ -227,6 +229,8 @@
     }
 
     const hasShop = st.b.some(b => b.t === 'workshop');
+    // 釣り竿で届く魚がいるか（移動できるマスから3マス以内）
+    const fishNear = () => (st.fish || []).some(f => { for (const [k] of map) { const [x, y] = E.parseKey(k); if (Math.max(Math.abs(f.x - x), Math.abs(f.y - y)) <= R.fishRange) return true; } return false; });
     // 作業場（木材3）：薪（木材1→薪2）・防寒着・道具を作る
     if (!hasShop && !fin && st.round >= 2 && it.wood >= 6 && p.ap >= E.BUILD.workshop.ap) {
       const sp = findSpot(st, 'workshop');
@@ -241,6 +245,7 @@
     const wantCraft = () => {
       if (!hasShop || p.ap < 1) return null;
       if (!p.gear && !coatInPool && it.fur >= 3) return 'coat';
+      if (!p.tool && !toolInPool && USE_ROD && fishNear() && it.wood >= 1 && it.stone >= 1) return 'rod';
       if (!p.tool && !toolInPool && USE_BOW && it.wood >= 1 && it.stone >= 3) return 'bow';
       if (!p.tool && !toolInPool && !fin && it.fur >= 1 && it.wood >= 1 && it.stone >= 1) return 'axe';
       if (it.wood > keepWood && it.firewood < FIREWOOD_MAX && E.room(st) >= 1) return 'firewood';
@@ -276,7 +281,7 @@
       if (needSnow) v += 2;
       return v;
     };
-    const hasBow = !!(p.tool && p.tool.k === 'bow');
+    const hasBow = !!(p.tool && p.tool.k === 'bow'), hasRod = !!(p.tool && p.tool.k === 'rod');
     const wantMeat = foodStock(st) < T.food;
     const farmVeg = it.veg >= VEG_MIN && foodStock(st) >= T.food * VEG_FOOD && st.round <= R.prepRounds - VEG_LATE;
     const farmTree = it.sapling > 0 && st.round <= R.prepRounds + 1;
@@ -289,7 +294,9 @@
       // 隣に動物がいれば、体力が少ないものから攻撃
       if (wantMeat) {
         let target = null;
-        if (hasBow) {
+        if (hasRod) {
+          for (const f of st.fish) { const d = Math.max(Math.abs(f.x - p.x), Math.abs(f.y - p.y)); if (d <= R.fishRange && (!target || f.hp < target.hp)) target = f; }
+        } else if (hasBow) {
           for (const a of st.animals) { const d = Math.max(Math.abs(a.x - p.x), Math.abs(a.y - p.y)); if (d >= 1 && d <= R.bowRange && (!target || a.hp < target.hp)) target = a; }
         } else for (const [dx, dy] of E.DIRS) { const a = E.animalAt(st, p.x + dx, p.y + dy); if (a && (!target || a.hp < target.hp)) target = a; }
         if (target && (target.hp <= p.ap + 1 || p.ap >= 4)) return { type: 'attack', x: target.x, y: target.y };
@@ -351,9 +358,16 @@
       if (wantMeat) {
         for (const a of st.animals) {
           if (a.hp > p.ap + 1) continue;
+          if (hasRod) continue;
           if (hasBow) {
             for (const [k] of map) { const [x, y] = E.parseKey(k); if (Math.max(Math.abs(a.x - x), Math.abs(a.y - y)) <= R.bowRange && !E.bAt(st, x, y)) consider(x, y, 40 / a.hp + 4); }
           } else for (const [dx, dy] of E.DIRS) consider(a.x + dx, a.y + dy, 40 / a.hp + 4);
+        }
+      }
+      if (hasRod && wantMeat) {
+        for (const f of st.fish) {
+          if (f.hp > p.ap + 1) continue;
+          for (const [k] of map) { const [x, y] = E.parseKey(k); if (Math.max(Math.abs(f.x - x), Math.abs(f.y - y)) <= R.fishRange && !E.bAt(st, x, y)) consider(x, y, 40 / f.hp + 4); }
         }
       }
       {

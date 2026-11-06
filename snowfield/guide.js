@@ -78,6 +78,7 @@
       ${table(['行動', '行動力', '回復'], [
         [withIc('fire', '温まる'), R.ap.warm, '焚き火の上＝火力の値／防寒が有効な建物の中＝+1／それ以外＝0'],
         [withIc('meat', '食べる（肉）'), 0, `満腹度 +${R.eat.meat}`],
+        [withIc('fish', '食べる（魚）'), 0, `満腹度 +${R.eat.fish}`],
         [withIc('veg', '食べる（野菜）'), 0, `満腹度 +${R.eat.veg}`],
         [withIc('steak', '食べる（ステーキ）'), 0, `満腹度 +${R.eat.steak}（焚き火で、肉1から作れます）`],
         [withIc('soup', '食べる（スープ）'), 0, `満腹度 +${R.eat.soup}（焚き火で、野菜2と雪1から3個作れます）`],
@@ -139,6 +140,12 @@
         `各プレイヤーの手番の終わりに、ランダムな方向へ1マス動きます`,
         `倒すと${ic('meat', 16)}肉が${R.meatMin}〜${R.meatMax}個と、${ic('fur', 16)}毛皮が${R.furMin}〜${R.furMax}個。倒された動物は、別の雪原に新しく現れます`,
       ])}
+      <h4>${ic('fish')}川と魚</h4>
+      ${ul([
+        `マップには<b>川</b>（青いマス）があります。雪原ではないので、<b>移動も建設もできません</b>（焚き火の周り${R.riverClear}マスには川はありません）`,
+        `川には、常に（人数×${R.fishPerPlayer}）匹の<b>魚</b>がいます。体力${R.fishHpMin}〜${R.fishHpMax}。川の上だけを、手番の終わりに1マス動きます`,
+        `魚は、${ic('rod', 16)}<b>釣り竿</b>（作業場で、木材1・石材1）を着けると、<b>${R.fishRange}マス以内</b>から攻撃できます。倒すと${ic('fish', 16)}魚が${R.fishMin}〜${R.fishMax}個。倒された魚は、別の川に新しく現れます`,
+      ])}
       <h4>苗</h4>
       <table class="gt"><tbody><tr><td>${ic('sapling', 22)}<b>木の苗</b>（苗木1個で植える）→ 木になる</td><td>${ic('plant', 22)}<b>野菜の苗</b>（野菜2個で植える）→ 野菜になる</td></tr></tbody></table>
       ${ul([`植えてから<b>${R.growMin}〜${R.growMax}ラウンド後</b>に、資源になります（外側の線の区切り1つが「あと1ラウンド」）`, `育つと、体力${R.resHpMin}〜${R.resHpMax}の資源になります`])}` },
@@ -182,7 +189,7 @@
     } },
 
     { id: 'items', icon: 'wood', title: '共有アイテム', html: () => `
-      <p>${['wood', 'firewood', 'stone', 'veg', 'meat', 'fur', 'steak', 'soup', 'snow', 'sapling'].map(k => `${ii(k)}${N[k]}`).join('　')}と、作った防寒着・道具は、<b>全員で共有</b>します（着けるまでは、持ち物として上限に数えます）。</p>
+      <p>${['wood', 'firewood', 'stone', 'veg', 'meat', 'fish', 'fur', 'steak', 'soup', 'snow', 'sapling'].map(k => `${ii(k)}${N[k]}`).join('　')}と、作った防寒着・道具は、<b>全員で共有</b>します（着けるまでは、持ち物として上限に数えます）。</p>
       ${ul([
         `所持上限は <b>2×人数＋${R.capBase}＋${R.capPerStorage}×倉庫の数</b>（苗木も上限に含みます）`,
         `ゲーム開始時に、人数ぶんの野菜と薪、雪${R.startSnow}個が配られます`,

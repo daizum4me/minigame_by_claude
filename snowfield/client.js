@@ -607,13 +607,14 @@
     tower: { name: '見張り台', tip: '1ラウンド先の天候予報が見え、ここから2マス以内に移動できる。', desc: '高い場所から先を見渡す。屋外扱いで防寒はない。',
       eff: ['1ラウンド先の天候の予報が見える', '見張り台からは2マス以内に移動できる（ほかの建物は1マス）'], build: null, repair: null },
     workshop: { name: '作業場', tip: '上かすぐ隣で「作る」と、薪・防寒着・道具が作れる。', desc: '薪を割ったり、毛皮や木材から防寒着や道具を作る作業台。屋外扱いで防寒はなく、猛吹雪ではHPが減る。',
-      eff: ['作る：木材1 → 薪2', '作る：毛皮3 → 防寒着', '作る：木材1・石材1・毛皮1 → 斧・ツルハシ・シャベル・槍、木材1・石材3 → 弓', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
+      eff: ['作る：木材1 → 薪2', '作る：毛皮3 → 防寒着', '作る：木材1・石材1・毛皮1 → 斧・ツルハシ・シャベル・槍、木材1・石材3 → 弓、木材1・石材1 → 釣り竿', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
   };
   const IDESC = {
     wood: '焚き火に焚べると火力+1。倉庫・見張り台の建設に使う。',
     stone: '建物の修理に使う（1個でHP+2）。倉庫・見張り台の建設に使う。',
     veg: '食べると満腹度+2。2個で野菜の苗を植えられる。',
     meat: '食べると満腹度+3。',
+    fish: '食べると満腹度+3。川で、釣り竿で釣れる。',
     snow: 'かまくら・道の建設に使う。雪原で資源を集めると1個ついてくる。',
     sapling: '植えると樹木の苗になる。木を集めたとき50%で落ちる。',
     firewood: '焚べると火力+1。木材より先に使われる。作業場で、木材1から2本作れる。',
@@ -841,6 +842,10 @@
     add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${g.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
     if (E.nearFire(g, me)) add('焚べる', `行動力${R.ap.stoke}・薪（なければ木材）1`, { type: 'stoke' });
     if (res) add('集める', `行動力${R.ap.collect}`, { type: 'collect' });
+    if (me.tool && me.tool.k === 'rod') {
+      (g.fish || []).map(f => ({ f, d: Math.max(Math.abs(f.x - me.x), Math.abs(f.y - me.y)) })).filter(o => o.d <= R.fishRange).sort((u, v) => u.d - v.d)
+        .forEach(o => add(`釣る：魚（${o.d}マス先）`, `行動力${R.ap.attack}・体力${o.f.hp}`, { type: 'attack', x: o.f.x, y: o.f.y }));
+    }
     if (me.tool && me.tool.k === 'bow') {
       g.animals.map(a => ({ a, d: Math.max(Math.abs(a.x - me.x), Math.abs(a.y - me.y)) })).filter(o => o.d >= 1 && o.d <= R.bowRange).sort((u, v) => u.d - v.d)
         .forEach(o => add(`攻撃：弓で動物（${o.d}マス先）`, `行動力${R.ap.attack}・体力${o.a.hp}`, { type: 'attack', x: o.a.x, y: o.a.y }));
@@ -944,6 +949,8 @@
           html += `<div class="tn">${nm}</div><div class="tt">体力 ${r.hp} / ${r.max || R.resHpMax}（外側の線の区切り1つ＝体力1。集めるたびに1減る）</div>`;
         }
         if (info.animal) html += `<div class="tn">動物</div><div class="tt">体力 ${info.animal.hp} / ${info.animal.max || R.animalHpMax}。倒すと肉が${R.meatMin}〜${R.meatMax}個</div>`;
+        if (info.fish) html += `<div class="tn">魚</div><div class="tt">体力 ${info.fish.hp} / ${info.fish.max || R.fishHpMax}。釣り竿で${R.fishRange}マス以内から攻撃。倒すと魚が${R.fishMin}〜${R.fishMax}個</div>`;
+        else if (info.river) html += `<div class="tn">川</div><div class="tt">雪原ではないので、移動も建設もできない。魚がいる</div>`;
         if (info.plant) html += `<div class="tn">${info.plant.t === 'veg' ? '野菜' : '樹木'}の苗</div><div class="tt">あと${info.plant.left}ラウンドで育つ（外側の線の区切り1つ＝あと1ラウンド）</div>`;
         tip.innerHTML = html;
         const wr = $('#mapwrap').getBoundingClientRect();
