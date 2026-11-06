@@ -29,9 +29,12 @@
     pick: ['M4 9c4-4 12-4 16 0', 'M12 6v14'],
     shovel: ['M12 3v9', 'M8 12h8l-1 6a3 3 0 0 1-6 0z'],
     spear: ['M5 20L18 7', 'M13 4h7v7z'],
+    bow: ['M7 3c9 3 9 15 0 18', 'M7 3v18', 'M4 12h14M15 9l3 3-3 3'],
     firewood: [RC(3, 6, 18, 5), RC(3, 13, 18, 5), 'M6 8.5h5M6 15.5h5'],
     // ルール説明などで使う絵
     road: ['M4 20L9 4M20 20L15 4', 'M12 5v3M12 11v3M12 17v3'],
+    bridge: ['M3 15h18', 'M5 15v4M19 15v4', 'M3 15c3-8 15-8 18 0'],
+    grilled: ['M3 12c3-5 9-6 13-2l5-3v10l-5-3c-4 4-10 3-13-2z', 'M7 9l4 6M11 8l4 6'],
     sun: [C(12, 12, 4), 'M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1'],
     blizzard: ['M3 8h10a3 3 0 1 0-3-3', 'M3 12h14a3 3 0 1 1-3 3', 'M3 16h7'],
     rain: ['M6 15a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.2A4 4 0 0 1 17 15H6z', 'M8 18l-1 3M12 18l-1 3M16 18l-1 3'],
@@ -54,6 +57,8 @@
     stone: ['M4 18l3-9 6-4 6 6 2 7z'],
     veg: ['M12 21c-4-3-5-8-2-12 3 1 5 3 5 6 0 2-1 4-3 6z', 'M10 9c0-3 2-5 4-6'],
     animal: [EL(11, 15, 6, 4.5), C(17, 9, 2.6), 'M16 6.5l1-3M18.5 7l2-2'],
+    fish: ['M3 12c3-5 9-6 13-2l5-3v10l-5-3c-4 4-10 3-13-2z', 'M8 11.5h.01'],
+    rod: ['M4 20L16 5', 'M16 5c4 0 5 5 3 9', 'M19 14v3'],
     plant: ['M12 21v-9', 'M12 12c0-4-3-6-7-6 0 4 3 6 7 6z', 'M12 14c0-3 2-5 6-5 0 3-2 5-6 5z'],
     wood: [RC(3, 8, 18, 9), EL(18, 12.5, 1.6, 2.4), 'M7 10.5h6'],
     stoneItem: ['M4 9l8-4 8 4v7l-8 4-8-4z', 'M4 9l8 4 8-4M12 13v7'],
@@ -62,7 +67,7 @@
     sapling: ['M12 21v-9', 'M12 12l-4-3M12 15l4-3', C(8, 7.5, 2.5), C(16, 9, 2.5), C(12, 5, 2.5)],
   };
   ICONS.vegItem = ICONS.veg;
-  const ITEM_ICON = { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
+  const ITEM_ICON = { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', fish: 'fish', grilled: 'grilled', snow: 'snow', sapling: 'sapling' };
   const P2D = {};
   function svgIcon(name, size) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name].map(d => `<path d="${d}"/>`).join('')}</svg>`;
@@ -80,26 +85,26 @@
   // ---------- 配色（添付デザインのライト／ダーク） ----------
   const THEMES = {
     light: {
-      road: '#c3cfd8', roadBd: '#8497a8', hpTrack: 'rgba(36,50,63,.16)', hpOk: '#3c8f66', hpLow: '#c0463b', penA: '#2d5b88', penB: '#8a97a3',
+      road: '#c3cfd8', roadBd: '#8497a8', bridge: '#d9b98a', bridgeBd: '#8a6a3c', hpTrack: 'rgba(36,50,63,.16)', hpOk: '#3c8f66', hpLow: '#c0463b', penA: '#2d5b88', penB: '#8a97a3',
       temp: '#4a90c8', tempLow: '#c0463b', food: '#e0a030', foodLow: '#c0463b', redFg: '#a8312a', ok: '#2f9a6a', ng: '#c0463b',
-      bg: '#e9eff4', tile: '#f8fafc', reach: '#e8f1f7', grid: '#dbe5ed', accent: '#2f6fb5', text: '#24323f', panel: '#ffffff',
+      bg: '#e9eff4', river: '#bcd9ee', tile: '#f8fafc', reach: '#e8f1f7', grid: '#dbe5ed', accent: '#2f6fb5', text: '#24323f', panel: '#ffffff',
       card: { fire: ['#fff1e4', '#e9722f', '#5c2a0c'], igloo: ['#e6f0f8', '#8fb2cf', '#24323f'], storage: ['#e7eaee', '#8a97a5', '#24323f'], tower: ['#eef0e6', '#9aa684', '#33402a'], workshop: ['#f3ebe0', '#a88b62', '#4a3820'], off: ['#eceff1', '#b7c0c8', '#5d6f7e'] },
       chip: { ok: ['#dcf0e4', '#1d5a3a'], lost: ['#fbe0dd', '#8f261e'], fire: ['#ffe0c8', '#8a3a0e'] },
       fireOn: '#e9722f', fireOff: '#f3d9c6',
-      res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'], plantTree: ['#e1f3e6', '#2f8f5a', '#1f6b43'], plantVeg: ['#fff3d6', '#c9a227', '#8a6a0a'] },
-      item: { fur: ['#efe6e0', '#7a5a48'], steak: ['#f8dcd4', '#a3392b'], soup: ['#fdf0d0', '#b07a10'], wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
+      res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], fish: ['#dcecf8', '#3b86c6', '#1f5f99'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'], plantTree: ['#e1f3e6', '#2f8f5a', '#1f6b43'], plantVeg: ['#fff3d6', '#c9a227', '#8a6a0a'] },
+      item: { fur: ['#efe6e0', '#7a5a48'], steak: ['#f8dcd4', '#a3392b'], grilled: ['#fbe3cc', '#b5651d'], soup: ['#fdf0d0', '#b07a10'], wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
       tint: { clear: 'rgba(255,236,190,0.10)', snow: 'rgba(120,150,185,0.10)', blizzard: 'rgba(120,150,185,0.22)', rain: 'rgba(70,105,150,0.18)', storm: 'rgba(55,85,130,0.34)' },
       flake: '#7fa3c2', rain: '#4b79a8',
     },
     dark: {
-      road: '#3a4958', roadBd: '#7089a0', hpTrack: 'rgba(255,255,255,.16)', hpOk: '#4fb27f', hpLow: '#ff6b5e', penA: '#7fb4e8', penB: '#9fb0bf',
+      road: '#3a4958', roadBd: '#7089a0', bridge: '#6b5330', bridgeBd: '#b99560', hpTrack: 'rgba(255,255,255,.16)', hpOk: '#4fb27f', hpLow: '#ff6b5e', penA: '#7fb4e8', penB: '#9fb0bf',
       temp: '#5aaee8', tempLow: '#ff6b5e', food: '#f0b94a', foodLow: '#ff6b5e', redFg: '#ff9a90', ok: '#4fb27f', ng: '#ff6b5e',
-      bg: '#0f1620', tile: '#121b26', reach: '#1b2a3b', grid: '#25364a', accent: '#5aa0e6', text: '#e6edf3', panel: '#17212d',
+      bg: '#0f1620', river: '#1c3a57', tile: '#121b26', reach: '#1b2a3b', grid: '#25364a', accent: '#5aa0e6', text: '#e6edf3', panel: '#17212d',
       card: { fire: ['#3a2314', '#e9722f', '#ffd9bd'], igloo: ['#1b2e42', '#4a7aa6', '#dbe9f6'], storage: ['#252e39', '#6f7f90', '#e6edf3'], tower: ['#2a3220', '#7c8a5f', '#dfe8cf'], workshop: ['#33291c', '#a8895a', '#f0e0c4'], off: ['#1f2730', '#4a5663', '#8d9dab'] },
       chip: { ok: ['#1c3d2e', '#8fe0b3'], lost: ['#4a2224', '#ffab9f'], fire: ['#4a2f1a', '#ffc9a0'] },
       fireOn: '#f08a4b', fireOff: '#4a3526',
-      res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], plant: ['#24331a', '#8cc25a', '#c4e89a'], plantTree: ['#16301f', '#3fbf7a', '#9be8bd'], plantVeg: ['#3a3314', '#e0c040', '#fff0a0'] },
-      item: { fur: ['#3a2f2a', '#d8b8a0'], steak: ['#4a2420', '#ff9a88'], soup: ['#40361a', '#f5d070'], wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
+      res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], fish: ['#14293d', '#4a9ae0', '#9cd0f5'], plant: ['#24331a', '#8cc25a', '#c4e89a'], plantTree: ['#16301f', '#3fbf7a', '#9be8bd'], plantVeg: ['#3a3314', '#e0c040', '#fff0a0'] },
+      item: { fur: ['#3a2f2a', '#d8b8a0'], steak: ['#4a2420', '#ff9a88'], grilled: ['#4a2f1a', '#f0a868'], soup: ['#40361a', '#f5d070'], wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
       tint: { clear: 'rgba(0,0,0,0)', snow: 'rgba(150,185,225,0.07)', blizzard: 'rgba(170,200,235,0.16)', rain: 'rgba(40,80,140,0.22)', storm: 'rgba(190,215,245,0.26)' },
       flake: '#b8d4ee', rain: '#6f9fd0',
     },
@@ -161,8 +166,8 @@
     const toWorld = (px, py) => ({ x: (px - s.cam.x) / (T * s.cam.z), y: (py - s.cam.y) / (T * s.cam.z) });
     const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     board.hoverInfo = (g, x, y) => {
-      const b = E.bAt(g, x, y), res = E.resAt(g, x, y), animal = E.animalAt(g, x, y), plant = E.plantAt(g, x, y);
-      return (b || res || animal || plant) ? { b, res, animal, plant } : null;
+      const b = E.bAt(g, x, y), res = E.resAt(g, x, y), animal = E.animalAt(g, x, y), plant = E.plantAt(g, x, y), fish = E.fishAt(g, x, y), river = E.isRiver(g, x, y);
+      return (b || res || animal || plant || fish || river) ? { b, res, animal, plant, fish, river } : null;
     };
     board.tileScreen = (x, y) => ({ x: s.cam.x + x * T * s.cam.z, y: s.cam.y + y * T * s.cam.z, size: T * s.cam.z });
 
@@ -347,6 +352,10 @@
       for (const r of g.gen) ctx.fillRect(X(r[0]), Y(r[2]), (r[1] - r[0] + 1) * S, (r[3] - r[2] + 1) * S);
       ctx.fillStyle = th.reach;
       for (const b of g.b) { const M = E.rangeOf(b); ctx.fillRect(X(b.x - M), Y(b.y - M), (b.w + 2 * M) * S, (b.h + 2 * M) * S); }
+      ctx.fillStyle = th.river;                                   // 川のマス
+      for (const r of g.gen) {
+        for (let y = Math.max(r[2], vy0); y <= Math.min(r[3], vy1); y++) for (let x = Math.max(r[0], vx0); x <= Math.min(r[1], vx1); x++) if (E.isRiver(g, x, y)) ctx.fillRect(X(x), Y(y), S + 0.5, S + 0.5);
+      }
       ctx.strokeStyle = th.grid; ctx.lineWidth = 1; ctx.beginPath();
       for (const r of g.gen) {
         const a = Math.max(r[0], vx0), b2 = Math.min(r[1] + 1, vx1), c2 = Math.max(r[2], vy0), d2 = Math.min(r[3] + 1, vy1);
@@ -381,8 +390,8 @@
       }
 
       // 道：建物と同じ角丸の札。隣り合う道は一つにつながって見える（枠 → 中の塗り の順に重ねる）
-      const road = (x, y) => g.b.some(q => q.t === 'road' && q.x === x && q.y === y);
-      const roads = g.b.filter(b => b.t === 'road' && vis(b.x, b.y));
+      const road = (x, y) => g.b.some(q => E.isPath(q.t) && q.x === x && q.y === y);
+      const roads = g.b.filter(b => E.isPath(b.t) && vis(b.x, b.y));
       const roadShape = (b, pad) => {
         const n = road(b.x, b.y - 1), e = road(b.x + 1, b.y), so = road(b.x, b.y + 1), w = road(b.x - 1, b.y);
         const ins = 3 * z - pad, x = X(b.x) + (w ? -0.5 : ins), y = Y(b.y) + (n ? -0.5 : ins);
@@ -391,15 +400,15 @@
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(x, y, x2 - x, y2 - y, [rad(n, w), rad(n, e), rad(so, e), rad(so, w)]); else ctx.rect(x, y, x2 - x, y2 - y);
       };
-      ctx.fillStyle = th.roadBd; for (const b of roads) { roadShape(b, 2 * z); ctx.fill(); }
-      ctx.fillStyle = th.road; for (const b of roads) { roadShape(b, 0); ctx.fill(); }
+      for (const b of roads) { ctx.fillStyle = b.t === 'bridge' ? th.bridgeBd : th.roadBd; roadShape(b, 2 * z); ctx.fill(); }
+      for (const b of roads) { ctx.fillStyle = b.t === 'bridge' ? th.bridge : th.road; roadShape(b, 0); ctx.fill(); }
       for (const b of roads) {
         if (o.sel() === b.id) { ctx.strokeStyle = th.accent; ctx.lineWidth = 3 * z; roadShape(b, 3 * z); ctx.stroke(); }
       }
 
       // 建物
       for (const b of g.b) {
-        if (b.t === 'road' || !(b.x <= vx1 && b.x + b.w >= vx0 && b.y <= vy1 && b.y + b.h >= vy0)) continue;
+        if (E.isPath(b.t) || !(b.x <= vx1 && b.x + b.w >= vx0 && b.y <= vy1 && b.y + b.h >= vy0)) continue;
         const isFire = b.t === 'fire', warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b), lost = warm && !ins;
         const col = th.card[lost ? 'off' : b.t];
         const x = X(b.x) + 3 * z, y = Y(b.y) + 3 * z, w = b.w * S - 6 * z, h = b.h * S - 6 * z;
@@ -444,6 +453,7 @@
       for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, hp: g.res[k].hp, max: g.res[k].max || E.RULES.resHpMax }); }
       for (const p of g.plants) put(p.x, p.y, { kind: p.t === 'veg' ? 'plantVeg' : 'plantTree', hp: p.left, max: E.RULES.growMax });
       for (const a of g.animals) put(a.x, a.y, { kind: 'animal', hp: a.hp, max: a.max || E.RULES.animalHpMax });
+      for (const f of g.fish || []) put(f.x, f.y, { kind: 'fish', hp: f.hp, max: f.max || E.RULES.fishHpMax });
       g.players.forEach(p => put(p.x, p.y, { kind: 'pawn', p }));
       for (const [k, list] of tiles) {
         const [tx, ty] = E.parseKey(k), n = list.length;

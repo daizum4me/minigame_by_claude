@@ -11,7 +11,7 @@
   'use strict';
 
   // バージョン。違うバージョンの人とは遊べない（変えるときは changelog.js にも書く）
-  const VERSION = '1.0';
+  const VERSION = '2.0';
 
   const RULES = {
     minPlayers: 3, maxPlayers: 5,
@@ -36,10 +36,13 @@
     growMin: 1, growMax: 3,
     resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
     sapChance: 0.5,
+    fishPerPlayer: 1, fishHpMin: 1, fishHpMax: 3, fishMin: 1, fishMax: 3, fishRange: 3,   // 魚：川にいる。数 = 人数×fishPerPlayer
+    riverPeriod: 40, riverWidth: 2, riverWobble: 1.6, riverWave: 40, riverClear: 4,   // 川：雪原にはない・橋がないと移動も建設もできない（焚き火の周り riverClear マスは川にならない）
     animalsExtra: 2, animalHpMin: 3,   // 動物の数 = 人数 + animalsExtra
      animalHpMax: 5, meatMin: 1, meatMax: 7,
-    eat: { meat: 3, veg: 2, steak: 5, soup: 2 },
+    eat: { meat: 3, fish: 3, veg: 2, steak: 5, grilled: 5, soup: 2 },
     furMin: 1, furMax: 5,               // 動物が落とす毛皮
+    bowRange: 5,                        // 弓で攻撃できる距離（マス・縦横斜めで数える）
     toolDur: 7,                         // 道具の耐久度（使うたびに1減る）
     coatRelief: 1,                      // 防寒着で、手番の終わりの体温の低下が減る量
     gearBonus: 1,                       // 道具を着けたときの、集める量・攻撃力の増加
@@ -54,6 +57,7 @@
 
   const BUILD = {
     road: { name: '道', size: 1, ap: 1, cost: { snow: 1 } },
+    bridge: { name: '橋', size: 1, ap: 1, cost: { wood: 1 } },   // 川にだけ建てられる。道と同じ
     igloo: { name: 'かまくら', size: 2, ap: 2, cost: { snow: 5 } },
     storage: { name: '倉庫', size: 4, ap: 4, cost: { wood: 4, stone: 4 } },
     tower: { name: '見張り台', size: 2, ap: 2, cost: { wood: 5, stone: 3 } },
@@ -67,10 +71,13 @@
     pick: { name: 'ツルハシ', slot: 'tool', target: 'stone', desc: '石を集める量+1（体力も余計に減る）' },
     shovel: { name: 'シャベル', slot: 'tool', target: 'veg', desc: '野菜を集める量+1（体力も余計に減る）' },
     spear: { name: '槍', slot: 'tool', target: 'animal', desc: '動物への攻撃力+1' },
+    rod: { name: '釣り竿', slot: 'tool', target: 'fish', desc: '3マス以内の川の魚を攻撃できる' },
+    bow: { name: '弓', slot: 'tool', target: 'animal', desc: '5マス以内の動物を攻撃できる（攻撃力は素手と同じ）' },
   };
   // 「作る」のレシピ：station の上かすぐ隣にいるときに作れる。gear があるものは、装備や道具ができる
   const RECIPES = {
     steak: { name: 'ステーキ', station: 'fire', ap: 1, in: { meat: 1 }, out: { steak: 1 } },
+    grilled: { name: '焼き魚', station: 'fire', ap: 1, in: { fish: 1 }, out: { grilled: 1 } },
     soup: { name: 'スープ', station: 'fire', ap: 1, in: { veg: 2, snow: 1 }, out: { soup: 3 } },
     firewood: { name: '薪', station: 'workshop', ap: 1, in: { wood: 1 }, out: { firewood: 2 } },
     coat: { name: '防寒着', station: 'workshop', ap: 1, in: { fur: 3 }, gear: 'coat' },
@@ -78,9 +85,11 @@
     pick: { name: 'ツルハシ', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'pick' },
     shovel: { name: 'シャベル', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'shovel' },
     spear: { name: '槍', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'spear' },
+    rod: { name: '釣り竿', station: 'workshop', ap: 1, in: { wood: 1, stone: 1 }, gear: 'rod' },
+    bow: { name: '弓', station: 'workshop', ap: 1, in: { wood: 1, stone: 3 }, gear: 'bow' },
   };
-  const ITEMS = ['wood', 'firewood', 'stone', 'veg', 'meat', 'fur', 'steak', 'soup', 'snow', 'sapling'];
-  const ITEM_NAMES = { wood: '木材', firewood: '薪', fur: '毛皮', steak: 'ステーキ', soup: 'スープ', stone: '石材', veg: '野菜', meat: '肉', snow: '雪', sapling: '苗木' };
+  const ITEMS = ['wood', 'firewood', 'stone', 'veg', 'meat', 'fish', 'fur', 'steak', 'grilled', 'soup', 'snow', 'sapling'];
+  const ITEM_NAMES = { wood: '木材', firewood: '薪', fur: '毛皮', steak: 'ステーキ', soup: 'スープ', stone: '石材', veg: '野菜', meat: '肉', fish: '魚', grilled: '焼き魚', snow: '雪', sapling: '苗木' };
   const WEATHER_NAMES = { clear: '晴れ', snow: '雪', blizzard: '吹雪', rain: '雨', storm: '猛吹雪' };
   const RES_ITEM = { tree: 'wood', stone: 'stone', veg: 'veg' };
   const DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
@@ -176,6 +185,48 @@
     return 'clear';
   }
 
+  // ---------- 川 ----------
+  // 川のマス（座標とシードだけで決まる）。雪原ではないので、移動も建設もできない。魚がいる
+  // 川のマス：ゆるく曲がった、太さ riverWidth マスほどの川が、まっすぐ（縦か横。ゲームごとに決まる）に、riverPeriod マスおきに流れる。
+  // 川の位置・曲がり方は、座標とシードだけで決まる（保存しなくてよい）。焚き火の近くは、川にならない
+  function riverCenter(seed, k, v) {
+    const P = RULES.riverPeriod, margin = RULES.riverClear + RULES.riverWobble + 1;
+    // 川の位置：焚き火から margin マスほどはなれた所（最初に生成される範囲に、川が少し入る）。そこから P マスおきに、もう1本ずつ
+    const base = k * P + margin + 0.6 * hash(seed, 0, 0, 64) + (k === 0 ? 0 : (hash(seed, k, 0, 61) - 0.5) * 8);
+    const ph = hash(seed, k, 1, 62) * Math.PI * 2, ph2 = hash(seed, k, 2, 63) * Math.PI * 2;
+    return base + RULES.riverWobble * (0.8 * Math.sin(v * 2 * Math.PI / RULES.riverWave + ph) + 0.2 * Math.sin(v * 2 * Math.PI / (RULES.riverWave * 0.37) + ph2));
+  }
+  function isRiver(st, x, y) {
+    if (Math.abs(x) <= RULES.riverClear && Math.abs(y) <= RULES.riverClear) return false;
+    const vertical = hash(st.seed, 0, 0, 60) < 0.5, u = vertical ? x : y, v = vertical ? y : x;
+    const k0 = Math.floor(u / RULES.riverPeriod);
+    for (let k = k0 - 1; k <= k0 + 1; k++) if (Math.abs(u - riverCenter(st.seed, k, v)) < RULES.riverWidth / 2) return true;
+    return false;
+  }
+  // 橋がかかった川のマスは、道と同じように歩ける
+  const bridgeAt = (st, x, y) => { const b = bAt(st, x, y); return b && b.t === 'bridge' ? b : null; };
+  const isPath = t => t === 'road' || t === 'bridge';
+  const blocked = (st, x, y) => isRiver(st, x, y) && !bAt(st, x, y);   // 川で、何も建っていないマス
+  const fishAt = (st, x, y) => st.fish.find(f => f.x === x && f.y === y) || null;
+  function spawnFish(st) {
+    const f = genCells(st).filter(([x, y]) => isRiver(st, x, y) && (!bAt(st, x, y) || bridgeAt(st, x, y)) && !fishAt(st, x, y));
+    if (!f.length) return false;
+    const [x, y] = f[Math.floor(rnd(st) * f.length)];
+    const hp = ri(st, RULES.fishHpMin, RULES.fishHpMax);
+    st.fish.push({ id: st.nid++, x, y, hp, max: hp });
+    return true;
+  }
+  const fishTarget = st => st.players.length * RULES.fishPerPlayer;
+  // 魚は川の上だけを動く。足りなければ、新しい魚が1匹現れる
+  function moveFish(st) {
+    for (const f of st.fish) {
+      const order = DIRS.map(d => [rnd(st), d]).sort((u, v) => u[0] - v[0]);
+      const d = order[0][1], x = f.x + d[0], y = f.y + d[1];
+      if (inGen(st, x, y) && isRiver(st, x, y) && (!bAt(st, x, y) || bridgeAt(st, x, y)) && !fishAt(st, x, y)) { f.x = x; f.y = y; }
+    }
+    if (st.fish.length < fishTarget(st)) spawnFish(st);
+  }
+
   // ---------- マップ ----------
   // 建物の周囲 genRadius マスを生成済みにする（新しく生成されたマスだけ資源が置かれる）
   function expandGen(st, b) {
@@ -183,7 +234,7 @@
     const r = [b.x - R, b.x + b.w - 1 + R, b.y - R, b.y + b.h - 1 + R];
     for (let y = r[2]; y <= r[3]; y++) {
       for (let x = r[0]; x <= r[1]; x++) {
-        if (inGen(st, x, y) || bAt(st, x, y)) continue;
+        if (inGen(st, x, y) || bAt(st, x, y) || isRiver(st, x, y)) continue;
         if (hash(st.seed, x, y, 1) >= RULES.resChance) continue;
         const W = RULES.resWeights, tot = W.tree + W.stone + W.veg, q = hash(st.seed, x, y, 2) * tot;
         const t = q < W.tree ? 'tree' : q < W.tree + W.stone ? 'stone' : 'veg';
@@ -200,7 +251,7 @@
   }
   // 生物・資源・苗・建物のない生成済みの雪原
   function freeSnow(st) {
-    return genCells(st).filter(([x, y]) => !bAt(st, x, y) && !resAt(st, x, y) && !plantAt(st, x, y) && !animalAt(st, x, y) && !playerAt(st, x, y));
+    return genCells(st).filter(([x, y]) => !isRiver(st, x, y) && !bAt(st, x, y) && !resAt(st, x, y) && !plantAt(st, x, y) && !animalAt(st, x, y) && !playerAt(st, x, y));
   }
   function spawnAnimal(st) {
     const f = freeSnow(st);
@@ -212,7 +263,7 @@
   const fireSize = n => Math.ceil(n / RULES.fireDiv);
   function addBuilding(st, t, x, y, size) {
     const d = t === 'fire' ? { size } : BUILD[t];
-    const hp = (t === 'fire' || t === 'road') ? null : d.size * 2;
+    const hp = (t === 'fire' || isPath(t)) ? null : d.size * 2;
     const b = { id: st.nid++, t, x, y, w: d.size, h: d.size, hp, max: hp };
     st.b.push(b);
     return b;
@@ -222,7 +273,7 @@
     for (const t of Object.keys(RULES.startReach)) {
       const have = () => Object.keys(st.res).filter(k => st.res[k].t === t && reach(st, ...parseKey(k))).length;
       while (have() < RULES.startReach[t]) {
-        const free = genCells(st).filter(([x, y]) => reach(st, x, y) && !bAt(st, x, y) && !resAt(st, x, y));
+        const free = genCells(st).filter(([x, y]) => reach(st, x, y) && !isRiver(st, x, y) && !bAt(st, x, y) && !resAt(st, x, y));
         const [x, y] = free[Math.floor(rnd(st) * free.length)];
         const hp = ri(st, RULES.resHpMin, RULES.resHpMax);
         st.res[key(x, y)] = { t, hp, max: hp };
@@ -235,10 +286,10 @@
     const st = {
       v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null,
       weather: 'clear', next: 'clear', fire: RULES.fireInit, fireOut: 0,
-      items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, fur: 0, steak: 0, soup: 0, snow: 0, sapling: 0 }, RULES.startItems),
+      items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, fish: 0, fur: 0, steak: 0, grilled: 0, soup: 0, snow: 0, sapling: 0 }, RULES.startItems),
       gear: [],
       stats: { players: {}, team: { gained: {}, built: 0, destroyed: 0, discarded: 0 } },
-      b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, pending: [], log: [],
+      b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], fish: [], draw: {}, vote: null, pending: [], log: [],
       players: [],
     };
     const fs = fireSize(opts.players.length), f0 = -Math.floor(fs / 2);
@@ -257,6 +308,7 @@
       x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0, gear: null, tool: null,
     }));
     for (let i = 0; i < opts.players.length + RULES.animalsExtra; i++) spawnAnimal(st);
+    for (let i = 0; i < fishTarget(st); i++) if (!spawnFish(st)) break;
     st.weather = rollWeather(st, 1);
     st.next = rollWeather(st, 2);
     log(st, `ゲーム開始。最初の天候は${WEATHER_NAMES[st.weather]}`);
@@ -328,6 +380,7 @@
       log(st, `${p.name}：${what}が0になり行動不能。焚き火へ運ばれた`);
     }
     moveAnimals(st);
+    moveFish(st);
     if (st.players.every(q => q.down > 0)) {
       st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'down' };
       log(st, '全員が行動不能になった…ゲームオーバー');
@@ -390,7 +443,7 @@
       for (const [dx, dy] of DIRS) {
         const x = ux + dx, y = uy + dy;
         if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-        if (!reach(st, x, y) || animalAt(st, x, y) || (!opts.ignorePlayers && playerAt(st, x, y, p.id))) continue;
+        if (!reach(st, x, y) || blocked(st, x, y) || animalAt(st, x, y) || (!opts.ignorePlayers && playerAt(st, x, y, p.id))) continue;
         const nd = d + (bAt(st, x, y) ? 0 : 100) + 1, k = key(x, y);
         if (nd < (dist.has(k) ? dist.get(k) : Infinity)) { dist.set(k, nd); if (opts.prev) opts.prev.set(k, uk); push([nd, x, y]); }
       }
@@ -435,7 +488,9 @@
         const tx = x + i, ty = y + j, b = bAt(st, tx, ty);
         if (!inGen(st, tx, ty)) return '生成されていない場所には建てられません';
         if (plantAt(st, tx, ty)) return '苗のあるマスには建てられません';
-        if (b && (t === 'road' || b.t !== 'road')) return '他の建物と重なります';
+        if (t === 'bridge' && !isRiver(st, tx, ty)) return '橋は川にだけ建てられます';
+        if (t !== 'bridge' && isRiver(st, tx, ty) && !(b && b.t === 'bridge')) return '川には建てられません（橋を先にかけると、その上に建てられます）';
+        if (b && (isPath(t) || !isPath(b.t))) return '他の建物と重なります';
       }
     }
     // 既存の建物（道を含む）に隣接していること（道の上に重ねて建てるのも隣接とみなす）
@@ -529,6 +584,9 @@
   }
 
   // ---------- 捨てる投票 ----------
+  // 修理の石材：直径÷2の切り上げ
+  const repairStone = b => Math.ceil(b.w / 2);
+
   function resolveVote(st) {
     const v = st.vote;
     if (!v) return;
@@ -729,12 +787,28 @@
       }
       case 'attack': {
         if ((e = needAp(ap.attack))) return fail(e);
+        const fh = fishAt(st, a.x, a.y);
+        if (fh) {
+          const rod = p.tool && p.tool.k === 'rod' ? p.tool : null;
+          if (!rod) return fail('魚を攻撃するには、釣り竿が必要です');
+          if (Math.max(Math.abs(p.x - a.x), Math.abs(p.y - a.y)) > RULES.fishRange) return fail(`釣り竿は${RULES.fishRange}マス以内の魚を攻撃できます`);
+          p.ap -= ap.attack; fh.hp -= 1;
+          const w = wearTool(st, p);
+          if (fh.hp > 0) return { ok: true, msg: `釣る：魚の体力 -1（残り ${fh.hp}）${w}`, sfx: 'attack' };
+          const n = ri(st, RULES.fishMin, RULES.fishMax), got = gain(st, p.id, 'fish', n);
+          st.fish = st.fish.filter(q => q !== fh);
+          spawnFish(st);
+          return { ok: true, msg: `魚を釣った：魚${n}個のうち、${got}個を入手${got < n ? '（入りきらない分は、入れ替えるか選べます）' : ''}${w}`, sfx: 'kill' };
+        }
         const an = animalAt(st, a.x, a.y);
-        if (!an || Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail('隣のマスの動物だけ攻撃できます');
+        const bow = p.tool && p.tool.k === 'bow' ? p.tool : null;
+        if (!an) return fail('そこに動物はいません');
+        const dist = Math.max(Math.abs(p.x - a.x), Math.abs(p.y - a.y));
+        if (bow ? (dist < 1 || dist > RULES.bowRange) : Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail(bow ? `弓は${RULES.bowRange}マス以内の動物を攻撃できます` : '隣のマスの動物だけ攻撃できます');
         const spear = p.tool && p.tool.k === 'spear' ? p.tool : null;
         const dmg = spear ? 1 + RULES.gearBonus : 1;
         p.ap -= ap.attack; an.hp -= dmg;
-        const worn = spear ? wearTool(st, p) : '';
+        const worn = spear || bow ? wearTool(st, p) : '';
         if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -${dmg}（残り ${an.hp}）${worn}`, sfx: 'attack' };
         const n = ri(st, RULES.meatMin, RULES.meatMax), got = gain(st, p.id, 'meat', n);
         const fn = ri(st, RULES.furMin, RULES.furMax), fgot = gain(st, p.id, 'fur', fn);
@@ -760,7 +834,7 @@
         if (lack) return fail(`${ITEM_NAMES[lack]}が足りません`);
         const why = buildWhy(st, a.t, a.x, a.y);
         if (why) return fail(why);
-        st.b = st.b.filter(b => !(b.t === 'road' && inRect({ x: a.x, y: a.y, w: d.size, h: d.size }, b.x, b.y)));
+        st.b = st.b.filter(b => !(isPath(b.t) && inRect({ x: a.x, y: a.y, w: d.size, h: d.size }, b.x, b.y)));
         let gone = 0;                           // 建物の下になった資源は消える
         for (let j = 0; j < d.size; j++) for (let i = 0; i < d.size; i++) {
           delete st.draw[key(a.x + i, a.y + j)];
@@ -819,8 +893,9 @@
         if (b.hp >= b.max) return fail('HPは最大です');
         if (!nearB(b, p)) return fail('建物の上か、隣のマスから直せます');
         if ((e = needAp(b.w))) return fail(e);
-        if (it.stone < 1) return fail('石材がありません');
-        p.ap -= b.w; it.stone--;
+        const rs = repairStone(b);
+        if (it.stone < rs) return fail(`石材が足りません（${rs}個必要）`);
+        p.ap -= b.w; it.stone -= rs;
         b.hp = Math.min(b.max, b.hp + RULES.repairHp);
         return { ok: true, msg: `直す：${BUILD[b.t].name}のHP ${b.hp} / ${b.max}` };
       }
@@ -870,7 +945,7 @@
   }
 
   return {
-    VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

@@ -5,7 +5,7 @@ const path = require('node:path');
 const E = require('../shared/engine');
 
 // ブラウザ向けのファイルなので、必要な部分だけ用意して読み込む
-global.window = { SnowEngine: E, SnowBoard: { ITEM_ICON: { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' }, svgIcon: n => `<svg data-i="${n}"></svg>` } };
+global.window = { SnowEngine: E, SnowBoard: { ITEM_ICON: { fur: 'fur', steak: 'steak', soup: 'soup', wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', fish: 'fish', grilled: 'grilled', snow: 'snow', sapling: 'sapling' }, svgIcon: n => `<svg data-i="${n}"></svg>` } };
 require('../guide.js');
 const G = global.window.SnowGuide;
 

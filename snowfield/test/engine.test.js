@@ -179,7 +179,7 @@ test('建設：素材・行動力・重なり・HP・道を上書き・周囲が
   assert.match(doIt(st, { type: 'build', t: 'igloo', x: 2, y: -1 }).why, /雪が足りません/);
   st.items.snow = 12;
   assert.match(doIt(st, { type: 'build', t: 'igloo', x: 0, y: 0 }).why, /重なり/);
-  assert.match(doIt(st, { type: 'build', t: 'road', x: 5, y: 5 }).why, /隣接/);   // 離れた場所には建てられない
+  assert.match(doIt(st, { type: 'build', t: 'road', x: 5, y: 5 }).why, /隣接|川/);   // 離れた場所には建てられない
   const r1 = spotFor(st, 'road');
   assert.ok(doIt(st, { type: 'build', t: 'road', x: r1[0], y: r1[1] }).ok);
   const r2 = spotFor(st, 'road', 1);
@@ -235,6 +235,160 @@ test('直す：隣接・行動力は直径ぶん・石材1でHP+2', () => {
   assert.strictEqual(st.b.find(b => b.id === 90).hp, 3);
   assert.strictEqual(p.ap, 5);
   assert.strictEqual(st.items.stone, 0);
+});
+
+test('直す：石材は直径÷2の切り上げ（倉庫は2個）', () => {
+  const st = mk();
+  const p = me(st);
+  st.b.push({ id: 91, t: 'storage', x: 3, y: 0, w: 4, h: 4, hp: 2, max: 8 });
+  p.x = 2; p.y = 0; p.ap = 6;
+  st.items.stone = 1;
+  assert.match(doIt(st, { type: 'repair', id: 91 }).why, /石材が足りません/);
+  st.items.stone = 3;
+  assert.ok(doIt(st, { type: 'repair', id: 91 }).ok);
+  assert.strictEqual(st.items.stone, 1);
+  assert.strictEqual(E.repairStone({ w: 1 }), 1);
+  assert.strictEqual(E.repairStone({ w: 2 }), 1);
+  assert.strictEqual(E.repairStone({ w: 3 }), 2);
+});
+
+test('弓：木材1石材3で作れて、5マス以内（斜めも）の動物を攻撃できる。素手と同じ攻撃力で、耐久度7', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  st.b.push({ id: 90, t: 'workshop', x: 4, y: 0, w: 2, h: 2, hp: 4, max: 4 });
+  p.x = 4; p.y = 0; p.ap = 7;
+  st.items.wood = 1; st.items.stone = 3;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'bow' }).ok);
+  assert.deepStrictEqual([st.items.wood, st.items.stone, st.gear[0].k, st.gear[0].dur], [0, 0, 'bow', 7]);
+  st.animals = [{ id: 800, x: 4 + 5, y: 0 + 4, hp: 5, max: 5 }, { id: 801, x: 4 + 6, y: 0, hp: 5, max: 5 }];
+  p.x = 4; p.y = 0;
+  assert.match(doIt(st, { type: 'attack', x: 9, y: 4 }).why, /隣/);   // 弓なしでは届かない
+  assert.ok(doIt(st, { type: 'equip', id: st.gear[0].id }).ok);
+  assert.ok(doIt(st, { type: 'attack', x: 9, y: 4 }).ok);
+  assert.strictEqual(st.animals.find(a => a.id === 800).hp, 4);
+  assert.strictEqual(p.tool.dur, 6);
+  assert.match(doIt(st, { type: 'attack', x: 10, y: 0 }).why, /5マス/);
+});
+
+test('川：焚き火の周りにはなく、建設も移動もできない。魚は人数ぶんいて、川の上だけを動く', () => {
+  const st = mk();
+  const R = E.RULES;
+  for (let y = -R.riverClear; y <= R.riverClear; y++) for (let x = -R.riverClear; x <= R.riverClear; x++) assert.ok(!E.isRiver(st, x, y));
+  assert.strictEqual(st.fish.length, st.players.length * R.fishPerPlayer);
+  assert.ok(st.fish.every(f => E.isRiver(st, f.x, f.y) && f.hp >= R.fishHpMin && f.hp <= R.fishHpMax));
+  const river = E.genCells ? null : null;
+  // 川のマスには建てられない・移動できない・資源や動物がいない
+  const cells = []; for (let y = -14; y <= 14; y++) for (let x = -14; x <= 14; x++) if (E.isRiver(st, x, y)) cells.push([x, y]);
+  assert.ok(cells.length > 0);
+  for (const [x, y] of cells) assert.ok(!E.resAt(st, x, y) && !E.animalAt(st, x, y));
+  const p = me(st);
+  assert.ok(![...E.moveMap(st, p).keys()].some(k => { const [x, y] = E.parseKey(k); return E.isRiver(st, x, y); }));
+  const [rx, ry] = [st.fish[0].x, st.fish[0].y];
+  assert.match(E.buildWhy(st, 'road', rx, ry), /川/);
+  // 魚は、何手番たっても川の上だけ
+  for (let i = 0; i < 60; i++) { doIt(st, { type: 'end' }); if (st.phase !== 'play') break; }
+  assert.ok(st.fish.every(f => E.isRiver(st, f.x, f.y)));
+});
+
+test('川は、途切れずにつながって流れる（ほとんどのマスに、上下左右の川のマスが隣にある）', () => {
+  let cells = 0, joined = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const st = { seed };
+    for (let y = -40; y <= 40; y++) for (let x = -40; x <= 40; x++) {
+      if (!E.isRiver(st, x, y)) continue;
+      cells++;
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => E.isRiver(st, x + dx, y + dy))) joined++;
+    }
+  }
+  assert.ok(cells > 500, `川が少なすぎる：${cells}`);
+  assert.ok(joined / cells > 0.93, `川が途切れている：${(joined / cells).toFixed(2)}`);
+});
+
+test('橋：川にだけ木材1で建てられ、道と同じように歩ける。橋の上には建物を建てて上書きできる。川に道や建物は直接建てられない', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  // 焚き火から川へ向かって道を伸ばし、川に橋をかける
+  const cells = []; for (let y = -14; y <= 14; y++) for (let x = -14; x <= 14; x++) if (E.isRiver(st, x, y)) cells.push([x, y]);
+  st.items.wood = 6; st.items.snow = 12; p.ap = 20;
+  const target = cells.find(([x, y]) => !E.isRiver(st, x - 1, y));      // 左隣が雪原の川のマス
+  assert.ok(target);
+  // 川の左隣に道を置いて（テストなので直接）、その周りを生成済みにする
+  st.b.push({ id: 95, t: 'road', x: target[0] - 1, y: target[1], w: 1, h: 1, hp: null, max: null });
+  st.gen.push([target[0] - 4, target[0] + 4, target[1] - 4, target[1] + 4]);
+  assert.match(E.buildWhy(st, 'road', target[0], target[1]), /川/);
+  assert.match(E.buildWhy(st, 'igloo', target[0], target[1]), /川/);
+  const nonRiver = [target[0] - 1, target[1]];
+  assert.match(E.buildWhy(st, 'bridge', nonRiver[0], nonRiver[1]), /重なり|川にだけ/);
+  assert.strictEqual(E.buildWhy(st, 'bridge', target[0], target[1]), null);
+  const w = st.items.wood;
+  p.x = target[0] - 1; p.y = target[1];
+  assert.ok(doIt(st, { type: 'build', t: 'bridge', x: target[0], y: target[1] }).ok);
+  assert.strictEqual(st.items.wood, w - 1);
+  assert.ok(E.bridgeAt(st, target[0], target[1]));
+  assert.ok(E.moveMap(st, p).has(E.key(target[0], target[1])));        // 橋の上へ歩ける
+  assert.ok(!E.moveMap(st, p).has(E.key(target[0] + 1, target[1])) || !E.isRiver(st, target[0] + 1, target[1]) || E.bAt(st, target[0] + 1, target[1]));
+  assert.match(E.buildWhy(st, 'bridge', target[0], target[1]), /重なり/);
+});
+
+test('橋の上には、ほかの建物を建てて上書きできる（橋がないと川には建てられない）', () => {
+  const st = mk();
+  let spot = null;
+  for (let y = -14; y <= 14 && !spot; y++) for (let x = -14; x <= 14 && !spot; x++) {
+    if (E.isRiver(st, x, y) && !E.isRiver(st, x - 1, y) && !E.isRiver(st, x - 1, y + 1) && !E.isRiver(st, x, y + 1)) spot = [x, y];
+  }
+  assert.ok(spot);
+  const [x, y] = spot;
+  st.gen.push([x - 5, x + 5, y - 5, y + 5]);
+  st.b.push({ id: 90, t: 'road', x: x - 2, y, w: 1, h: 1, hp: null, max: null });
+  assert.match(E.buildWhy(st, 'igloo', x - 1, y), /川/);
+  st.b.push({ id: 91, t: 'bridge', x, y, w: 1, h: 1, hp: null, max: null });
+  assert.strictEqual(E.buildWhy(st, 'igloo', x - 1, y), null);
+  const p = me(st); p.ap = 9; p.x = x - 2; p.y = y; st.items.snow = 5;
+  assert.ok(doIt(st, { type: 'build', t: 'igloo', x: x - 1, y }).ok);
+  assert.ok(!st.b.some(b => b.t === 'bridge'));                 // 橋は、建物に置き換わる
+  assert.ok(E.bAt(st, x, y) && E.bAt(st, x, y).t === 'igloo');
+});
+
+test('焼き魚：焚き火で魚1から作れて、食べると満腹度+5（ステーキと同じ）', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  const f = E.fireOf(st);
+  p.x = f.x; p.y = f.y; p.ap = 5; p.food = 2;
+  st.items.fish = 1;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'grilled' }).ok);
+  assert.deepStrictEqual([st.items.fish, st.items.grilled, p.ap], [0, 1, 4]);
+  assert.ok(doIt(st, { type: 'eat', k: 'grilled' }).ok);
+  assert.strictEqual(p.food, 2 + E.RULES.eat.steak);
+  assert.strictEqual(E.RULES.eat.grilled, E.RULES.eat.steak);
+});
+
+test('釣り竿：木材1石材1で作れて、3マス以内の魚を攻撃できる。倒すと魚1〜3個。竿なしでは攻撃できない', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  st.b.push({ id: 90, t: 'workshop', x: 4, y: 0, w: 2, h: 2, hp: 4, max: 4 });
+  p.x = 4; p.y = 0; p.ap = 8;
+  st.items.wood = 1; st.items.stone = 1;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'rod' }).ok);
+  assert.deepStrictEqual([st.items.wood, st.items.stone, st.gear[0].k, st.gear[0].dur], [0, 0, 'rod', 7]);
+  const cells = []; for (let y = -14; y <= 14; y++) for (let x = -14; x <= 14; x++) if (E.isRiver(st, x, y)) cells.push([x, y]);
+  const near = cells[0];
+  p.x = near[0] - 3; p.y = near[1];                 // 魚から3マスの所へ（テストなので直接置く）
+  const far = cells.find(([x, y]) => Math.max(Math.abs(x - p.x), Math.abs(y - p.y)) >= 5);
+  assert.ok(near && far);
+  st.fish = [{ id: 800, x: near[0], y: near[1], hp: 2, max: 3 }, { id: 801, x: far[0], y: far[1], hp: 1, max: 3 }];
+  assert.match(doIt(st, { type: 'attack', x: near[0], y: near[1] }).why, /釣り竿/);
+  assert.ok(doIt(st, { type: 'equip', id: st.gear[0].id }).ok);
+  assert.match(doIt(st, { type: 'attack', x: far[0], y: far[1] }).why, /3マス/);
+  assert.ok(doIt(st, { type: 'attack', x: near[0], y: near[1] }).ok);
+  assert.strictEqual(st.fish.find(f => f.id === 800).hp, 1);
+  assert.ok(doIt(st, { type: 'attack', x: near[0], y: near[1] }).ok);
+  assert.ok(!st.fish.some(f => f.id === 800));
+  assert.ok(st.items.fish >= 1 && st.items.fish <= 3);
+  assert.strictEqual(st.fish.length, 2);          // 倒された魚は、別の川に現れる
+  assert.strictEqual(p.tool.dur, 5);
+  const food = p.food; p.food = 3;
+  assert.ok(doIt(st, { type: 'eat', k: 'fish' }).ok);
+  assert.strictEqual(p.food, 3 + E.RULES.eat.fish);
 });
 
 test('行動不能：焚き火へ強制移動・3に回復・次の手番は温まる/食べるだけ', () => {
