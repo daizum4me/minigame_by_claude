@@ -8,6 +8,7 @@
 
   const E = window.SnowEngine;
   const T = 52;                       // 1マスの大きさ（ワールド座標）
+  const ENT = 20;                     // 資源・動物・苗の大きさ
   const Z_MIN = 0.35, Z_MAX = 2.4;
 
   // ---------- アイコン（24×24 の線画） ----------
@@ -21,6 +22,26 @@
     tower: ['M8 21l2-12h4l2 12', 'M7 9h10l-1-4H8z', 'M9 15h6'],
     woodshed: ['M5 20h14', 'M7 20V12h10v8', 'M12 12V4', 'M9 6l3-2 3 2'],     // 切り株と斧
     firewood: [RC(3, 6, 18, 5), RC(3, 13, 18, 5), 'M6 8.5h5M6 15.5h5'],
+    // ルール説明などで使う絵
+    road: ['M4 20L9 4M20 20L15 4', 'M12 5v3M12 11v3M12 17v3'],
+    sun: [C(12, 12, 4), 'M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1'],
+    blizzard: ['M3 8h10a3 3 0 1 0-3-3', 'M3 12h14a3 3 0 1 1-3 3', 'M3 16h7'],
+    rain: ['M6 15a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.2A4 4 0 0 1 17 15H6z', 'M8 18l-1 3M12 18l-1 3M16 18l-1 3'],
+    storm: ['M6 14a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.2A4 4 0 0 1 17 14H6z', 'M12 13l-2 4h4l-2 5'],
+    temp: ['M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z', 'M12 9v8'],
+    food: ['M3 11h18a9 9 0 0 1-18 0z', 'M8 7c0-2 2-2 2-4M14 7c0-2 2-2 2-4'],
+    bolt: ['M13 2L5 14h6l-1 8 8-12h-6z'],
+    move: ['M4 12h16M16 8l4 4-4 4M8 8l-4 4 4 4'],
+    hand: ['M8 12V5.5a1.5 1.5 0 0 1 3 0V11M11 10V4.5a1.5 1.5 0 0 1 3 0V10M14 10V6a1.5 1.5 0 0 1 3 0v6c0 5-2.5 8-6 8-2.5 0-4-1-6-4l-1-2a1.5 1.5 0 0 1 2.4-1.7L8 14'],
+    sword: ['M14 4l6-1-1 6-9 9-5-5z', 'M7 15l-3 5M10 18l-3 3'],
+    hammer: ['M13 5l6 6-3 3-6-6z', 'M11 9L4 16l4 4 7-7'],
+    wrench: ['M15 4a4 4 0 0 0-4 5.5L4 16.5l3.5 3.5 7-7A4 4 0 0 0 20 9l-3 3-3-1-1-3z'],
+    clock: [C(12, 12, 9), 'M12 7v5l3 2'],
+    check: ['M4 4h16v16H4z', 'M8 12l3 3 5-6'],
+    people: [C(9, 8, 3), 'M3 20a6 6 0 0 1 12 0', C(17, 9, 2.5), 'M16 20a5 5 0 0 1 5.5-4.8'],
+    pencil: ['M4 20l1-4L16 5l3 3L8 19z', 'M14 7l3 3'],
+    flag: ['M6 3v18', 'M6 4h11l-2 4 2 4H6'],
+    eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', C(12, 12, 3)],
     tree: ['M12 3l6 9h-3l4 6H5l4-6H6z', 'M12 18v3'],
     stone: ['M4 18l3-9 6-4 6 6 2 7z'],
     veg: ['M12 21c-4-3-5-8-2-12 3 1 5 3 5 6 0 2-1 4-3 6z', 'M10 9c0-3 2-5 4-6'],
@@ -57,7 +78,7 @@
       card: { fire: ['#fff1e4', '#e9722f', '#5c2a0c'], igloo: ['#e6f0f8', '#8fb2cf', '#24323f'], storage: ['#e7eaee', '#8a97a5', '#24323f'], tower: ['#eef0e6', '#9aa684', '#33402a'], woodshed: ['#f3ebe0', '#a88b62', '#4a3820'], off: ['#eceff1', '#b7c0c8', '#5d6f7e'] },
       chip: { ok: ['#dcf0e4', '#1d5a3a'], lost: ['#fbe0dd', '#8f261e'], fire: ['#ffe0c8', '#8a3a0e'] },
       fireOn: '#e9722f', fireOff: '#f3d9c6',
-      res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'] },
+      res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'], plantTree: ['#e1f3e6', '#2f8f5a', '#1f6b43'], plantVeg: ['#fff3d6', '#c9a227', '#8a6a0a'] },
       item: { wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
       tint: { clear: 'rgba(255,236,190,0.10)', snow: 'rgba(120,150,185,0.10)', blizzard: 'rgba(120,150,185,0.22)', rain: 'rgba(70,105,150,0.18)', storm: 'rgba(55,85,130,0.34)' },
       flake: '#7fa3c2', rain: '#4b79a8',
@@ -69,7 +90,7 @@
       card: { fire: ['#3a2314', '#e9722f', '#ffd9bd'], igloo: ['#1b2e42', '#4a7aa6', '#dbe9f6'], storage: ['#252e39', '#6f7f90', '#e6edf3'], tower: ['#2a3220', '#7c8a5f', '#dfe8cf'], woodshed: ['#33291c', '#a8895a', '#f0e0c4'], off: ['#1f2730', '#4a5663', '#8d9dab'] },
       chip: { ok: ['#1c3d2e', '#8fe0b3'], lost: ['#4a2224', '#ffab9f'], fire: ['#4a2f1a', '#ffc9a0'] },
       fireOn: '#f08a4b', fireOff: '#4a3526',
-      res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], plant: ['#24331a', '#8cc25a', '#c4e89a'] },
+      res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], plant: ['#24331a', '#8cc25a', '#c4e89a'], plantTree: ['#16301f', '#3fbf7a', '#9be8bd'], plantVeg: ['#3a3314', '#e0c040', '#fff0a0'] },
       item: { wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
       tint: { clear: 'rgba(0,0,0,0)', snow: 'rgba(150,185,225,0.07)', blizzard: 'rgba(170,200,235,0.16)', rain: 'rgba(40,80,140,0.22)', storm: 'rgba(190,215,245,0.26)' },
       flake: '#b8d4ee', rain: '#6f9fd0',
@@ -159,6 +180,8 @@
     board.setMode = function (m) { s.mode = m; s.press = null; s.cur = null; s.drag = null; board.request(); };
     board.setPen = function (tool, color) { s.tool = tool; s.color = color; };
     board.setPreview = function (p) { s.preview = p; board.request(); };
+    // 建設モード：カードを選ぶと、マップをクリックして連続で置ける
+    board.setArmed = function (t) { s.armed = t || null; if (!t) s.preview = null; board.request(); };
     board.request = function () { if (!s.raf) s.raf = requestAnimationFrame(() => { s.raf = 0; board.draw(); }); };
     board.liveClear = function () { s.live = s.live.filter(l => !l.sent); board.request(); };
     board.tileAt = function (clientX, clientY) {
@@ -228,6 +251,11 @@
         return;
       }
       const tx = Math.floor(w.x), ty = Math.floor(w.y);
+      if (s.armed) {
+        const sz = E.BUILD[s.armed].size;
+        s.preview = { t: s.armed, x: Math.floor(w.x - sz / 2 + 0.5), y: Math.floor(w.y - sz / 2 + 0.5) };
+        board.request();
+      }
       if (!s.press) {
         if (!s.hover || s.hover.x !== tx || s.hover.y !== ty) { s.hover = { x: tx, y: ty }; o.onHover(board.hoverInfo(g, tx, ty), v); board.request(); }
         return;
@@ -260,6 +288,7 @@
         return;
       }
       if (pr.moved) return;
+      if (s.armed && s.preview) { o.onBuild(s.armed, s.preview.x, s.preview.y); return; }
       const v = pos(e), w = toWorld(v.x, v.y), tx = Math.floor(w.x), ty = Math.floor(w.y);
       if (pr.kind === 'pawn') { o.onPawn(); return; }
       const b = E.bAt(g, tx, ty);
@@ -267,7 +296,8 @@
     }
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', () => { s.press = null; s.drag = null; s.cur = null; o.onDrag(null); board.request(); });
-    cv.addEventListener('pointerleave', () => { if (s.hover) { s.hover = null; o.onHover(null); board.request(); } });
+    cv.addEventListener('pointerleave', () => { if (s.hover) { s.hover = null; o.onHover(null); board.request(); } if (s.armed) { s.preview = null; board.request(); } });
+    cv.addEventListener('contextmenu', e => { if (s.armed) { e.preventDefault(); o.onDisarm(); } });
     cv.addEventListener('wheel', e => {
       e.preventDefault();
       const v = pos(e);
@@ -402,7 +432,7 @@
       const tiles = new Map();
       const put = (x, y, v) => { if (!vis(x, y)) return; const k = E.key(x, y); (tiles.get(k) || tiles.set(k, []).get(k)).push(v); };
       for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, hp: g.res[k].hp, max: g.res[k].max || E.RULES.resHpMax }); }
-      for (const p of g.plants) put(p.x, p.y, { kind: 'plant', hp: p.left, max: E.RULES.growMax });
+      for (const p of g.plants) put(p.x, p.y, { kind: p.t === 'veg' ? 'plantVeg' : 'plantTree', hp: p.left, max: E.RULES.growMax });
       for (const a of g.animals) put(a.x, a.y, { kind: 'animal', hp: a.hp, max: a.max || E.RULES.animalHpMax });
       g.players.forEach(p => put(p.x, p.y, { kind: 'pawn', p }));
       for (const [k, list] of tiles) {
@@ -418,8 +448,8 @@
             pawn(ox + ax * z, oy + ay * z, 26 * z, p, me && p.id === me.id, th, p.down > 0);
             ctx.globalAlpha = 1;
           } else {
-            const [ax, ay] = n === 1 ? [11, 11] : (entIdx++ === 0 ? [T - 33, 3] : [3, 3]);
-            entity(ox + ax * z, oy + ay * z, 30 * z, v.kind, v.badge, v, th);
+            const [ax, ay] = n === 1 ? [16, 16] : (entIdx++ === 0 ? [T - 23, 3] : [3, 3]);
+            entity(ox + ax * z, oy + ay * z, ENT * z, v.kind, v.badge, v, th);
           }
         }
       }
@@ -460,44 +490,24 @@
       if (down) { ctx.fillStyle = 'rgba(15,22,32,.5)'; shapePath(ctx, sh, cx, cy, r); ctx.fill(); text('zz', cx, cy, size * 0.42, '#fff', 700, 'center'); }
       ctx.globalAlpha = a0;
     }
-    // 六角形（資源・苗）。頂点が左右にある向き
-    function hexPath(cx, cy, r) {
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i; i ? ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r) : ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
-      ctx.closePath();
-    }
-    function hexAt(cx, cy, r, f) {     // 周上の位置 f（0〜1）の点
-      const t = (((f % 1) + 1) % 1) * 6, i = Math.floor(t), u = t - i, a = Math.PI / 3 * i, b = Math.PI / 3 * (i + 1);
-      return [cx + Math.cos(a) * r * (1 - u) + Math.cos(b) * r * u, cy + Math.sin(a) * r * (1 - u) + Math.sin(b) * r * u];
-    }
-    // 資源・苗：六角形。動物は円。外側の線は塗りにぴったり接していて、ひと続きの線を区切りの印で等分する。
-    // 資源は区切り1つが体力1、苗は「育つまであと1ラウンド」（なくなった分はうすく残す）
+    // 資源・動物・苗：丸。外側の線は塗りにぴったり接していて、ひと続きの線を区切りの印で等分する。
+    // 資源・動物は区切り1つが体力1、苗は「育つまであと1ラウンド」（なくなった分はうすく残す）
+    const ENT_ICON = { plantTree: 'sapling', plantVeg: 'plant' };
     function entity(x, y, size, kind, badge, v, th) {
-      const c = th.res[kind], cx = x + size / 2, cy = y + size / 2, animal = kind === 'animal';
-      const lw = Math.max(2, size / 8), rf = size / 2 * (animal ? 1 : 1.08);
-      ctx.fillStyle = c[0];
-      if (animal) { ctx.beginPath(); ctx.arc(cx, cy, rf, 0, 7); } else hexPath(cx, cy, rf);
-      ctx.fill();
-      icon(ctx, kind, cx, cy, size * 0.57, c[2]);
+      const c = th.res[kind], cx = x + size / 2, cy = y + size / 2;
+      const lw = Math.max(1.6, size / 8), rf = size / 2;
+      ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(cx, cy, rf, 0, 7); ctx.fill();
+      icon(ctx, ENT_ICON[kind] || kind, cx, cy, size * 0.6, c[2]);
       if (!v || !v.max) return;
       const n = v.max, frac = Math.max(0, Math.min(1, v.hp / n));
-      // 線の中心の位置：塗りの縁から線の太さの半分だけ外側（すきまなし）
-      const rr_ = animal ? rf + lw / 2 : (rf * Math.cos(Math.PI / 6) + lw / 2) / Math.cos(Math.PI / 6);
-      const at = f => (animal
-        ? [cx + Math.cos(-Math.PI / 2 + f * Math.PI * 2) * rr_, cy + Math.sin(-Math.PI / 2 + f * Math.PI * 2) * rr_]
-        : hexAt(cx, cy, rr_, 0.75 + f));        // 六角形は上の辺の中央から時計回り
-      const trace = (f0, f1) => {
-        ctx.beginPath();
-        const steps = Math.max(2, Math.ceil((f1 - f0) * 48));
-        for (let k = 0; k <= steps; k++) { const q = at(f0 + (f1 - f0) * k / steps); k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
-        ctx.stroke();
-      };
-      ctx.lineCap = 'butt'; ctx.lineJoin = 'round'; ctx.lineWidth = lw; ctx.strokeStyle = c[1];
+      const rr_ = rf + lw / 2;                                   // 線の中心：塗りの縁から線の太さの半分だけ外側（すきまなし）
+      const at = f => [cx + Math.cos(-Math.PI / 2 + f * Math.PI * 2) * rr_, cy + Math.sin(-Math.PI / 2 + f * Math.PI * 2) * rr_];
+      const trace = (f0, f1) => { ctx.beginPath(); ctx.arc(cx, cy, rr_, -Math.PI / 2 + f0 * Math.PI * 2, -Math.PI / 2 + f1 * Math.PI * 2); ctx.stroke(); };
+      ctx.lineCap = 'butt'; ctx.lineWidth = lw; ctx.strokeStyle = c[1];
       ctx.globalAlpha = 0.18; trace(0, 0.9999); ctx.globalAlpha = 1;
       if (frac > 0) trace(0, frac >= 1 ? 0.9999 : frac);
-      // 区切りの印
-      if (n > 1) {
-        ctx.strokeStyle = th.tile; ctx.lineWidth = Math.max(1, size / 22);
+      if (n > 1) {                                                // 区切りの印
+        ctx.strokeStyle = th.tile; ctx.lineWidth = Math.max(0.8, size / 20);
         for (let i = 0; i < n; i++) {
           const q = at(i / n), dx = q[0] - cx, dy = q[1] - cy, d = Math.hypot(dx, dy) || 1;
           ctx.beginPath(); ctx.moveTo(q[0] - dx / d * lw * 0.6, q[1] - dy / d * lw * 0.6); ctx.lineTo(q[0] + dx / d * lw * 0.6, q[1] + dy / d * lw * 0.6); ctx.stroke();

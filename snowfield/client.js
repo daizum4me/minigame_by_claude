@@ -327,7 +327,6 @@
       requestAnimationFrame(() => { board.resize(); board.reset(); });
     }
     if (app.mode === 'draw' && myTurn()) { setMode('play'); mapToast('あなたの手番です。お絵かきを終えました'); }
-    if (!myTurn()) app.tray = false;
     if (app.menu && !myP()) app.menu = false;
     toastNewLog(g);
     announce(g);
@@ -729,6 +728,7 @@
     const el = $('#hint');
     let t = '駒をドラッグで移動／駒クリックで行動／背景ドラッグで視点移動／ホイールで拡大縮小';
     if (app.mode === 'draw') t = 'ドラッグで描く。他の人の絵も編集できる';
+    else if (app.armed) t = `建設モード（${E.BUILD[app.armed].name}）：マップをクリックで置く／Escか右クリックで解除`;
     else if (board && board.state.drag) t = '離したマスへ移動します';
     el.textContent = t;
     $('#z-pct').textContent = Math.round((board ? board.state.cam.z : 1) * 100) + '%';
@@ -760,10 +760,10 @@
       const d = E.BUILD[k], c = th.card[k === 'road' ? 'storage' : k], isR = k === 'road';
       const lack = E.lacking(g, d.cost);
       const why = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は建てられません' : me.ap < d.ap ? '行動力が足りません' : lack ? E.ITEM_NAMES[lack] + 'が足りません' : '';
-      return `<div class="bcard" data-card="${k}" data-why="${esc(why)}" style="border-color:${isR ? th.roadBd : c[1]};background:${isR ? th.road : c[0]};color:${isR ? 'var(--text)' : c[2]};opacity:${why ? .55 : 1};cursor:${why ? 'not-allowed' : 'grab'}">
+      return `<div class="bcard ${app.armed === k ? 'armed' : ''}" data-card="${k}" data-why="${esc(why)}" style="border-color:${isR ? th.roadBd : c[1]};background:${isR ? th.road : c[0]};color:${isR ? 'var(--text)' : c[2]};opacity:${why ? .55 : 1};cursor:${why ? 'not-allowed' : 'grab'}">
         <b>${d.name}（${d.size}×${d.size}）</b><span style="color:${why ? th.redFg : 'inherit'}">${esc(why || costText(d))}</span></div>`;
     }).join('');
-    el.innerHTML = '<div class="small muted" style="line-height:1.5">カードを盤面へドラッグして置くと建設します。</div>' + cards;
+    el.innerHTML = '<div class="small muted" style="line-height:1.5">カードを盤面へドラッグして置くか、クリックで選んでマップをクリックすると建設します（選んだままなら続けて置けます）。</div>' + cards;
   }
   const recipeText = rc => `行動力${rc.ap}・${Object.keys(rc.in).map(k => E.ITEM_NAMES[k] + rc.in[k]).join('・')} → ${Object.keys(rc.out).map(k => E.ITEM_NAMES[k] + rc.out[k]).join('・')}`;
 
@@ -802,7 +802,7 @@
     entries.push({ label: '建てる', cost: canBuild ? 'カード一覧を左下に表示' : (myTurn() ? '復帰中は建てられません' : '自分の手番ではありません'), ok: canBuild, head, fn: () => { app.tray = 'build'; mapToast('左下に建設カードの一覧を出しました。盤面へドラッグして置いてください'); renderGame(); } });
     const hasShed = g.b.some(b => b.t === 'woodshed');
     const craftWhy = !myTurn() ? '自分の手番ではありません' : me.down === 2 ? '復帰中は作れません' : !hasShed ? '薪割り台を建てると作れます' : '';
-    entries.push({ label: '作る', cost: craftWhy || 'レシピ一覧を左下に表示', ok: !craftWhy, head: '', fn: () => { app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
+    entries.push({ label: '作る', cost: craftWhy || 'レシピ一覧を左下に表示', ok: !craftWhy, head: '', fn: () => { disarm(); app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
     void it;
     app.menuEntries = entries;
     const nm = here ? DESC[here.t].name + 'の上' : res ? ({ tree: '木', stone: '石', veg: '野菜' })[res.t] + 'のマス' : '雪原';
@@ -907,6 +907,8 @@
         tip.style.top = Math.max(4, d.vy - 44) + 'px';
       },
       onMove: (x, y) => act({ type: 'move', x, y }),
+      onBuild: (t, x, y) => act({ type: 'build', t, x, y }),
+      onDisarm: () => disarm(),
       onMoveFail: why => mapToast('移動できません：' + why, 'bad'),
       onPawn: () => { app.menu = !app.menu; renderMenu(app.game, TH()); },
       onBackground: b => {
@@ -921,6 +923,15 @@
     $('#z-out').onclick = () => board.zoom(1 / 1.2, board.state.W / 2, board.state.H / 2);
     $('#z-reset').onclick = () => board.reset();
   }
+
+  // 建設モード：カードをクリックして選ぶと、マップをクリックして連続で置ける（もう一度クリック・Esc・右クリックで解除）
+  function arm(t) {
+    app.armed = t;
+    if (board) board.setArmed(t);
+    if (app.game) { renderTray(app.game, TH()); renderHint(); }
+    if (t) mapToast(`${E.BUILD[t].name}：マップをクリックして置きます（続けて置けます。Escか右クリックで解除）`);
+  }
+  function disarm() { if (app.armed) arm(null); }
 
   // 建設カードのドラッグ
   function onCardMove(e) {
@@ -940,11 +951,12 @@
     $('#ghost').hidden = true;
     window.removeEventListener('pointermove', onCardMove);
     window.removeEventListener('pointerup', onCardUp);
+    // 動かさずに離した（クリック）なら、建設モードの切り替え
+    if (Math.hypot(e.clientX - c.sx, e.clientY - c.sy) < 6) { board.setPreview(null); app.armed === c.t ? disarm() : arm(c.t); return; }
     const pv = board.state.preview;
     board.setPreview(null);
     if (!pv) { mapToast('盤面の上にドロップしてください', 'bad'); return; }
-    act({ type: 'build', t: c.t, x: pv.x, y: pv.y });
-    app.tray = false;
+    act({ type: 'build', t: c.t, x: pv.x, y: pv.y });      // 一覧は、建設しても閉じない
     renderGame();
     void e;
   }
@@ -998,7 +1010,7 @@
 
     $('#btn-endturn').onclick = () => { app.menu = false; act({ type: 'end' }); renderMenu(app.game, TH()); };
     $('#btn-log').onclick = () => { const p = $('#log-pop'); p.hidden = !p.hidden; if (!p.hidden && app.game) p.innerHTML = logHtml(app.game); };
-    $('#btn-tray-close').onclick = () => { app.tray = false; renderGame(); };
+    $('#btn-tray-close').onclick = () => { app.tray = false; disarm(); renderGame(); };
     $('#btn-draw').onclick = () => {
       if (app.mode === 'draw') { setMode('play'); return; }
       if (myTurn()) { mapToast('お絵かきは、自分の手番以外で使えます', 'bad'); return; }
@@ -1081,7 +1093,7 @@
       e.preventDefault();
       const k = c.dataset.card, d = E.BUILD[k], th = TH();
       const w = Math.max(40, d.size * B.T * board.state.cam.z - 6);
-      app.card = { t: k, w };
+      app.card = { t: k, w, sx: e.clientX, sy: e.clientY };
       const gh = $('#ghost'), col = th.card[k === 'road' ? 'storage' : k];
       gh.textContent = d.name;
       gh.style.cssText = `width:${w}px;height:${w}px;background:${k === 'road' ? th.road : col[0]};border-color:${k === 'road' ? th.roadBd : col[1]};color:${k === 'road' ? th.text : col[2]}`;
@@ -1094,6 +1106,7 @@
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
       $('#rules').hidden = true;
+      disarm();
       if (app.menu) { app.menu = false; renderMenu(app.game, TH()); }
     });
 

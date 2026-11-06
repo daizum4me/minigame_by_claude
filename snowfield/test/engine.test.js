@@ -3,7 +3,14 @@ const assert = require('node:assert');
 const E = require('../shared/engine');
 
 const P3 = [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue' }));
-const mk = (seed = 1) => { const st = E.createGame({ seed, players: P3 }); st.items.veg = 0; return st; };   // 最初の野菜は別のテストで確かめる
+// 既存のテストは、焚き火が3×3（-1〜1）の配置で書いてあるので、fireDiv=1（人数と同じ辺）にして作る。人数による大きさは別のテストで確かめる
+const mk = (seed = 1) => {
+  const d = E.RULES.fireDiv; E.RULES.fireDiv = 1;
+  const st = E.createGame({ seed, players: P3 });
+  E.RULES.fireDiv = d;
+  st.items.veg = 0;   // 最初の野菜は別のテストで確かめる
+  return st;
+};
 const me = st => E.cur(st);
 // 建てられる場所を探す
 const spotFor = (st, t, skip = 0) => { let n = 0; for (let y = -8; y < 8; y++) for (let x = -8; x < 8; x++) if (!E.buildWhy(st, t, x, y) && n++ >= skip) return [x, y]; return null; };
@@ -14,10 +21,10 @@ function freeSpot(st) {
   return f;
 }
 
-test('ゲーム開始：焚き火3×3・動物3体・資源・初期値', () => {
+test('ゲーム開始：動物は人数+2体・資源・初期値', () => {
   const st = mk();
   const f = E.fireOf(st);
-  assert.deepStrictEqual([f.w, f.h, f.hp], [3, 3, null]);
+  assert.deepStrictEqual([f.w, f.h, f.hp], [3, 3, null]);   // mk は fireDiv=1
   assert.strictEqual(st.fire, 3);
   assert.strictEqual(st.animals.length, 5);   // 人数+2
   assert.ok(Object.keys(st.res).length > 20);
@@ -270,21 +277,41 @@ test('13ラウンドを終えるとクリア・最終猛吹雪は11〜13・予�
   assert.ok([1, 2, 3].every(r => seen[r] !== 'storm'));
 });
 
-test('天候の出現比率（晴れ3：雪2：吹雪1：雨2）と猛吹雪（4ラウンド以降 約10%）', () => {
+test('天候の出現比率（晴れ3：雪2：吹雪1：雨2）・準備期間に猛吹雪は出ない・最終猛吹雪は必ず猛吹雪', () => {
   const st = mk();
   const count = round => {
     const n = { clear: 0, snow: 0, blizzard: 0, rain: 0, storm: 0 };
     for (let i = 0; i < 20000; i++) n[E.rollWeather(st, round)]++;
     return n;
   };
-  const a = count(2);
-  assert.strictEqual(a.storm, 0);
   const tot = 20000;
-  [['clear', 3], ['snow', 2], ['blizzard', 1], ['rain', 2]].forEach(([k, w]) => assert.ok(Math.abs(a[k] / tot - w / 8) < 0.02, k));
-  const b = count(5);
-  assert.ok(Math.abs(b.storm / tot - 0.1) < 0.015);
-  assert.ok(Math.abs(b.clear / (tot - b.storm) - 3 / 8) < 0.02);
+  for (const round of [2, 5, 10]) {
+    const a = count(round);
+    assert.strictEqual(a.storm, 0, `ラウンド${round}`);
+    [['clear', 3], ['snow', 2], ['blizzard', 1], ['rain', 2]].forEach(([k, w]) => assert.ok(Math.abs(a[k] / tot - w / 8) < 0.02, k));
+  }
   assert.strictEqual(count(11).storm, tot);
+});
+
+test('焚き火の大きさ：一辺は 人数÷1.5 の切り上げ', () => {
+  const mkN = n => E.createGame({ seed: 3, players: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue' })) });
+  assert.deepStrictEqual([3, 4, 5].map(n => E.fireOf(mkN(n)).w), [2, 3, 4]);
+  for (const n of [3, 4, 5]) {
+    const st = mkN(n), f = E.fireOf(st);
+    assert.strictEqual(f.w, f.h);
+    // 全員が焚き火の上にいて、重なっていない
+    assert.ok(st.players.every(p => p.x >= f.x && p.x < f.x + f.w && p.y >= f.y && p.y < f.y + f.h));
+    assert.strictEqual(new Set(st.players.map(p => p.x + ',' + p.y)).size, n);
+  }
+});
+
+test('資源の比率：木3：石2：野菜2', () => {
+  const st = E.createGame({ seed: 11, players: P3 });
+  const c = { tree: 0, stone: 0, veg: 0 };
+  for (let seed = 1; seed <= 12; seed++) { const g = E.createGame({ seed, players: P3 }); for (const k of Object.keys(g.res)) c[g.res[k].t]++; }
+  const tot = c.tree + c.stone + c.veg;
+  assert.ok(Math.abs(c.tree / tot - 3 / 7) < 0.06 && Math.abs(c.stone / tot - 2 / 7) < 0.06 && Math.abs(c.veg / tot - 2 / 7) < 0.06, JSON.stringify(c));
+  void st;
 });
 
 test('捨てる投票：過半数の賛成で1個・反対が半数以上で否決・切断中は反対', () => {

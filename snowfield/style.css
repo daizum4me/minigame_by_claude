@@ -222,3 +222,9 @@ button.sw:disabled { opacity: .25; }
 @keyframes tut-pulse { 0%, 100% { box-shadow: 0 0 0 2px rgba(90,160,230,.25); } 50% { box-shadow: 0 0 0 9px rgba(90,160,230,.45); } }
 @media (prefers-reduced-motion: reduce) { .tut-hl, .tut-pulse { animation: none; } }
 .gt td:first-child { min-width: 5em; }
+
+.bcard.armed { box-shadow: 0 0 0 3px var(--accent); }
+
+.gi { color: var(--accent); } .gi svg { display: inline-block; }
+.rules-nav button .gi { margin-right: 6px; }
+.rules-body h3 .gi { margin-right: 8px; vertical-align: -5px; }
