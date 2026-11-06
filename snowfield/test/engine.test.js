@@ -19,7 +19,7 @@ test('ゲーム開始：焚き火3×3・動物3体・資源・初期値', () => 
   const f = E.fireOf(st);
   assert.deepStrictEqual([f.w, f.h, f.hp], [3, 3, null]);
   assert.strictEqual(st.fire, 3);
-  assert.strictEqual(st.animals.length, 3);
+  assert.strictEqual(st.animals.length, 5);   // 人数+2
   assert.ok(Object.keys(st.res).length > 20);
   assert.ok(st.players.every(p => p.temp === 10 && p.food === 10));
   assert.strictEqual(me(st).ap, 7);
@@ -329,14 +329,19 @@ test('お絵かき：手番外だけ・マスをまたぐ線は分割して保�
   assert.strictEqual(st.draw[sp[0] + ',' + sp[1]], undefined);
 });
 
-test('食べ物が最後まで足りるか：必要量の計算', () => {
+test('猛吹雪を生き延びるのに必要な食料', () => {
   const st = mk();
-  const n = E.foodNeed(st);
-  // 13ラウンド×3人。最初の人は13回、最後の人も13回の手番の終わりがあり、満腹度10から1以上残すには 13×3+1-10 = 30 ずつ
-  assert.strictEqual(n.need, 90);
-  assert.strictEqual(n.short, 90);
+  // 準備期間：最終猛吹雪の3ラウンド × 3人 × 3
+  assert.deepStrictEqual([E.foodNeed(st).need, E.foodNeed(st).short, E.foodNeed(st).turns], [27, 27, 3]);
   st.items.meat = 5; st.items.veg = 5;
   assert.strictEqual(E.foodNeed(st).have, 25);
-  doIt(st, { type: 'end' });
-  assert.strictEqual(E.foodNeed(st).turns, 13);
+  assert.strictEqual(E.foodNeed(st).short, 2);
+  // 最終猛吹雪の中：残りの手番の終わりごとに3、最後に1以上残す
+  st.round = 11;
+  const n = E.foodNeed(st);
+  assert.strictEqual(n.final, true);
+  assert.strictEqual(n.turns, 3);
+  assert.strictEqual(n.need, 3 * (3 * 3 + 1 - 10));
+  st.players[0].food = 2;
+  assert.strictEqual(E.foodNeed(st).need, (3 * 3 + 1 - 2) + 0 + 0);
 });

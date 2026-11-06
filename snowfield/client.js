@@ -410,13 +410,14 @@
       </div></div>`;
   }
 
-  // 生き延びるのに必要な食料
+  // 猛吹雪（最終3ラウンド）を生き延びるのに必要な食料
   function renderFoodNeed(g) {
     const el = $('#food-need'), f = E.foodNeed(g);
     if (g.phase !== 'play') { el.hidden = true; return; }
     el.hidden = false;
     const meats = Math.ceil(f.short / R.eat.meat);
-    el.innerHTML = `<b>生き延びるのに必要な食料</b><div>あと<b>${f.need}</b>（満腹度ぶん。1人あと${f.turns}回の手番の終わりごとに−${R.hunger}）</div>
+    const what = f.final ? `残り${f.turns}回の手番の終わりごとに−${R.hunger}。いまの満腹度を引いた分` : `${g.players.length}人 × ${R.finalRounds}ラウンド × −${R.hunger}`;
+    el.innerHTML = `<b>最終猛吹雪を生き延びるのに必要な食料</b><div><b>${f.need}</b>（満腹度ぶん。${what}）</div>
       <div>持ち物の食料：<b>${f.have}</b>　${f.short > 0 ? `<span style="color:var(--redFg);font-weight:700">不足 ${f.short}（肉なら約${meats}個）</span>` : '<span style="color:var(--ok);font-weight:700">足りています</span>'}</div>`;
   }
 
@@ -811,10 +812,10 @@
         }
         if (info.res) {
           const r = info.res, nm = ({ tree: '樹木（木材）', stone: '石（石材）', veg: '野菜' })[r.t];
-          html += `<div class="tn">${nm}</div><div class="tt">体力 ${r.hp} / ${r.max || R.resHpMax}（破線1本＝体力1。集めるたびに1減る）</div>`;
+          html += `<div class="tn">${nm}</div><div class="tt">体力 ${r.hp} / ${r.max || R.resHpMax}（外側の線の区切り1つ＝体力1。集めるたびに1減る）</div>`;
         }
         if (info.animal) html += `<div class="tn">動物</div><div class="tt">体力 ${info.animal.hp} / ${info.animal.max || R.animalHpMax}。倒すと肉が${R.meatMin}〜${R.meatMax}個</div>`;
-        if (info.plant) html += `<div class="tn">${info.plant.t === 'veg' ? '野菜' : '樹木'}の苗</div><div class="tt">あと${info.plant.left}ラウンドで育つ（破線1本＝あと1ラウンド）</div>`;
+        if (info.plant) html += `<div class="tn">${info.plant.t === 'veg' ? '野菜' : '樹木'}の苗</div><div class="tt">あと${info.plant.left}ラウンドで育つ（外側の線の区切り1つ＝あと1ラウンド）</div>`;
         tip.innerHTML = html;
         const wr = $('#mapwrap').getBoundingClientRect();
         tip.hidden = false;

@@ -24,9 +24,10 @@
     moveRange: 1,                       // 建物（道を含む）からこのマス以内に移動できる
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
-    resHpMin: 3, resHpMax: 7, resChance: 0.15, genRadius: 8,
+    resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
     sapChance: 0.5,
-    animals: 3, animalHpMin: 3, animalHpMax: 5, meatMin: 1, meatMax: 7,
+    animalsExtra: 2, animalHpMin: 3,   // 動物の数 = 人数 + animalsExtra
+     animalHpMax: 5, meatMin: 1, meatMax: 7,
     eat: { meat: 3, veg: 2 },
     ap: { warm: 2, stoke: 1, collect: 1, attack: 1, plant: 1 },
     capBase: 10, capPerPlayer: 2, capPerStorage: 10,
@@ -208,7 +209,7 @@
       id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
       x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0,
     }));
-    for (let i = 0; i < RULES.animals; i++) spawnAnimal(st);
+    for (let i = 0; i < opts.players.length + RULES.animalsExtra; i++) spawnAnimal(st);
     st.weather = rollWeather(st, 1);
     st.next = rollWeather(st, 2);
     log(st, `ゲーム開始。最初の天候は${WEATHER_NAMES[st.weather]}`);
@@ -650,16 +651,23 @@
     }
   }
 
-  // 最後まで生き延びるのに必要な食料（満腹度ぶん）。手番の終わりごとに3減り、0になると行動不能になるので、最後に1以上残るぶん
+  // 最終猛吹雪（最終3ラウンド）を生き延びるのに必要な食料（満腹度ぶん）。手番の終わりごとに3減り、0になると行動不能になる
+  //  ・準備期間：最終猛吹雪の手番の終わりの回数ぶん（人数×3ラウンド×3）。そのときの満腹度は見込まない
+  //  ・最終猛吹雪の中：これから迎える手番の終わりごとに、最後に1以上残るぶん（いまの満腹度を引く）
   function foodNeed(st) {
-    const out = { need: 0, have: 0, short: 0, turns: 0 };
+    const out = { need: 0, have: 0, short: 0, turns: 0, final: st.round > RULES.prepRounds };
     if (st.phase !== 'play') return out;
     out.have = st.items.meat * RULES.eat.meat + st.items.veg * RULES.eat.veg;
-    st.players.forEach((p, i) => {
-      const left = (TOTAL_ROUNDS - st.round) + (i >= st.turn ? 1 : 0);   // これから迎える手番の終わりの回数
-      out.need += Math.max(0, left * RULES.hunger + 1 - p.food);
-      if (i === st.turn) out.turns = left;
-    });
+    if (!out.final) {
+      out.turns = RULES.finalRounds;
+      out.need = st.players.length * RULES.finalRounds * RULES.hunger;
+    } else {
+      st.players.forEach((p, i) => {
+        const left = (TOTAL_ROUNDS - st.round) + (i >= st.turn ? 1 : 0);
+        out.need += Math.max(0, left * RULES.hunger + 1 - p.food);
+        if (i === st.turn) out.turns = left;
+      });
+    }
     out.short = Math.max(0, out.need - out.have);
     return out;
   }

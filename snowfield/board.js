@@ -469,30 +469,38 @@
       const t = (((f % 1) + 1) % 1) * 6, i = Math.floor(t), u = t - i, a = Math.PI / 3 * i, b = Math.PI / 3 * (i + 1);
       return [cx + Math.cos(a) * r * (1 - u) + Math.cos(b) * r * u, cy + Math.sin(a) * r * (1 - u) + Math.sin(b) * r * u];
     }
-    // 資源・苗：六角形。外側の破線1本が、資源は体力1、苗は「育つまであと1ラウンド」（なくなった分はうすく残す）。動物は円
+    // 資源・苗：六角形。動物は円。外側の線は塗りにぴったり接していて、ひと続きの線を区切りの印で等分する。
+    // 資源は区切り1つが体力1、苗は「育つまであと1ラウンド」（なくなった分はうすく残す）
     function entity(x, y, size, kind, badge, v, th) {
       const c = th.res[kind], cx = x + size / 2, cy = y + size / 2, animal = kind === 'animal';
+      const lw = Math.max(2, size / 8), rf = size / 2 * (animal ? 1 : 1.08);
       ctx.fillStyle = c[0];
-      if (animal) { ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, 7); } else hexPath(cx, cy, size / 2 * 1.08);
+      if (animal) { ctx.beginPath(); ctx.arc(cx, cy, rf, 0, 7); } else hexPath(cx, cy, rf);
       ctx.fill();
       icon(ctx, kind, cx, cy, size * 0.57, c[2]);
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      if (v && v.max) {
-        const n = v.max;
-        ctx.lineWidth = Math.max(1.6, size / 9); ctx.strokeStyle = c[1];
+      if (!v || !v.max) return;
+      const n = v.max, frac = Math.max(0, Math.min(1, v.hp / n));
+      // 線の中心の位置：塗りの縁から線の太さの半分だけ外側（すきまなし）
+      const rr_ = animal ? rf + lw / 2 : (rf * Math.cos(Math.PI / 6) + lw / 2) / Math.cos(Math.PI / 6);
+      const at = f => (animal
+        ? [cx + Math.cos(-Math.PI / 2 + f * Math.PI * 2) * rr_, cy + Math.sin(-Math.PI / 2 + f * Math.PI * 2) * rr_]
+        : hexAt(cx, cy, rr_, 0.75 + f));        // 六角形は上の辺の中央から時計回り
+      const trace = (f0, f1) => {
+        ctx.beginPath();
+        const steps = Math.max(2, Math.ceil((f1 - f0) * 48));
+        for (let k = 0; k <= steps; k++) { const q = at(f0 + (f1 - f0) * k / steps); k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
+        ctx.stroke();
+      };
+      ctx.lineCap = 'butt'; ctx.lineJoin = 'round'; ctx.lineWidth = lw; ctx.strokeStyle = c[1];
+      ctx.globalAlpha = 0.18; trace(0, 0.9999); ctx.globalAlpha = 1;
+      if (frac > 0) trace(0, frac >= 1 ? 0.9999 : frac);
+      // 区切りの印
+      if (n > 1) {
+        ctx.strokeStyle = th.tile; ctx.lineWidth = Math.max(1, size / 22);
         for (let i = 0; i < n; i++) {
-          ctx.globalAlpha = i < v.hp ? 1 : 0.18;
-          ctx.beginPath();
-          if (animal) {
-            const step = Math.PI * 2 / n, span = step * 0.62, a0 = -Math.PI / 2 + i * step + (step - span) / 2;
-            ctx.arc(cx, cy, size / 2 + size * 0.07, a0, a0 + span);
-          } else {
-            const R = size / 2 * 1.08 + size * 0.1, f0 = (i + 0.19) / n, f1 = (i + 0.81) / n;
-            for (let k = 0; k <= 8; k++) { const q = hexAt(cx, cy, R, f0 + (f1 - f0) * k / 8); k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
-          }
-          ctx.stroke();
+          const q = at(i / n), dx = q[0] - cx, dy = q[1] - cy, d = Math.hypot(dx, dy) || 1;
+          ctx.beginPath(); ctx.moveTo(q[0] - dx / d * lw * 0.6, q[1] - dy / d * lw * 0.6); ctx.lineTo(q[0] + dx / d * lw * 0.6, q[1] + dy / d * lw * 0.6); ctx.stroke();
         }
-        ctx.globalAlpha = 1;
       }
     }
 
