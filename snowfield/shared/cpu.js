@@ -18,6 +18,7 @@
 
   const FIREWOOD_MAX = 8;   // 薪をこれ以上は貯めない（持ち物の枠がもったいない）
   const FUEL_RESERVE = 2;   // 焚き火を保つために残しておく薪の数
+  const SWAP_GAP = 2;       // 持ち物を入れ替えるのは、価値がこれ以上違うときだけ（往復を防ぐ）
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
@@ -105,7 +106,8 @@
         const w = worth(st, k, cnt, T);
         if (!low || w < low.w) low = { k, w };
       }
-      if (!low || low.w >= worth(st, pend.k, cnt, T)) break;
+      // 雪は集めるついでに付いてくるだけなので入れ替えない。ほかも、価値の差が小さいと入れ替えが往復するので、差が大きいときだけ
+      if (pend.k === 'snow' || !low || low.w + SWAP_GAP > worth(st, pend.k, cnt, T)) break;
       cnt[low.k]--; cnt[pend.k]++;
       drop[low.k] = (drop[low.k] || 0) + 1;
     }
@@ -115,7 +117,7 @@
   function canSwap(st, k, T) {
     if (E.room(st) >= 1) return true;
     const cnt = st.items, w = worth(st, k, cnt, T);
-    return E.ITEMS.some(o => o !== k && cnt[o] > 0 && worth(st, o, cnt, T) < w);
+    return E.ITEMS.some(o => o !== k && cnt[o] > 0 && worth(st, o, cnt, T) + SWAP_GAP <= w);
   }
 
   function decide(st, pid, mem) {
