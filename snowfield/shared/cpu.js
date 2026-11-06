@@ -17,6 +17,7 @@
   'use strict';
 
   const FIREWOOD_MAX = 8;   // 薪をこれ以上は貯めない（持ち物の枠がもったいない）
+  const FUEL_RESERVE = 2;   // 焚き火を保つために残しておく薪の数
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
@@ -117,7 +118,7 @@
   function decide(st, pid, mem) {
     const p = E.pl(st, pid), it = st.items, R = E.RULES, nP = st.players.length;
     const tk = st.round + ':' + st.turn;
-    if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; mem.noTrip = false; mem.tripped = {}; mem.shedTrip = false; }
+    if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; mem.noTrip = false; mem.tripped = {}; mem.shedTrip = false; mem.repairTrip = false; }
     // 上限を超えたアイテムの扱いを選ぶ
     const pend = st.pending && st.pending[0];
     if (pend && pend.pid === pid) return { type: 'overflow', drop: overflowDrop(st, pend) };
@@ -159,16 +160,51 @@
       return best;
     };
     const lowest = Math.min(...st.players.map(q => q.temp));
-    const wantFire = Math.max(T.fire, lowest <= 4 ? 3 : 0, p.temp <= 5 ? 2 : 0);
-    const stoke = () => nearFire && p.ap >= R.ap.stoke && fuelOf(st) > 0 && st.fire < Math.min(R.fireMax, wantFire);
+    // 焚き火が消えたまま手番が続いている（3手番続くと敗北）：最優先で火を点ける
+    const fireAlert = st.fire <= 0 && st.fireOut >= 1;
+    const wantFire = Math.max(T.fire, lowest <= 4 ? 3 : 0, p.temp <= 5 ? 2 : 0, fireAlert ? 1 : 0);
+    // 焚き火のそば（歩いて体温が減らない所を優先）
+    const tileNear = pred => {
+      let best = null;
+      for (const [k, d] of map) {
+        const [x, y] = E.parseKey(k);
+        if (!pred({ x, y })) continue;
+        if (!best || d < best.d) best = { x, y, d };
+      }
+      return best;
+    };
+    if (fireAlert && p.ap >= R.ap.stoke && fuelOf(st) > 0 && !nearFire && canMove) {
+      const t = tileNear(q => E.nearFire(st, q));
+      if (t) return go(t.x, t.y, 'fire');
+    }
+    // 焚き火を消さないための薪（3手番連続で消えると敗北）は、温まるために使い切らない（体温がとても低いときと、消えかけのときは使う）
+    const fuelFloor = fireAlert || p.temp <= 3 ? 0 : FUEL_RESERVE;
+    const stoke = () => nearFire && p.ap >= R.ap.stoke && fuelOf(st) > fuelFloor && st.fire < Math.min(R.fireMax, wantFire);
 
     // 火力：必要なぶんだけ焚べる
     if (stoke()) return { type: 'stoke' };
+    // 猛吹雪：避難所（倉庫）にいて体温が低ければ、焚き火へ温まりに行く
+    if (st.weather === 'storm' && here.kind === 'warm' && st.fire >= 2 && p.temp <= 7 && p.ap >= 3 && canMove && !mem.noTrip) {
+      const t = tileNear(q => E.where(st, q).kind === 'fire' && E.moveCost(map.get(E.key(q.x, q.y))) === 0);
+      if (t) return go(t.x, t.y, 'warmup');
+    }
     // 焚き火の上で、温まる効果が大きいなら先に温まっておく（遠出の体温の備え）
-    if (warmHere >= 2 && p.ap >= R.ap.warm + 1 && p.temp <= R.maxTemp - Math.min(3, warmHere)) return { type: 'warm' };
+    if (warmHere >= 2 && p.ap >= R.ap.warm + 1 && p.temp <= (st.weather === 'storm' ? 7 : R.maxTemp - Math.min(3, warmHere))) return { type: 'warm' };
 
-    // 倉庫（共有アイテムの上限+10）：人数が多いとき
-    if (!fin && E.count(st, 'storage') < 1 && it.wood >= 8 && it.stone >= 4 && p.ap >= E.BUILD.storage.ap && nP >= 4) {
+    // 猛吹雪のあいだは、防寒施設のHPが毎手番1減るので、早めに直し続ける（HPが半分以下になると防寒が消える）
+    if (st.weather === 'storm' && it.stone >= 1) {
+      for (const b of st.b) {
+        if (b.hp === null || b.hp > b.max - 2 || (b.t !== 'storage' && b.t !== 'igloo') || p.ap < b.w) continue;
+        if (E.nearB(b, p)) return { type: 'repair', id: b.id };
+        if (canMove && !mem.noTrip && !mem.repairTrip) {
+          const t = tileNear(q => E.nearB(b, q) && E.moveCost(map.get(E.key(q.x, q.y))) <= 1);
+          if (t) { mem.repairTrip = true; return go(t.x, t.y, 'repair'); }
+        }
+      }
+    }
+
+    // 倉庫（共有アイテムの上限+10）
+    if (!fin && E.count(st, 'storage') < 1 && it.wood >= 8 && it.stone >= 4 && p.ap >= E.BUILD.storage.ap) {
       const s = findSpot(st, 'storage');
       if (s) return { type: 'build', t: 'storage', x: s.x, y: s.y };
     }
@@ -179,7 +215,7 @@
       const sp = findSpot(st, 'woodshed');
       if (sp) return { type: 'build', t: 'woodshed', x: sp.x, y: sp.y };
     }
-    const keepWood = nP >= 4 && E.count(st, 'storage') < 1 && it.stone >= 3 && !fin ? 4 : 0;
+    const keepWood = E.count(st, 'storage') < 1 && it.stone >= 3 && !fin ? 4 : 0;
     if (hasShed && it.wood > keepWood && it.firewood < FIREWOOD_MAX && p.ap >= E.RECIPES.firewood.ap && E.room(st) >= 1) {
       if (E.nearStation(st, p, 'woodshed')) return { type: 'craft', recipe: 'firewood' };
       // 薪割り台のそばへ行く（暖かい場所を優先。1手番に1回だけ）
@@ -196,7 +232,8 @@
     }
 
     // 目当ての価値
-    const stoneWant = (E.count(st, 'storage') < 1 && nP >= 4 && it.stone < 4);   // 倉庫（上限+10）のため
+    // 石材：倉庫（避難所・上限+10）のため（3人では、倉庫のために石材を追うと負担のほうが大きいので、4人以上）。倉庫があれば、猛吹雪の修理のために貯める
+    const stoneWant = (nP >= 4 && E.count(st, 'storage') < 1 && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
     const needSnow = it.snow < 2;
     const resValue = r => {
       const item = E.RES_ITEM[r.t];
@@ -312,7 +349,12 @@
       if (w) { mem.noTrip = true; return go(w.x, w.y, 'home'); }   // 戻ったら、この手番ではもう出かけない
     }
     if (stoke()) return { type: 'stoke' };
-    if (p.ap >= R.ap.warm && warmHere > 0 && p.temp <= R.maxTemp - Math.min(2, warmHere)) return { type: 'warm' };
+    if (p.ap >= R.ap.warm && warmHere >= (here.kind === 'warm' ? 1 : 2) && p.temp <= R.maxTemp - Math.min(2, warmHere)) return { type: 'warm' };
+    // 猛吹雪：温まってから、防寒が有効な建物の上へ移る（焚き火の上は−4、防寒の中は−3）。歩いて体温が減らない所だけ
+    if (st.weather === 'storm' && here.kind === 'fire' && canMove && p.ap >= 0) {
+      const t = tileNear(q => E.where(st, q).kind === 'warm' && E.moveCost(map.get(E.key(q.x, q.y))) === 0);
+      if (t) { mem.noTrip = true; return go(t.x, t.y, 'shelter'); }
+    }
     return end;
   }
 

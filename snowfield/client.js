@@ -395,6 +395,7 @@
       <div class="ep-row"><span class="k">満腹度</span><span class="v ${cls(e.food, 0)}">${e.food0} → ${e.food}</span><span class="n">−${e.hunger}</span></div>
       <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}）</span></div>
       <div class="ep-row"><span class="k">火力</span><span class="v">${e.fire0} → ${e.fire}</span><span class="n">−${e.fireLoss}</span></div>
+      ${e.fireOutNext ? `<div class="${e.fireLose ? 'warnbox' : 'ep-row bad'}">${e.fireLose ? '焚き火が消えたまま手番を終えると、敗北します！ 先に焚べましょう' : `焚き火が消えたままです（終えると ${e.fireOutNext} / ${R.fireOutLimit}）`}</div>` : ''}
       ${e.collapse ? `<div class="warnbox">${e.temp <= 0 && e.food <= 0 ? '体温と満腹度が0になり' : e.temp <= 0 ? '体温が0になり' : '満腹度が0になり'}、行動不能になります！</div>` : ''}`;
   }
 
@@ -463,7 +464,7 @@
     el.hidden = !show;
     if (show) {
       const pj = E.endProjection(g, app.me);
-      const warn = pj && pj.collapse ? '<span style="color:var(--redFg);font-weight:700">このまま終えると行動不能になります！ 食べる・温まる・焚き火へ移動を先に</span>' : '';
+      const warn = pj && pj.fireLose ? '<span style="color:var(--redFg);font-weight:700">焚き火が消えたまま終えると敗北します！ 先に焚べましょう</span>' : (pj && pj.collapse ? '<span style="color:var(--redFg);font-weight:700">このまま終えると行動不能になります！ 食べる・温まる・焚き火へ移動を先に</span>' : '');
       el.innerHTML = '<b>行動力がなくなりました</b><span>手番を終えますか？（移動や食べるは、まだできます）</span>' + warn + '<div><button class="primary" data-endpop-end>手番を終える</button><button data-endpop-close>あとで</button></div>';
       SnowSound.play('warn');
     }
@@ -606,6 +607,10 @@
     const fore = $('#chip-fore');
     fore.hidden = !E.hasTower(g);
     fore.textContent = g.next ? `予報：次は${E.WEATHER_NAMES[g.next]}` : '予報：最後のラウンド';
+    const fc = $('#chip-fire');
+    fc.hidden = !(g.phase === 'play' && (g.fireOut > 0 || g.fire <= 0));
+    fc.textContent = `焚き火が消えています ${g.fireOut} / ${R.fireOutLimit}`;
+    fc.title = `火力0のまま手番が終わるのが${R.fireOutLimit}回続くと敗北です。薪を焚べて火を点けましょう`;
     const c = E.cur(g);
     $('#chip-turn').dataset.base = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー');
     $('#weather').innerHTML = `現在の天候：<b>${E.WEATHER_NAMES[g.weather]}</b>（${FX[g.weather]}）`;
@@ -848,7 +853,7 @@
     if (g.phase === 'play' || app.resultHidden) { el.hidden = true; return; }
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
-    $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`;
+    $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
     const S = g.stats, cols = [['ap', '行動力', '使った行動力'], ['collect', '集めた', '集めた回数'], ['kills', '狩り', '倒した動物'], ['built', '建てた', '建てた建物'], ['crafted', '作った', '作った回数'], ['stoked', '焚べた', '焚べた回数'], ['planted', '植えた', '植えた苗'], ['repaired', '直した', '直した回数'], ['eaten', '食べた', '食べて増えた満腹度'], ['warmed', '温まり', '温まって増えた体温'], ['downs', '行動不能', '行動不能になった回数']];
     const top = {};
     cols.forEach(([k]) => { const m = Math.max(...g.players.map(p => S.players[p.id][k])); top[k] = k === 'downs' ? -1 : m; });

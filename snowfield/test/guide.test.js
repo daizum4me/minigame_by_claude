@@ -23,7 +23,8 @@ test('ルールの全ページが作れて、数値がルールに合ってい�
   assert.ok(all.includes(`${E.RULES.turnLimitMs / 1000}秒`));                                           // 制限時間
   for (const k of Object.keys(E.BUILD)) assert.ok(all.includes(E.BUILD[k].name), E.BUILD[k].name);   // すべての建物の説明がある
   assert.ok(all.includes('3人＝2×2') && all.includes('5人＝4×4'));                                       // 焚き火の大きさ
-  assert.ok(all.includes('木3：石2：野菜2'));                                                             // 資源の比率
+  assert.ok(all.includes('木3：石2：野菜2'));
+  assert.ok(all.includes(`${E.RULES.fireOutLimit}手番連続`));                                            // 焚き火が消えたままの敗北                                                             // 資源の比率
 });
 
 test('ルールのアイコンは、すべて board.js の絵として用意されている', () => {
