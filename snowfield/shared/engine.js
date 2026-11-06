@@ -37,7 +37,7 @@
     resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
     sapChance: 0.5,
     fishPerPlayer: 1, fishHpMin: 1, fishHpMax: 3, fishMin: 1, fishMax: 3, fishRange: 3,   // 魚：川にいる。数 = 人数×fishPerPlayer
-    riverCell: 12, riverHalf: 0.7, riverClear: 4,   // 川：雪原にはない・橋がないと移動も建設もできない（焚き火の周り riverClear マスは川にならない）
+    riverPeriod: 40, riverWidth: 2, riverWobble: 1.6, riverWave: 40, riverClear: 4,   // 川：雪原にはない・橋がないと移動も建設もできない（焚き火の周り riverClear マスは川にならない）
     animalsExtra: 2, animalHpMin: 3,   // 動物の数 = 人数 + animalsExtra
      animalHpMax: 5, meatMin: 1, meatMax: 7,
     eat: { meat: 3, fish: 3, veg: 2, steak: 5, grilled: 5, soup: 2 },
@@ -187,20 +187,21 @@
 
   // ---------- 川 ----------
   // 川のマス（座標とシードだけで決まる）。雪原ではないので、移動も建設もできない。魚がいる
-  const smooth = t => t * t * (3 - 2 * t);
-  function valueNoise(seed, x, y, L, salt) {
-    const gx = Math.floor(x / L), gy = Math.floor(y / L), fx = smooth(x / L - gx), fy = smooth(y / L - gy);
-    const a = hash(seed, gx, gy, salt), b = hash(seed, gx + 1, gy, salt), c = hash(seed, gx, gy + 1, salt), d = hash(seed, gx + 1, gy + 1, salt);
-    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+  // 川のマス：ゆるく曲がった、太さ riverWidth マスほどの川が、まっすぐ（縦か横。ゲームごとに決まる）に、riverPeriod マスおきに流れる。
+  // 川の位置・曲がり方は、座標とシードだけで決まる（保存しなくてよい）。焚き火の近くは、川にならない
+  function riverCenter(seed, k, v) {
+    const P = RULES.riverPeriod, margin = RULES.riverClear + RULES.riverWobble + 1;
+    // 川の位置：焚き火から margin マスほどはなれた所（最初に生成される範囲に、川が少し入る）。そこから P マスおきに、もう1本ずつ
+    const base = k * P + margin + 0.6 * hash(seed, 0, 0, 64) + (k === 0 ? 0 : (hash(seed, k, 0, 61) - 0.5) * 8);
+    const ph = hash(seed, k, 1, 62) * Math.PI * 2, ph2 = hash(seed, k, 2, 63) * Math.PI * 2;
+    return base + RULES.riverWobble * (0.8 * Math.sin(v * 2 * Math.PI / RULES.riverWave + ph) + 0.2 * Math.sin(v * 2 * Math.PI / (RULES.riverWave * 0.37) + ph2));
   }
-  const riverNoise = (seed, x, y) => 0.75 * valueNoise(seed, x, y, RULES.riverCell, 50) + 0.25 * valueNoise(seed, x, y, RULES.riverCell / 2.5, 51);
-  // 川のマス：ノイズの値がちょうど中間（0.5）になる「等高線」が川になる。勾配で割るので、幅が一定で、途切れずにつながる
   function isRiver(st, x, y) {
     if (Math.abs(x) <= RULES.riverClear && Math.abs(y) <= RULES.riverClear) return false;
-    const v = riverNoise(st.seed, x, y) - 0.5;
-    if (Math.abs(v) > 0.12) return false;
-    const gx = (riverNoise(st.seed, x + 1, y) - riverNoise(st.seed, x - 1, y)) / 2, gy = (riverNoise(st.seed, x, y + 1) - riverNoise(st.seed, x, y - 1)) / 2;
-    return Math.abs(v) / Math.max(Math.hypot(gx, gy), 0.012) < RULES.riverHalf;
+    const vertical = hash(st.seed, 0, 0, 60) < 0.5, u = vertical ? x : y, v = vertical ? y : x;
+    const k0 = Math.floor(u / RULES.riverPeriod);
+    for (let k = k0 - 1; k <= k0 + 1; k++) if (Math.abs(u - riverCenter(st.seed, k, v)) < RULES.riverWidth / 2) return true;
+    return false;
   }
   // 橋がかかった川のマスは、道と同じように歩ける
   const bridgeAt = (st, x, y) => { const b = bAt(st, x, y); return b && b.t === 'bridge' ? b : null; };
