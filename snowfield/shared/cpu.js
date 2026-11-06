@@ -16,7 +16,7 @@
   // これを超えた分は「余り」として捨ててよい
   const SURPLUS = { snow: 6, sapling: 2, stone: 9, veg: 9, wood: 11, meat: 10 };
   const WANT = { wood: 10, stone: 8, veg: 8 };
-  const MAX_ROADS = 2;      // 1手番に道を建てる数の上限
+  const MAX_ROADS = 3;      // 1手番に道を建てる数の上限
 
   const FOOD_STOCK = 4;       // 1人あたりこれだけ（満腹度ぶん）の食料を持っていたい
   const surplus = (st, k) => st.items[k] > SURPLUS[k];
@@ -41,7 +41,7 @@
     return best;
   }
 
-  // 範囲の外にある資源・動物のうち、建物にいちばん近いものへ向かって道を置く場所
+  // 範囲の外にある資源・動物のうち、建物にいちばん近いものへ向かって道を置く場所（道は既存の建物に隣接する場所にだけ置ける）
   function roadToward(st, p, needFood) {
     const it = st.items, gapOf = (x, y) => Math.min(...st.b.map(b => { const g = E.rectGap(b, x, y); return Math.max(g.dx, g.dy); }));
     const targets = [];
@@ -50,20 +50,17 @@
       if (it[item] < WANT[item] && !E.reach(st, x, y) && (!needFood || item === 'veg')) targets.push([x, y]);
     }
     if (it.meat < 5 || needFood) for (const a of st.animals) if (!E.reach(st, a.x, a.y)) targets.push([a.x, a.y]);
-    const near = targets.filter(([x, y]) => gapOf(x, y) <= 6);   // 道1本で届くものだけ
+    const near = targets.filter(([x, y]) => gapOf(x, y) <= 4);   // 道を数本つなげて届くものだけ
     if (!near.length) return null;
-    targets.length = 0; targets.push(...near);
-    targets.sort((u, v) => gapOf(u[0], u[1]) - gapOf(v[0], v[1]));
-    const [tx, ty] = targets[0];
+    near.sort((u, v) => gapOf(u[0], u[1]) - gapOf(v[0], v[1]));
+    const [tx, ty] = near[0];
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const b of st.b) { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x + b.w - 1); y0 = Math.min(y0, b.y); y1 = Math.max(y1, b.y + b.h - 1); }
     let best = null;
-    for (let y = y0 - 5; y <= y1 + 5; y++) {
-      for (let x = x0 - 5; x <= x1 + 5; x++) {
-        if (E.reach(st, x, y) || E.buildWhy(st, 'road', x, y)) continue;
-        const g = gapOf(x, y);
-        if (g > 5) continue;
-        const d = Math.max(Math.abs(x - tx), Math.abs(y - ty)) * 10 + (5 - g);
+    for (let y = y0 - 2; y <= y1 + 2; y++) {
+      for (let x = x0 - 2; x <= x1 + 2; x++) {
+        if (E.buildWhy(st, 'road', x, y)) continue;
+        const d = Math.max(Math.abs(x - tx), Math.abs(y - ty)) * 10 + Math.abs(x - tx) + Math.abs(y - ty);
         if (!best || d < best.d) best = { x, y, d };
       }
     }
@@ -177,7 +174,7 @@
       if (best && (best.x !== p.x || best.y !== p.y)) return go(best.x, best.y);
     }
 
-    // 移動できる範囲に目当てがない：道を伸ばして範囲を広げる（道から2マス以内に移動できる）
+    // 移動できる範囲に目当てがない：道を伸ばして範囲を広げる（道から1マス以内に移動できる）
     if (p.ap >= E.BUILD.road.ap && it.snow >= 1 && mem.roads < MAX_ROADS) {
       const spot = roadToward(st, p, needFood);
       if (spot) { mem.roads++; return { type: 'build', t: 'road', x: spot.x, y: spot.y }; }

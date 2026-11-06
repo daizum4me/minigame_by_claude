@@ -361,9 +361,9 @@
       // 資源・動物・苗・駒（同じマスに重なるときは位置をずらす）
       const tiles = new Map();
       const put = (x, y, v) => { if (!vis(x, y)) return; const k = E.key(x, y); (tiles.get(k) || tiles.set(k, []).get(k)).push(v); };
-      for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, badge: String(g.res[k].hp) }); }
+      for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, frac: g.res[k].hp / (g.res[k].max || E.RULES.resHpMax) }); }
       for (const p of g.plants) put(p.x, p.y, { kind: 'plant', badge: '苗' });
-      for (const a of g.animals) put(a.x, a.y, { kind: 'animal', badge: String(a.hp) });
+      for (const a of g.animals) put(a.x, a.y, { kind: 'animal', frac: a.hp / (a.max || E.RULES.animalHpMax) });
       g.players.forEach(p => put(p.x, p.y, { kind: 'pawn', p }));
       for (const [k, list] of tiles) {
         const [tx, ty] = E.parseKey(k), n = list.length;
@@ -379,7 +379,7 @@
             ctx.globalAlpha = 1;
           } else {
             const [ax, ay] = n === 1 ? [11, 11] : (entIdx++ === 0 ? [T - 33, 3] : [3, 3]);
-            entity(ox + ax * z, oy + ay * z, 30 * z, v.kind, v.badge, th);
+            entity(ox + ax * z, oy + ay * z, 30 * z, v.kind, v.badge, v.frac, th);
           }
         }
       }
@@ -410,19 +410,25 @@
       text(String(no), x + size / 2, y + size / 2 + 1, size * 0.5, '#fff', 700, 'center');
       if (down) { ctx.fillStyle = 'rgba(15,22,32,.6)'; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2 - 1, 0, 7); ctx.fill(); text('zz', x + size / 2, y + size / 2, size * 0.42, '#fff', 700, 'center'); }
     }
-    function entity(x, y, size, kind, badge, th) {
+    // 資源・動物：円の下に体力のゲージ（苗は「苗」の札）
+    function entity(x, y, size, kind, badge, frac, th) {
       const c = th.res[kind];
       ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, 7); ctx.fill();
       ctx.strokeStyle = c[1]; ctx.lineWidth = Math.max(1, size / 15); ctx.stroke();
       icon(ctx, kind, x + size / 2, y + size / 2, size * 0.57, c[2]);
-      const bw = Math.max(16, ctx.measureText(badge).width + 6) * (size / 30);
-      ctx.font = `700 ${size * 0.4}px ${FONT}`;
-      const w = Math.max(size * 0.53, ctx.measureText(badge).width + size * 0.2);
-      const bx = x + size - w + size * 0.23, by = y + size - size * 0.3;
-      ctx.fillStyle = '#0f1620'; rr(ctx, bx, by, w, size * 0.53, size * 0.27); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.stroke();
-      text(badge, bx + w / 2, by + size * 0.28, size * 0.4, '#fff', 700, 'center');
-      void bw;
+      if (frac != null) {
+        const w = size * 0.86, h = size * 0.2, gx = x + (size - w) / 2, gy = y + size - h * 0.6;
+        ctx.fillStyle = '#0f1620'; rr(ctx, gx - 1, gy - 1, w + 2, h + 2, h / 2 + 1); ctx.fill();
+        ctx.fillStyle = frac > 0.5 ? th.hpOk : th.hpLow;
+        rr(ctx, gx, gy, Math.max(h, w * Math.max(0, Math.min(1, frac))), h, h / 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1; rr(ctx, gx - 1, gy - 1, w + 2, h + 2, h / 2 + 1); ctx.stroke();
+      } else if (badge) {
+        ctx.font = `700 ${size * 0.4}px ${FONT}`;
+        const w = Math.max(size * 0.53, ctx.measureText(badge).width + size * 0.2);
+        const bx = x + size - w + size * 0.23, by = y + size - size * 0.3;
+        ctx.fillStyle = '#0f1620'; rr(ctx, bx, by, w, size * 0.53, size * 0.27); ctx.fill();
+        text(badge, bx + w / 2, by + size * 0.28, size * 0.4, '#fff', 700, 'center');
+      }
     }
 
     if (window.ResizeObserver) new ResizeObserver(() => board.resize()).observe(cv);

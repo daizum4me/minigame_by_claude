@@ -109,7 +109,7 @@
     }
     changed() { this.broadcast(); this.schedule(); }
     human(id) { const p = this.players.find(x => x.id === id); return !!p && !p.cpu; }
-    toast(id, text, tone) { if (this.human(id)) this.sendFn(id, { type: 'toast', text, tone: tone || '' }); }
+    toast(id, text, tone, sfx) { if (this.human(id)) this.sendFn(id, { type: 'toast', text, tone: tone || '', sfx: sfx || '' }); }
     error(id, text) { if (this.human(id)) this.sendFn(id, { type: 'error', text }); }
 
     handle(id, msg) {
@@ -165,7 +165,7 @@
       const had = !!g.vote;
       const r = E.act(g, id, a);
       if (!r.ok) { this.error(id, r.why); return r; }
-      if (r.msg) this.toast(id, r.msg, r.good === false ? 'bad' : '');
+      if (r.msg || r.sfx) this.toast(id, r.msg, r.good === false ? 'bad' : '', r.sfx);
       if (had && !g.vote) this.voteCool = this.now() + VOTE_COOL_MS;
       this.changed();
       return r;

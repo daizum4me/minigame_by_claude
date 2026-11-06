@@ -5,6 +5,8 @@ const E = require('../shared/engine');
 const P3 = [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue' }));
 const mk = (seed = 1) => E.createGame({ seed, players: P3 });
 const me = st => E.cur(st);
+// 建てられる場所を探す
+const spotFor = (st, t, skip = 0) => { let n = 0; for (let y = -8; y < 8; y++) for (let x = -8; x < 8; x++) if (!E.buildWhy(st, t, x, y) && n++ >= skip) return [x, y]; return null; };
 const doIt = (st, a, pid) => E.act(st, pid || me(st).id, a);
 // 手番プレイヤーが雪原の空きマスにいるようにする
 function freeSpot(st) {
@@ -79,7 +81,7 @@ test('移動：雪原に入るたび体温-1・建物の上は0・範囲外や�
   assert.strictEqual(p.temp, 9);
   assert.ok(doIt(st, { type: 'move', x: 1, y: 1 }).ok);     // 焚き火の上へ戻る（体温は減らない）
   assert.strictEqual(p.temp, 9);
-  assert.match(doIt(st, { type: 'move', x: 20, y: 20 }).why, /2マス以内/);
+  assert.match(doIt(st, { type: 'move', x: 20, y: 20 }).why, /1マス以内/);
   const a = st.animals[0]; a.x = 2; a.y = 0;
   assert.match(doIt(st, { type: 'move', x: 2, y: 0 }).why, /動物/);
   assert.match(doIt(st, { type: 'move', x: 1, y: -1 }).why, /重なれません/);
@@ -153,26 +155,30 @@ test('建設：素材・行動力・重なり・HP・道を上書き・周囲が
   assert.match(doIt(st, { type: 'build', t: 'igloo', x: 2, y: -1 }).why, /雪が足りません/);
   st.items.snow = 12;
   assert.match(doIt(st, { type: 'build', t: 'igloo', x: 0, y: 0 }).why, /重なり/);
-  assert.ok(doIt(st, { type: 'build', t: 'road', x: 5, y: 5 }).ok);
+  assert.match(doIt(st, { type: 'build', t: 'road', x: 5, y: 5 }).why, /隣接/);   // 離れた場所には建てられない
+  const r1 = spotFor(st, 'road');
+  assert.ok(doIt(st, { type: 'build', t: 'road', x: r1[0], y: r1[1] }).ok);
+  const r2 = spotFor(st, 'road', 1);
+  assert.ok(doIt(st, { type: 'build', t: 'road', x: r2[0], y: r2[1] }).ok);
   const nb = st.gen.length;
   const spot = [];
-  for (let y = -6; y < 6 && !spot.length; y++) for (let x = 2; x < 6; x++) if (!E.buildWhy(st, 'igloo', x, y)) { spot.push(x, y); break; }
+  for (let y = -6; y < 6 && !spot.length; y++) for (let x = 2; x < 8; x++) if (!E.buildWhy(st, 'igloo', x, y)) { spot.push(x, y); break; }
   assert.ok(doIt(st, { type: 'build', t: 'igloo', x: spot[0], y: spot[1] }).ok);
   const ig = st.b.find(b => b.t === 'igloo');
   assert.deepStrictEqual([ig.hp, ig.max], [4, 4]);
-  assert.strictEqual(st.items.snow, 12 - 1 - 5);
-  assert.strictEqual(p.ap, 7 - 1 - 2);
+  assert.strictEqual(st.items.snow, 12 - 2 - 5);
+  assert.strictEqual(p.ap, 7 - 2 - 2);
   assert.ok(st.gen.length > nb);
   // 資源のあるマス
-  st.res['6,6'] = { t: 'stone', hp: 3 };
-  assert.match(E.buildWhy(st, 'road', 6, 6), /資源/);
+  const rs = Object.keys(st.res).map(E.parseKey).find(([x, y]) => E.reach(st, x, y));
+  assert.match(E.buildWhy(st, 'road', rs[0], rs[1]), /資源/);
   // 道は建物に上書きされて消える
-  delete st.res['6,6'];
-  st.items.snow = 5; me(st).ap = 7;
-  const r = st.b.find(b => b.t === 'road');
-  const t = [r.x, r.y];
-  doIt(st, { type: 'build', t: 'igloo', x: t[0], y: t[1] });
-  assert.ok(!st.b.some(b => b.t === 'road' && b.x === t[0] && b.y === t[1]));
+  st.items.snow = 6; me(st).ap = 7;
+  let rd = null;
+  for (let y = -3; y < 4 && !rd; y++) for (let x = -3; x < 6; x++) if (!E.buildWhy(st, 'road', x, y)) { rd = [x, y]; break; }
+  assert.ok(doIt(st, { type: 'build', t: 'road', x: rd[0], y: rd[1] }).ok);
+  assert.ok(doIt(st, { type: 'build', t: 'igloo', x: rd[0], y: rd[1] }).ok);
+  assert.ok(!st.b.some(b => b.t === 'road' && b.x === rd[0] && b.y === rd[1]));
 });
 
 test('猛吹雪：各手番の開始時に建物HPが1減る・焚き火と道は壊れない・0で消える', () => {
@@ -289,18 +295,21 @@ test('捨てる投票：過半数の賛成で1個・反対が半数以上で否�
 
 test('お絵かき：手番外だけ・マスをまたぐ線は分割して保存・建物で消える・消しゴム', () => {
   const st = mk();
-  assert.match(E.act(st, 'p1', { type: 'draw', c: 'a', pts: [3.2, 3.5, 3.8, 3.5] }).why, /手番以外/);
-  const r = E.act(st, 'p2', { type: 'draw', c: 'a', pts: [3.5, 3.5, 5.5, 3.5] });
+  assert.match(E.act(st, 'p1', { type: 'draw', c: 'a', pts: [3.2, 1.5, 3.8, 1.5] }).why, /手番以外/);
+  const r = E.act(st, 'p2', { type: 'draw', c: 'a', pts: [3.5, 1.5, 5.5, 1.5] });
   assert.ok(r.ok);
-  assert.deepStrictEqual(Object.keys(st.draw).sort(), ['3,3', '4,3', '5,3']);
-  assert.deepStrictEqual(st.draw['4,3'][0].p, [0, 50, 100, 50]);
+  assert.deepStrictEqual(Object.keys(st.draw).sort(), ['3,1', '4,1', '5,1']);
+  assert.deepStrictEqual(st.draw['4,1'][0].p, [0, 50, 100, 50]);
   // 建物の上には描けない
   assert.match(E.act(st, 'p2', { type: 'draw', c: 'a', pts: [0.5, 0.5, 0.7, 0.5] }).why, /描けません/);
-  E.act(st, 'p2', { type: 'erase', x: 4.5, y: 3.5, r: 0.2 });
-  assert.strictEqual(st.draw['4,3'], undefined);
-  assert.ok(st.draw['3,3']);
+  E.act(st, 'p2', { type: 'erase', x: 4.5, y: 1.5, r: 0.2 });
+  assert.strictEqual(st.draw['4,1'], undefined);
+  assert.ok(st.draw['3,1']);
   // 建てるとそのマスの絵は消える
+  const sp = spotFor(st, 'igloo');
+  E.act(st, 'p2', { type: 'draw', c: 'b', pts: [sp[0] + 0.2, sp[1] + 0.5, sp[0] + 0.7, sp[1] + 0.5] });
+  assert.ok(st.draw[sp[0] + ',' + sp[1]]);
   st.items.snow = 5;
-  assert.ok(E.act(st, 'p1', { type: 'build', t: 'igloo', x: 3, y: 3 }).ok);
-  assert.strictEqual(st.draw['3,3'], undefined);
+  assert.ok(E.act(st, 'p1', { type: 'build', t: 'igloo', x: sp[0], y: sp[1] }).ok);
+  assert.strictEqual(st.draw[sp[0] + ',' + sp[1]], undefined);
 });

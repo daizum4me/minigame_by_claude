@@ -21,7 +21,7 @@
     tempMod: { clear: 0, snow: 1, blizzard: 2, rain: 0, storm: 4 },
     base: { fire: 0, warm: 1, out: 2 }, // 手番終了時の体温低下の基本値
     relief: 2,                          // 防寒施設の中で天候補正を軽減する量
-    moveRange: 2,                       // 建物からこのマス以内に移動できる
+    moveRange: 1,                       // 建物（道を含む）からこのマス以内に移動できる
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
     resHpMin: 3, resHpMax: 7, resChance: 0.15, genRadius: 8,
@@ -143,7 +143,8 @@
         if (inGen(st, x, y) || bAt(st, x, y)) continue;
         if (hash(st.seed, x, y, 1) >= RULES.resChance) continue;
         const t = ['tree', 'stone', 'veg'][Math.floor(hash(st.seed, x, y, 2) * 3)];
-        st.res[key(x, y)] = { t, hp: RULES.resHpMin + Math.floor(hash(st.seed, x, y, 3) * (RULES.resHpMax - RULES.resHpMin + 1)) };
+        const hp = RULES.resHpMin + Math.floor(hash(st.seed, x, y, 3) * (RULES.resHpMax - RULES.resHpMin + 1));
+        st.res[key(x, y)] = { t, hp, max: hp };
       }
     }
     st.gen.push(r);
@@ -161,7 +162,8 @@
     const f = freeSnow(st);
     if (!f.length) return;
     const [x, y] = f[Math.floor(rnd(st) * f.length)];
-    st.animals.push({ id: st.nid++, x, y, hp: ri(st, RULES.animalHpMin, RULES.animalHpMax) });
+    const hp = ri(st, RULES.animalHpMin, RULES.animalHpMax);
+    st.animals.push({ id: st.nid++, x, y, hp, max: hp });
   }
   function addBuilding(st, t, x, y) {
     const d = t === 'fire' ? { size: 3 } : BUILD[t];
@@ -177,7 +179,8 @@
       while (have() < RULES.startReach[t]) {
         const free = genCells(st).filter(([x, y]) => reach(st, x, y) && !bAt(st, x, y) && !resAt(st, x, y));
         const [x, y] = free[Math.floor(rnd(st) * free.length)];
-        st.res[key(x, y)] = { t, hp: ri(st, RULES.resHpMin, RULES.resHpMax) };
+        const hp = ri(st, RULES.resHpMin, RULES.resHpMax);
+        st.res[key(x, y)] = { t, hp, max: hp };
       }
     }
   }
@@ -216,7 +219,8 @@
     for (const p of st.plants) {
       if (--p.left > 0) { keep.push(p); continue; }
       if (!resAt(st, p.x, p.y)) {
-        st.res[key(p.x, p.y)] = { t: p.t === 'veg' ? 'veg' : 'tree', hp: ri(st, RULES.resHpMin, RULES.resHpMax) };
+        const hp = ri(st, RULES.resHpMin, RULES.resHpMax);
+        st.res[key(p.x, p.y)] = { t: p.t === 'veg' ? 'veg' : 'tree', hp, max: hp };
         log(st, `苗が育って${p.t === 'veg' ? '野菜' : '樹木'}になった`);
       }
     }
@@ -289,7 +293,7 @@
   function moveWhy(st, p, x, y) {
     if (p.down > 0) return '行動不能中は移動できません';
     if (x === p.x && y === p.y) return 'いまいるマスです';
-    if (!reach(st, x, y)) return '建物から2マス以内の雪原にだけ移動できます';
+    if (!reach(st, x, y)) return `建物から${RULES.moveRange}マス以内の雪原にだけ移動できます`;
     if (animalAt(st, x, y)) return '動物のいるマスには入れません';
     if (playerAt(st, x, y, p.id)) return '他のプレイヤーと重なれません';
     return null;
@@ -341,7 +345,18 @@
         if (b && (t === 'road' || b.t !== 'road')) return '他の建物と重なります';
       }
     }
-    return null;
+    // 既存の建物（道を含む）に隣接していること（道の上に重ねて建てるのも隣接とみなす）
+    const inside = (cx, cy) => cx >= x && cx < x + d.size && cy >= y && cy < y + d.size;
+    for (let j = 0; j < d.size; j++) {
+      for (let i = 0; i < d.size; i++) {
+        if (bAt(st, x + i, y + j)) return null;
+        for (const [dx, dy] of DIRS) {
+          const nx = x + i + dx, ny = y + j + dy;
+          if (!inside(nx, ny) && bAt(st, nx, ny)) return null;
+        }
+      }
+    }
+    return '既存の建物（道を含む）に隣接する場所にだけ建てられます';
   }
   function lacking(st, cost) {
     return Object.keys(cost).find(k => st.items[k] < cost[k]) || null;
@@ -443,6 +458,7 @@
 
   // ---------- 行動 ----------
   const fail = why => ({ ok: false, why });
+  const SFX = { move: 'step', warm: 'warm', stoke: 'stoke', eat: 'eat', plant: 'plant', build: 'build', repair: 'repair', end: 'end', vote: 'tick', voteCast: 'tick', voteCancel: 'tick' };
   const RECOVER_OK = ['warm', 'eat', 'end'];
 
   function act(st, pid, a) {
@@ -488,7 +504,7 @@
       if (p.down === 2 && !RECOVER_OK.includes(t)) return fail('復帰中の手番は「温まる」「食べる」だけできます');
       r = doTurnAction(st, p, a);
     }
-    if (r.ok) st.v++;
+    if (r.ok) { st.v++; if (!r.sfx) r.sfx = SFX[t] || ''; }
     return r;
   }
 
@@ -544,24 +560,25 @@
         p.ap -= ap.collect; r.hp--;
         addItem(st, k, 1);
         let m = `集める：${ITEM_NAMES[k]} +1`;
+        const sfx = 'collect_' + r.t;
         if (onSnow) m += addItem(st, 'snow', 1) ? '、雪 +1' : '（雪は上限で入らず）';
         if (r.hp <= 0) {
           delete st.res[key(p.x, p.y)];
           m += '。資源が消えた';
           if (r.t === 'tree' && rnd(st) < RULES.sapChance) m += addItem(st, 'sapling', 1) ? '。苗木を落とした' : '。苗木は上限で入らず';
         }
-        return { ok: true, msg: m };
+        return { ok: true, msg: m, sfx };
       }
       case 'attack': {
         if ((e = needAp(ap.attack))) return fail(e);
         const an = animalAt(st, a.x, a.y);
         if (!an || Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail('隣のマスの動物だけ攻撃できます');
         p.ap -= ap.attack; an.hp--;
-        if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -1（残り ${an.hp}）` };
+        if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -1（残り ${an.hp}）`, sfx: 'attack' };
         const n = ri(st, RULES.meatMin, RULES.meatMax), got = addItem(st, 'meat', n);
         st.animals = st.animals.filter(q => q !== an);
         spawnAnimal(st);
-        return { ok: true, msg: `動物を倒した：肉${n}個のうち${got}個を入手${got < n ? '（上限で入りきらず）' : ''}` };
+        return { ok: true, msg: `動物を倒した：肉${n}個のうち${got}個を入手${got < n ? '（上限で入りきらず）' : ''}`, sfx: 'kill' };
       }
       case 'plant': {
         if ((e = needAp(ap.plant))) return fail(e);
