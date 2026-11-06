@@ -40,6 +40,7 @@
      animalHpMax: 5, meatMin: 1, meatMax: 7,
     eat: { meat: 3, veg: 2, steak: 5, soup: 2 },
     furMin: 1, furMax: 5,               // 動物が落とす毛皮
+    bowRange: 5,                        // 弓で攻撃できる距離（マス・縦横斜めで数える）
     toolDur: 7,                         // 道具の耐久度（使うたびに1減る）
     coatRelief: 1,                      // 防寒着で、手番の終わりの体温の低下が減る量
     gearBonus: 1,                       // 道具を着けたときの、集める量・攻撃力の増加
@@ -67,6 +68,7 @@
     pick: { name: 'ツルハシ', slot: 'tool', target: 'stone', desc: '石を集める量+1（体力も余計に減る）' },
     shovel: { name: 'シャベル', slot: 'tool', target: 'veg', desc: '野菜を集める量+1（体力も余計に減る）' },
     spear: { name: '槍', slot: 'tool', target: 'animal', desc: '動物への攻撃力+1' },
+    bow: { name: '弓', slot: 'tool', target: 'animal', desc: '5マス以内の動物を攻撃できる（攻撃力は素手と同じ）' },
   };
   // 「作る」のレシピ：station の上かすぐ隣にいるときに作れる。gear があるものは、装備や道具ができる
   const RECIPES = {
@@ -78,6 +80,7 @@
     pick: { name: 'ツルハシ', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'pick' },
     shovel: { name: 'シャベル', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'shovel' },
     spear: { name: '槍', station: 'workshop', ap: 1, in: { wood: 1, stone: 1, fur: 1 }, gear: 'spear' },
+    bow: { name: '弓', station: 'workshop', ap: 1, in: { wood: 1, stone: 3 }, gear: 'bow' },
   };
   const ITEMS = ['wood', 'firewood', 'stone', 'veg', 'meat', 'fur', 'steak', 'soup', 'snow', 'sapling'];
   const ITEM_NAMES = { wood: '木材', firewood: '薪', fur: '毛皮', steak: 'ステーキ', soup: 'スープ', stone: '石材', veg: '野菜', meat: '肉', snow: '雪', sapling: '苗木' };
@@ -733,11 +736,14 @@
       case 'attack': {
         if ((e = needAp(ap.attack))) return fail(e);
         const an = animalAt(st, a.x, a.y);
-        if (!an || Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail('隣のマスの動物だけ攻撃できます');
+        const bow = p.tool && p.tool.k === 'bow' ? p.tool : null;
+        if (!an) return fail('そこに動物はいません');
+        const dist = Math.max(Math.abs(p.x - a.x), Math.abs(p.y - a.y));
+        if (bow ? (dist < 1 || dist > RULES.bowRange) : Math.abs(p.x - a.x) + Math.abs(p.y - a.y) !== 1) return fail(bow ? `弓は${RULES.bowRange}マス以内の動物を攻撃できます` : '隣のマスの動物だけ攻撃できます');
         const spear = p.tool && p.tool.k === 'spear' ? p.tool : null;
         const dmg = spear ? 1 + RULES.gearBonus : 1;
         p.ap -= ap.attack; an.hp -= dmg;
-        const worn = spear ? wearTool(st, p) : '';
+        const worn = spear || bow ? wearTool(st, p) : '';
         if (an.hp > 0) return { ok: true, msg: `攻撃：動物の体力 -${dmg}（残り ${an.hp}）${worn}`, sfx: 'attack' };
         const n = ri(st, RULES.meatMin, RULES.meatMax), got = gain(st, p.id, 'meat', n);
         const fn = ri(st, RULES.furMin, RULES.furMax), fgot = gain(st, p.id, 'fur', fn);

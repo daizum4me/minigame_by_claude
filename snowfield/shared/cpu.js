@@ -19,6 +19,7 @@
   const FIREWOOD_MAX = 8;   // 薪をこれ以上は貯めない（持ち物の枠がもったいない）
   const FUEL_RESERVE = 2;   // 焚き火を保つために残しておく薪の数
   const SWAP_GAP = 2;       // 持ち物を入れ替えるのは、価値がこれ以上違うときだけ（往復を防ぐ）
+  const USE_BOW = process.env.BOW !== '0';   // 弓を作る
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
@@ -235,6 +236,7 @@
     const wantCraft = () => {
       if (!hasShop || p.ap < 1) return null;
       if (!p.gear && !coatInPool && it.fur >= 3) return 'coat';
+      if (!p.tool && !toolInPool && USE_BOW && it.wood >= 1 && it.stone >= 3) return 'bow';
       if (!p.tool && !toolInPool && !fin && it.fur >= 1 && it.wood >= 1 && it.stone >= 1) return 'axe';
       if (it.wood > keepWood && it.firewood < FIREWOOD_MAX && E.room(st) >= 1) return 'firewood';
       return null;
@@ -257,7 +259,7 @@
 
     // 目当ての価値
     // 石材：倉庫（避難所・上限+10）のため（3人では、倉庫のために石材を追うと負担のほうが大きいので、4人以上）。倉庫があれば、猛吹雪の修理のために貯める
-    const toolStone = hasShop && !p.tool && !toolInPool && it.stone < 1;   // 道具の材料
+    const toolStone = hasShop && !p.tool && !toolInPool && it.stone < (USE_BOW ? 3 : 1);   // 道具の材料
     const stoneWant = toolStone || (nP >= 4 && E.count(st, 'storage') < 1 && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
     const needSnow = it.snow < 2;
     const resValue = r => {
@@ -269,6 +271,7 @@
       if (needSnow) v += 2;
       return v;
     };
+    const hasBow = !!(p.tool && p.tool.k === 'bow');
     const wantMeat = foodStock(st) < T.food;
     const farmVeg = it.veg >= 4 && foodStock(st) >= T.food * 0.8 && st.round <= R.prepRounds - 1;
     const farmTree = it.sapling > 0 && st.round <= R.prepRounds + 1;
@@ -281,7 +284,9 @@
       // 隣に動物がいれば、体力が少ないものから攻撃
       if (wantMeat) {
         let target = null;
-        for (const [dx, dy] of E.DIRS) { const a = E.animalAt(st, p.x + dx, p.y + dy); if (a && (!target || a.hp < target.hp)) target = a; }
+        if (hasBow) {
+          for (const a of st.animals) { const d = Math.max(Math.abs(a.x - p.x), Math.abs(a.y - p.y)); if (d >= 1 && d <= R.bowRange && (!target || a.hp < target.hp)) target = a; }
+        } else for (const [dx, dy] of E.DIRS) { const a = E.animalAt(st, p.x + dx, p.y + dy); if (a && (!target || a.hp < target.hp)) target = a; }
         if (target && (target.hp <= p.ap + 1 || p.ap >= 4)) return { type: 'attack', x: target.x, y: target.y };
       }
       // 苗木・野菜の苗を、いる場所（雪原の空きマス）に植える
@@ -341,7 +346,9 @@
       if (wantMeat) {
         for (const a of st.animals) {
           if (a.hp > p.ap + 1) continue;
-          for (const [dx, dy] of E.DIRS) consider(a.x + dx, a.y + dy, 40 / a.hp + 4);
+          if (hasBow) {
+            for (const [k] of map) { const [x, y] = E.parseKey(k); if (Math.max(Math.abs(a.x - x), Math.abs(a.y - y)) <= R.bowRange && !E.bAt(st, x, y)) consider(x, y, 40 / a.hp + 4); }
+          } else for (const [dx, dy] of E.DIRS) consider(a.x + dx, a.y + dy, 40 / a.hp + 4);
         }
       }
       {

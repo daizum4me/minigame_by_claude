@@ -607,7 +607,7 @@
     tower: { name: '見張り台', tip: '1ラウンド先の天候予報が見え、ここから2マス以内に移動できる。', desc: '高い場所から先を見渡す。屋外扱いで防寒はない。',
       eff: ['1ラウンド先の天候の予報が見える', '見張り台からは2マス以内に移動できる（ほかの建物は1マス）'], build: null, repair: null },
     workshop: { name: '作業場', tip: '上かすぐ隣で「作る」と、薪・防寒着・道具が作れる。', desc: '薪を割ったり、毛皮や木材から防寒着や道具を作る作業台。屋外扱いで防寒はなく、猛吹雪ではHPが減る。',
-      eff: ['作る：木材1 → 薪2', '作る：毛皮3 → 防寒着', '作る：木材1・石材1・毛皮1 → 斧・ツルハシ・シャベル・槍', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
+      eff: ['作る：木材1 → 薪2', '作る：毛皮3 → 防寒着', '作る：木材1・石材1・毛皮1 → 斧・ツルハシ・シャベル・槍、木材1・石材3 → 弓', '薪は焚べるときに、木材より先に使われる'], build: null, repair: null },
   };
   const IDESC = {
     wood: '焚き火に焚べると火力+1。倉庫・見張り台の建設に使う。',
@@ -841,7 +841,10 @@
     add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${g.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
     if (E.nearFire(g, me)) add('焚べる', `行動力${R.ap.stoke}・薪（なければ木材）1`, { type: 'stoke' });
     if (res) add('集める', `行動力${R.ap.collect}`, { type: 'collect' });
-    [['上', 0, -1], ['下', 0, 1], ['左', -1, 0], ['右', 1, 0]].forEach(d => {
+    if (me.tool && me.tool.k === 'bow') {
+      g.animals.map(a => ({ a, d: Math.max(Math.abs(a.x - me.x), Math.abs(a.y - me.y)) })).filter(o => o.d >= 1 && o.d <= R.bowRange).sort((u, v) => u.d - v.d)
+        .forEach(o => add(`攻撃：弓で動物（${o.d}マス先）`, `行動力${R.ap.attack}・体力${o.a.hp}`, { type: 'attack', x: o.a.x, y: o.a.y }));
+    } else [['上', 0, -1], ['下', 0, 1], ['左', -1, 0], ['右', 1, 0]].forEach(d => {
       const a = E.animalAt(g, me.x + d[1], me.y + d[2]);
       if (a) add(`攻撃：${d[0]}の動物`, `行動力${R.ap.attack}・体力${a.hp}`, { type: 'attack', x: a.x, y: a.y });
     });

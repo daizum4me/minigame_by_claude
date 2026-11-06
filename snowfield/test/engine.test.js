@@ -252,6 +252,24 @@ test('直す：石材は直径÷2の切り上げ（倉庫は2個）', () => {
   assert.strictEqual(E.repairStone({ w: 3 }), 2);
 });
 
+test('弓：木材1石材3で作れて、5マス以内（斜めも）の動物を攻撃できる。素手と同じ攻撃力で、耐久度7', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const p = me(st);
+  st.b.push({ id: 90, t: 'workshop', x: 4, y: 0, w: 2, h: 2, hp: 4, max: 4 });
+  p.x = 4; p.y = 0; p.ap = 7;
+  st.items.wood = 1; st.items.stone = 3;
+  assert.ok(doIt(st, { type: 'craft', recipe: 'bow' }).ok);
+  assert.deepStrictEqual([st.items.wood, st.items.stone, st.gear[0].k, st.gear[0].dur], [0, 0, 'bow', 7]);
+  st.animals = [{ id: 800, x: 4 + 5, y: 0 + 4, hp: 5, max: 5 }, { id: 801, x: 4 + 6, y: 0, hp: 5, max: 5 }];
+  p.x = 4; p.y = 0;
+  assert.match(doIt(st, { type: 'attack', x: 9, y: 4 }).why, /隣/);   // 弓なしでは届かない
+  assert.ok(doIt(st, { type: 'equip', id: st.gear[0].id }).ok);
+  assert.ok(doIt(st, { type: 'attack', x: 9, y: 4 }).ok);
+  assert.strictEqual(st.animals.find(a => a.id === 800).hp, 4);
+  assert.strictEqual(p.tool.dur, 6);
+  assert.match(doIt(st, { type: 'attack', x: 10, y: 0 }).why, /5マス/);
+});
+
 test('行動不能：焚き火へ強制移動・3に回復・次の手番は温まる/食べるだけ', () => {
   const st = mk(); st.weather = 'clear';
   const a = me(st);
