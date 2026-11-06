@@ -103,12 +103,27 @@ test('集める・攻撃・食べる・上限', () => {
   assert.strictEqual(st.items.snow, 1);       // 雪原で採集すると雪も1個
   assert.strictEqual(E.resAt(st, 3, 0), null);   // 体力0で消滅
   // 上限
-  st.items.wood = 16 - st.items.snow;
+  st.items.sapling = 0; st.items.wood = 16 - st.items.snow;
   assert.strictEqual(E.room(st), 0);
   st.res['3,0'] = { t: 'stone', hp: 3 };
-  assert.match(doIt(st, { type: 'collect' }).why, /上限/);
+  // 上限でも集められる。入らない分は、本人が「入れ替える／あきらめる」を選ぶまで保留（その間はほかの行動ができない）
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.deepStrictEqual(st.pending, [{ pid: me(st).id, k: 'stone', n: 1 }]);
+  assert.strictEqual(st.items.snow, 1);       // 雪は自動で付くだけなので、入らなくても選ばせない
+  assert.match(doIt(st, { type: 'warm' }).why, /どうするか選んで/);
+  assert.match(doIt(st, { type: 'overflow', drop: { stone: 1 } }).why, /不正/);      // 同じ種類は捨てられない
+  assert.match(doIt(st, { type: 'overflow', drop: { wood: 2 } }).why, /入らない数/);
+  assert.ok(doIt(st, { type: 'overflow', drop: { wood: 1 } }).ok);
+  assert.strictEqual(st.items.stone, 1);
+  assert.strictEqual(st.items.wood, 16 - st.items.snow - 1 - 0);
+  assert.strictEqual(E.total(st), 16);
+  assert.strictEqual(st.pending.length, 0);
+  st.res['3,0'] = { t: 'stone', hp: 3 };
+  assert.ok(doIt(st, { type: 'collect' }).ok);
+  assert.ok(doIt(st, { type: 'overflow', drop: {} }).ok);                            // あきらめる
+  assert.strictEqual(st.items.stone, 1);
   // 動物を倒すと肉
-  st.items.wood = 0;
+  st.items.wood = 0; st.items.stone = 0;
   st.animals = [{ id: 50, x: 4, y: 0, hp: 1 }, { id: 51, x: 9, y: 9, hp: 4 }, { id: 52, x: 8, y: 9, hp: 4 }];
   const m = doIt(st, { type: 'attack', x: 4, y: 0 });
   assert.ok(m.ok);
@@ -312,4 +327,16 @@ test('お絵かき：手番外だけ・マスをまたぐ線は分割して保�
   st.items.snow = 5;
   assert.ok(E.act(st, 'p1', { type: 'build', t: 'igloo', x: sp[0], y: sp[1] }).ok);
   assert.strictEqual(st.draw[sp[0] + ',' + sp[1]], undefined);
+});
+
+test('食べ物が最後まで足りるか：必要量の計算', () => {
+  const st = mk();
+  const n = E.foodNeed(st);
+  // 13ラウンド×3人。最初の人は13回、最後の人も13回の手番の終わりがあり、満腹度10から1以上残すには 13×3+1-10 = 30 ずつ
+  assert.strictEqual(n.need, 90);
+  assert.strictEqual(n.short, 90);
+  st.items.meat = 5; st.items.veg = 5;
+  assert.strictEqual(E.foodNeed(st).have, 25);
+  doIt(st, { type: 'end' });
+  assert.strictEqual(E.foodNeed(st).turns, 13);
 });

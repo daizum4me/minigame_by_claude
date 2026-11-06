@@ -73,10 +73,49 @@
     return best;
   }
 
+  // 持ち物1個の価値（上限でいっぱいのとき、何を捨てて何を持つかを決める目安）
+  function worth(st, k, cnt, T) {
+    switch (k) {
+      case 'wood': return cnt.wood < 3 ? 10 : (cnt.wood < T.wood ? 7 : 1);
+      case 'meat': return foodStock(st) < T.food ? 7 : 2;
+      case 'veg': return cnt.veg < 4 ? 5 : 2;
+      case 'stone': return cnt.stone < 4 && E.count(st, 'storage') < 1 ? 3 : 0.5;
+      case 'sapling': return cnt.sapling < 2 ? 3 : 0.5;
+      case 'snow': return cnt.snow < 2 ? 4 : (cnt.snow < 5 ? 1.5 : 0.2);
+      default: return 0;
+    }
+  }
+  // 上限を超えた分：価値の低い持ち物を捨てて、新しいものを持つ
+  function overflowDrop(st, pend) {
+    const T = targets(st), cnt = Object.assign({}, st.items), drop = {};
+    cnt[pend.k] = (cnt[pend.k] || 0) + 0;
+    for (let i = 0; i < pend.n; i++) {
+      let low = null;
+      for (const k of E.ITEMS) {
+        if (k === pend.k || cnt[k] < 1) continue;
+        const w = worth(st, k, cnt, T);
+        if (!low || w < low.w) low = { k, w };
+      }
+      if (!low || low.w >= worth(st, pend.k, cnt, T)) break;
+      cnt[low.k]--; cnt[pend.k]++;
+      drop[low.k] = (drop[low.k] || 0) + 1;
+    }
+    return drop;
+  }
+  // 上限でも、価値の低い持ち物と入れ替えられるなら集める意味がある
+  function canSwap(st, k, T) {
+    if (E.room(st) >= 1) return true;
+    const cnt = st.items, w = worth(st, k, cnt, T);
+    return E.ITEMS.some(o => o !== k && cnt[o] > 0 && worth(st, o, cnt, T) < w);
+  }
+
   function decide(st, pid, mem) {
     const p = E.pl(st, pid), it = st.items, R = E.RULES, nP = st.players.length;
     const tk = st.round + ':' + st.turn;
     if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; }
+    // 上限を超えたアイテムの扱いを選ぶ
+    const pend = st.pending && st.pending[0];
+    if (pend && pend.pid === pid) return { type: 'overflow', drop: overflowDrop(st, pend) };
     const here = E.where(st, p);
     const warmHere = E.warmAmount(st, p);
     const end = { type: 'end' };
@@ -137,7 +176,7 @@
     }
 
     // 目当ての価値
-    const stoneWant = E.count(st, 'storage') < 1 && nP >= 4 && it.stone < 4;
+    const stoneWant = E.count(st, 'storage') < 1 && nP >= 4 && it.stone < 4;   // 倉庫（上限+10）のため
     const needSnow = it.snow < 2;
     const resValue = r => {
       const item = E.RES_ITEM[r.t];
@@ -155,7 +194,7 @@
     if (p.ap >= 1) {
       // いまの場所に資源があれば集める
       const onTile = E.resAt(st, p.x, p.y);
-      if (onTile && E.room(st) >= 1 && resValue(onTile) > 0) return { type: 'collect' };
+      if (onTile && resValue(onTile) > 0 && canSwap(st, E.RES_ITEM[onTile.t], T)) return { type: 'collect' };
       // 隣に動物がいれば、体力が少ないものから攻撃
       if (wantMeat) {
         let target = null;
@@ -203,9 +242,10 @@
           for (const [dx, dy] of E.DIRS) consider(a.x + dx, a.y + dy, 40 / a.hp + 4);
         }
       }
-      if (E.room(st) >= 1) {
+      {
         for (const k of Object.keys(st.res)) {
           const r = st.res[k], v = resValue(r);
+          if (!canSwap(st, E.RES_ITEM[r.t], T)) continue;
           if (v <= 0) continue;
           const [x, y] = E.parseKey(k);
           consider(x, y, v * Math.min(r.hp, Math.max(1, p.ap - 1)));

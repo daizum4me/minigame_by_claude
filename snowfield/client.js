@@ -379,6 +379,47 @@
     if (E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
   }
 
+  // 上限を超えたアイテム：既存の物を捨てて持つか、新しい物をあきらめるかを選ぶ
+  function renderOverflow(g, th) {
+    const el = $('#overflow'), pd = g.pending && g.pending[0];
+    if (!pd) { el.hidden = true; app.ovrKey = null; return; }
+    const who = g.players.find(p => p.id === pd.pid);
+    if (pd.pid !== app.me) {
+      el.hidden = false;
+      el.innerHTML = `<div class="card ovr-card"><b>${esc(who ? who.name : '')}が、持ち物の入れ替えを選んでいます…</b></div>`;
+      return;
+    }
+    const key = pd.k + ':' + pd.n + ':' + g.pending.length;
+    if (app.ovrKey !== key) { app.ovrKey = key; app.ovrDrop = {}; }
+    const drop = app.ovrDrop, total = Object.values(drop).reduce((a, b) => a + b, 0);
+    const rows = E.ITEMS.filter(k => k !== pd.k && g.items[k] > 0).map(k => {
+      const c = th.item[k], n = drop[k] || 0;
+      return `<div class="ovr-row"><span class="ovr-ico" style="background:${c[0]};color:${c[1]}">${B.svgIcon(iconOf(k), 20)}</span><span class="grow">${E.ITEM_NAMES[k]}（${g.items[k]}個）</span>
+        <button data-ovr="${k}:-1" ${n < 1 ? 'disabled' : ''}>−</button><b class="ovr-n">${n}</b><button data-ovr="${k}:1" ${n >= g.items[k] || total >= pd.n ? 'disabled' : ''}>＋</button></div>`;
+    }).join('');
+    const nc = th.item[pd.k];
+    el.hidden = false;
+    el.innerHTML = `<div class="card ovr-card">
+      <h3 style="margin:0">持ち物がいっぱいです（${E.total(g)} / ${E.cap(g)}）</h3>
+      <div class="ovr-new"><span class="ovr-ico" style="background:${nc[0]};color:${nc[1]}">${B.svgIcon(iconOf(pd.k), 22)}</span><b>${E.ITEM_NAMES[pd.k]} ×${pd.n}</b> が入りません</div>
+      <div class="small muted">持っている物を捨てて入れ替えるか、新しく得た物を捨てるかを選んでください。捨てる数（最大${pd.n}個）：</div>
+      ${rows || '<div class="small muted">入れ替えられる持ち物がありません</div>'}
+      <div class="row">
+        <button class="primary" data-ovr-ok ${total ? '' : 'disabled'}>入れ替えて持つ（${total}個）</button>
+        <button data-ovr-skip>${E.ITEM_NAMES[pd.k]}を捨てる</button>
+      </div></div>`;
+  }
+
+  // 生き延びるのに必要な食料
+  function renderFoodNeed(g) {
+    const el = $('#food-need'), f = E.foodNeed(g);
+    if (g.phase !== 'play') { el.hidden = true; return; }
+    el.hidden = false;
+    const meats = Math.ceil(f.short / R.eat.meat);
+    el.innerHTML = `<b>生き延びるのに必要な食料</b><div>あと<b>${f.need}</b>（満腹度ぶん。1人あと${f.turns}回の手番の終わりごとに−${R.hunger}）</div>
+      <div>持ち物の食料：<b>${f.have}</b>　${f.short > 0 ? `<span style="color:var(--redFg);font-weight:700">不足 ${f.short}（肉なら約${meats}個）</span>` : '<span style="color:var(--ok);font-weight:700">足りています</span>'}</div>`;
+  }
+
   // 行動力がなくなったら、手番を終えるよう促す
   function renderEndPop(g) {
     const el = $('#endpop'), me = myP();
@@ -507,6 +548,8 @@
     renderWeather(g, th);
     renderResult(g);
     renderEndPop(g);
+    renderOverflow(g, th);
+    renderFoodNeed(g);
     renderHint();
     board.request();
   }
@@ -528,8 +571,8 @@
   }
   const logHtml = g => g.log.slice().reverse().slice(0, 50).map(l => `<div><span>R${l.r}</span>${esc(l.t)}</div>`).join('');
 
-  function mini(label, v, pct, color, fg) {
-    return `<div class="ms"><span class="k">${label}</span><span class="tr"><i style="width:${pct}%;background:${color}"></i></span><b style="color:${fg}">${v}</b></div>`;
+  function mini(label, v, pct, color, fg, cls) {
+    return `<div class="ms ${cls || ''}"><span class="k">${label}</span><span class="tr"><i style="width:${pct}%;background:${color}"></i></span><b style="color:${fg}">${v}</b></div>`;
   }
   function renderPlayers(g, th) {
     $('#players').innerHTML = g.players.map(p => {
@@ -543,10 +586,10 @@
       ].join('');
       return `<div class="pcard ${me ? 'me' : ''}">
         <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span><span class="grow"></span>${tags}</div>
-        <div class="pstats ${turn ? 'three' : ''}">
+        <div class="pstats">
           ${mini('体温', p.temp, p.temp * 10, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
           ${mini('満腹', p.food, p.food * 10, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
-          ${turn ? mini('行動', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)') : ''}
+          ${turn ? mini('行動力', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)', 'ap') : ''}
         </div>
       </div>`;
     }).join('');
@@ -755,12 +798,24 @@
       canvas: $('#map'),
       game: () => app.game, me: myP, theme, sel: () => app.sel,
       onView: () => { renderHint(); if (app.menu && app.game) renderMenu(app.game, TH()); },
-      onHover: (b, v) => {
+      onHover: (info, v) => {
         const tip = $('#tip');
-        if (!b || !v || app.mode === 'draw') { tip.hidden = true; return; }
-        const g = app.game, th = TH(), d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
-        const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${g.fire} / ${R.fireMax}` : '';
-        tip.innerHTML = `<div class="tn">${esc(d.name)}<span class="grow"></span><span style="font-size:12px;color:${warm ? (ins ? th.chip.ok[1] : th.chip.lost[1]) : th.chip.fire[1]}">${status}</span></div><div class="tt">${esc(d.tip)}</div>${b.hp === null ? '' : `<div class="th">HP ${b.hp} / ${b.max}</div>`}`;
+        if (!info || !v || app.mode === 'draw') { tip.hidden = true; return; }
+        const g = app.game, th = TH();
+        let html = '';
+        const b = info.b;
+        if (b) {
+          const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
+          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${g.fire} / ${R.fireMax}` : '';
+          html += `<div class="tn">${esc(d.name)}<span class="grow"></span><span style="font-size:12px;color:${warm ? (ins ? th.chip.ok[1] : th.chip.lost[1]) : th.chip.fire[1]}">${status}</span></div><div class="tt">${esc(d.tip)}</div>${b.hp === null ? '' : `<div class="th">HP ${b.hp} / ${b.max}</div>`}`;
+        }
+        if (info.res) {
+          const r = info.res, nm = ({ tree: '樹木（木材）', stone: '石（石材）', veg: '野菜' })[r.t];
+          html += `<div class="tn">${nm}</div><div class="tt">体力 ${r.hp} / ${r.max || R.resHpMax}（破線1本＝体力1。集めるたびに1減る）</div>`;
+        }
+        if (info.animal) html += `<div class="tn">動物</div><div class="tt">体力 ${info.animal.hp} / ${info.animal.max || R.animalHpMax}。倒すと肉が${R.meatMin}〜${R.meatMax}個</div>`;
+        if (info.plant) html += `<div class="tn">${info.plant.t === 'veg' ? '野菜' : '樹木'}の苗</div><div class="tt">あと${info.plant.left}ラウンドで育つ（破線1本＝あと1ラウンド）</div>`;
+        tip.innerHTML = html;
         const wr = $('#mapwrap').getBoundingClientRect();
         tip.hidden = false;
         tip.style.left = Math.max(4, Math.min(v.x + 16, wr.width - 240)) + 'px';
@@ -849,6 +904,18 @@
     $$('[data-act="sound"]').forEach(b => { b.onclick = () => { SnowSound.setMuted(!SnowSound.isMuted()); soundLabel(); SnowSound.play('tick'); }; });
     soundLabel();
     document.addEventListener('pointerdown', () => SnowSound.unlock(), { once: true });
+    $('#overflow').addEventListener('click', e => {
+      const pd = app.game && app.game.pending && app.game.pending[0];
+      if (!pd) return;
+      const b = e.target.closest('[data-ovr]');
+      if (b) {
+        const [k, d] = b.dataset.ovr.split(':'), cur = app.ovrDrop[k] || 0;
+        app.ovrDrop[k] = Math.max(0, cur + +d);
+        renderOverflow(app.game, TH());
+      }
+      if (e.target.closest('[data-ovr-ok]')) { const drop = {}; for (const k of Object.keys(app.ovrDrop)) if (app.ovrDrop[k] > 0) drop[k] = app.ovrDrop[k]; act({ type: 'overflow', drop }); }
+      if (e.target.closest('[data-ovr-skip]')) act({ type: 'overflow', drop: {} });
+    });
     $('#endpop').addEventListener('click', e => {
       if (e.target.closest('[data-endpop-end]')) { app.menu = false; act({ type: 'end' }); }
       else if (e.target.closest('[data-endpop-close]')) { app.endPopDismiss = app.game.round + ':' + app.game.turn; $('#endpop').hidden = true; }
@@ -896,7 +963,24 @@
       if (!ent.ok) { mapToast(ent.cost, 'bad'); return; }
       if (ent.fn) ent.fn(); else act(ent.a);
     });
+    $('#tray').addEventListener('pointermove', e => {
+      const c = e.target.closest('[data-card]'), tip = $('#itip');
+      if (!c || !app.game || app.card) { tip.hidden = true; return; }
+      const k = c.dataset.card, d = E.BUILD[k], ds = DESC[k], g = app.game;
+      const mats = Object.keys(d.cost).map(m => `<span style="color:${g.items[m] >= d.cost[m] ? 'var(--ok)' : 'var(--redFg)'};font-weight:700">${E.ITEM_NAMES[m]} ${g.items[m]}/${d.cost[m]}</span>`).join('　');
+      const hp = k === 'road' ? '壊れない' : `HP ${d.size * 2}`;
+      tip.innerHTML = `<div class="tn">${d.name}<span class="grow"></span><span style="font-size:12px;color:var(--muted2);font-weight:400">${d.size}×${d.size}・${hp}</span></div>
+        <div class="tt"><b>必要な材料</b>（持っている数/必要）<br>${mats}<br>行動力 ${d.ap}</div>
+        <div class="tt">${esc(ds.desc)}</div>${ds.eff.map(t => `<div class="tt">・${esc(t)}</div>`).join('')}
+        <div class="th">既存の建物（道を含む）に隣接する場所に置けます</div>`;
+      tip.hidden = false;
+      const r = c.getBoundingClientRect();
+      tip.style.left = Math.min(r.right + 10, window.innerWidth - 246) + 'px';
+      tip.style.top = Math.max(4, Math.min(r.top, window.innerHeight - tip.offsetHeight - 8)) + 'px';
+    });
+    $('#tray').addEventListener('pointerleave', () => { $('#itip').hidden = true; });
     $('#tray').addEventListener('pointerdown', e => {
+      $('#itip').hidden = true;
       const c = e.target.closest('[data-card]');
       if (!c) return;
       if (c.dataset.why) { mapToast(c.dataset.why, 'bad'); return; }

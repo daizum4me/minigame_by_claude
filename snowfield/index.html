@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -109,6 +109,7 @@
           <button id="z-reset" class="txt">リセット</button>
         </div>
         <div id="endpop" class="endpop" hidden></div>
+        <div id="overflow" class="overlay ovr" hidden></div>
         <div id="banner" class="banner" hidden></div>
         <div id="maptoast" class="pill toast-map" hidden></div>
         <div id="tip" class="tip" hidden></div>
@@ -120,6 +121,7 @@
         <div class="items-head"><b>共有アイテム</b><span id="cap"></span></div>
         <div id="slots" class="slots"></div>
         <div id="item-summary" class="small muted"></div>
+        <div id="food-need" class="food-need small"></div>
         <div class="small muted">アイコンをクリックすると「捨てる」投票を始めます。上限＝2×人数＋10＋10×倉庫数。</div>
       </div>
       <div id="vote" class="panel vote" hidden></div>
@@ -180,9 +182,10 @@
         <li><b>温まる</b>（行動力2）：焚き火の上＝火力ぶん／防寒が有効な建物の中＝+1 体温が回復。</li>
         <li><b>焚べる</b>（1）：木材1で火力+1（最大5）。焚き火の上かすぐ隣で。</li>
         <li><b>食べる</b>（0）：肉＝満腹度+3、野菜＝+2。</li>
-        <li><b>集める</b>（1）：資源のマスで。体力−1ごとに1個。雪原なら雪も1個。体力0で消えます（木は50%で苗木を落とす）。</li>
+        <li><b>集める</b>（1）：資源のマスで。体力−1ごとに1個。雪原なら雪も1個。体力0で消えます（木は50%で苗木を落とす）。資源は六角形で、外側の破線1本が体力1です。</li>
+        <li><b>持ち物がいっぱい</b>のときは、持っている物を捨てて入れ替えるか、新しく得た物を捨てるかを選びます（雪が自動で付いてくるぶんは、入らなければ入りません）。</li>
         <li><b>攻撃</b>（1）：隣の動物の体力−1。倒すと肉が1〜7個。</li>
-        <li><b>植える</b>（1）：野菜2個→野菜の苗／苗木1個→樹木の苗。雪原の空きマスに。1〜3ラウンド後に育ちます。</li>
+        <li><b>植える</b>（1）：野菜2個→野菜の苗／苗木1個→樹木の苗。雪原の空きマスに。1〜3ラウンド後に育ちます（苗の破線1本が「育つまであと1ラウンド」）。</li>
         <li><b>建てる</b>：建設カードを盤面へドラッグ。<b>直す</b>：建物に隣接して、石材1＋行動力（直径ぶん）でHP+2。</li>
       </ul>
       <h3>建物</h3>
@@ -208,11 +211,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
 
-<script src="shared/engine.js?v=3"></script>
-<script src="shared/cpu.js?v=3"></script>
-<script src="shared/room.js?v=3"></script>
+<script src="shared/engine.js?v=4"></script>
+<script src="shared/cpu.js?v=4"></script>
+<script src="shared/room.js?v=4"></script>
 <script src="sound.js?v=1"></script>
-<script src="board.js?v=3"></script>
-<script src="client.js?v=4"></script>
+<script src="board.js?v=4"></script>
+<script src="client.js?v=5"></script>
 </body>
 </html>

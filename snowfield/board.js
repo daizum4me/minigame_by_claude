@@ -90,6 +90,12 @@
     down: [[0, 1.05], [1.05, -0.82], [-1.05, -0.82]],
     hex: hexPts,
   };
+  // 塗りの色に近い、枠の色（明るい色は暗めに、暗い色は明るめに）
+  const mixHex = (hex, t, to) => {
+    const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    return '#' + c.map(v => Math.round(v + (to - v) * t).toString(16).padStart(2, '0')).join('');
+  };
+  const borderOf = c => { const h = PLAYER_COLORS[c] || '#888888'; return isLight(c) ? mixHex(h, 0.45, 0) : mixHex(h, 0.5, 255); };
   const isLight = c => { const h = PLAYER_COLORS[c] || '#888888'; const n = parseInt(h.slice(1), 16); return ((n >> 16) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114) > 170; };
   function shapePath(ctx, shape, cx, cy, r) {
     ctx.beginPath();
@@ -100,7 +106,7 @@
   }
   // 画面の部品（ロビー・プレイヤー一覧）に使う駒の絵
   function shapeSvg(shape, color, size) {
-    const fill = PLAYER_COLORS[color] || '#888', stroke = isLight(color) ? '#555' : '#fff';
+    const fill = PLAYER_COLORS[color] || '#888', stroke = borderOf(color);
     const pts = SHAPE_PTS[shape || 'circle'];
     const body = pts ? `<polygon points="${pts.map(p => (12 + p[0] * 9).toFixed(1) + ',' + (12 + p[1] * 9).toFixed(1)).join(' ')}"` : '<circle cx="12" cy="12" r="9"';
     return `<svg class="pawn-ico" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${body} fill="${fill}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
@@ -123,6 +129,10 @@
 
     const toWorld = (px, py) => ({ x: (px - s.cam.x) / (T * s.cam.z), y: (py - s.cam.y) / (T * s.cam.z) });
     const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    board.hoverInfo = (g, x, y) => {
+      const b = E.bAt(g, x, y), res = E.resAt(g, x, y), animal = E.animalAt(g, x, y), plant = E.plantAt(g, x, y);
+      return (b || res || animal || plant) ? { b, res, animal, plant } : null;
+    };
     board.tileScreen = (x, y) => ({ x: s.cam.x + x * T * s.cam.z, y: s.cam.y + y * T * s.cam.z, size: T * s.cam.z });
 
     board.resize = function () {
@@ -217,7 +227,7 @@
       }
       const tx = Math.floor(w.x), ty = Math.floor(w.y);
       if (!s.press) {
-        if (!s.hover || s.hover.x !== tx || s.hover.y !== ty) { s.hover = { x: tx, y: ty }; o.onHover(E.bAt(g, tx, ty), v); board.request(); }
+        if (!s.hover || s.hover.x !== tx || s.hover.y !== ty) { s.hover = { x: tx, y: ty }; o.onHover(board.hoverInfo(g, tx, ty), v); board.request(); }
         return;
       }
       const pr = s.press;
@@ -329,23 +339,21 @@
         ctx.stroke();
       }
 
-      // 道（隣り合う道は一つにつながって見える）
+      // 道：建物と同じ角丸の札。隣り合う道は一つにつながって見える（枠 → 中の塗り の順に重ねる）
       const road = (x, y) => g.b.some(q => q.t === 'road' && q.x === x && q.y === y);
-      for (const b of g.b) {
-        if (b.t !== 'road' || !vis(b.x, b.y)) continue;
+      const roads = g.b.filter(b => b.t === 'road' && vis(b.x, b.y));
+      const roadShape = (b, pad) => {
         const n = road(b.x, b.y - 1), e = road(b.x + 1, b.y), so = road(b.x, b.y + 1), w = road(b.x - 1, b.y);
-        const x = X(b.x), y = Y(b.y), r = 10 * z;
-        const rad = (a, c) => ((!a && !c) ? r : 0);
-        ctx.fillStyle = th.road;
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, S, S, [rad(n, w), rad(n, e), rad(so, e), rad(so, w)]); ctx.fill(); } else ctx.fillRect(x, y, S, S);
-        ctx.strokeStyle = th.roadBd; ctx.lineWidth = 3 * z; ctx.lineCap = 'butt'; ctx.beginPath();
-        const h = 1.5 * z;
-        if (!n) { ctx.moveTo(x, y + h); ctx.lineTo(x + S, y + h); }
-        if (!so) { ctx.moveTo(x, y + S - h); ctx.lineTo(x + S, y + S - h); }
-        if (!w) { ctx.moveTo(x + h, y); ctx.lineTo(x + h, y + S); }
-        if (!e) { ctx.moveTo(x + S - h, y); ctx.lineTo(x + S - h, y + S); }
-        ctx.stroke();
-        if (o.sel() === b.id) { ctx.strokeStyle = th.accent; ctx.lineWidth = 3 * z; rr(ctx, x + 1.5, y + 1.5, S - 3, S - 3, 4 * z); ctx.stroke(); }
+        const ins = 3 * z - pad, x = X(b.x) + (w ? -0.5 : ins), y = Y(b.y) + (n ? -0.5 : ins);
+        const x2 = X(b.x + 1) - (e ? -0.5 : ins), y2 = Y(b.y + 1) - (so ? -0.5 : ins);
+        const r = 10 * z + pad, rad = (a, c) => ((!a && !c) ? r : 0);
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, x2 - x, y2 - y, [rad(n, w), rad(n, e), rad(so, e), rad(so, w)]); else ctx.rect(x, y, x2 - x, y2 - y);
+      };
+      ctx.fillStyle = th.roadBd; for (const b of roads) { roadShape(b, 2 * z); ctx.fill(); }
+      ctx.fillStyle = th.road; for (const b of roads) { roadShape(b, 0); ctx.fill(); }
+      for (const b of roads) {
+        if (o.sel() === b.id) { ctx.strokeStyle = th.accent; ctx.lineWidth = 3 * z; roadShape(b, 3 * z); ctx.stroke(); }
       }
 
       // 建物
@@ -393,7 +401,7 @@
       const tiles = new Map();
       const put = (x, y, v) => { if (!vis(x, y)) return; const k = E.key(x, y); (tiles.get(k) || tiles.set(k, []).get(k)).push(v); };
       for (const k of Object.keys(g.res)) { const [x, y] = E.parseKey(k); put(x, y, { kind: g.res[k].t, hp: g.res[k].hp, max: g.res[k].max || E.RULES.resHpMax }); }
-      for (const p of g.plants) put(p.x, p.y, { kind: 'plant', badge: '苗' });
+      for (const p of g.plants) put(p.x, p.y, { kind: 'plant', hp: p.left, max: E.RULES.growMax });
       for (const a of g.animals) put(a.x, a.y, { kind: 'animal', hp: a.hp, max: a.max || E.RULES.animalHpMax });
       g.players.forEach(p => put(p.x, p.y, { kind: 'pawn', p }));
       for (const [k, list] of tiles) {
@@ -434,43 +442,57 @@
       }
     };
 
-    // 駒：プレイヤーが選んだ形と色（数字は付けない）。自分の駒は外側にリング
+    // 駒：プレイヤーが選んだ形と色。うすく透けて、後ろの文字が読める。枠は塗りと同系色。自分の駒は外側にリング
     function pawn(x, y, size, p, mine, th, down) {
-      const cx = x + size / 2, cy = y + size / 2, r = size / 2 * 0.92;
+      const cx = x + size / 2, cy = y + size / 2, r = size / 2 * 0.92, sh = p.shape || 'circle';
+      const a0 = ctx.globalAlpha;
+      ctx.globalAlpha = a0 * 0.55;
       ctx.fillStyle = PLAYER_COLORS[p.color] || '#888';
-      shapePath(ctx, p.shape || 'circle', cx, cy, r); ctx.fill();
-      ctx.strokeStyle = isLight(p.color) ? '#4a5560' : '#fff'; ctx.lineWidth = Math.max(1.5, size / 13); ctx.lineJoin = 'round';
-      shapePath(ctx, p.shape || 'circle', cx, cy, r); ctx.stroke();
+      shapePath(ctx, sh, cx, cy, r); ctx.fill();
+      ctx.globalAlpha = a0 * 0.95;
+      ctx.strokeStyle = borderOf(p.color); ctx.lineWidth = Math.max(1.5, size / 11); ctx.lineJoin = 'round';
+      shapePath(ctx, sh, cx, cy, r); ctx.stroke();
       if (mine) {
         ctx.strokeStyle = th.text; ctx.lineWidth = Math.max(1.5, size / 13);
         ctx.beginPath(); ctx.arc(cx, cy, size / 2 + 3 * (size / 26), 0, 7); ctx.stroke();
       }
-      if (down) { ctx.fillStyle = 'rgba(15,22,32,.6)'; shapePath(ctx, p.shape || 'circle', cx, cy, r); ctx.fill(); text('zz', cx, cy, size * 0.42, '#fff', 700, 'center'); }
+      if (down) { ctx.fillStyle = 'rgba(15,22,32,.5)'; shapePath(ctx, sh, cx, cy, r); ctx.fill(); text('zz', cx, cy, size * 0.42, '#fff', 700, 'center'); }
+      ctx.globalAlpha = a0;
     }
-    // 資源・動物：円の外側の破線。線1本が体力1（なくなった分はうすく残す）。苗は「苗」の札
+    // 六角形（資源・苗）。頂点が左右にある向き
+    function hexPath(cx, cy, r) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i; i ? ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r) : ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+      ctx.closePath();
+    }
+    function hexAt(cx, cy, r, f) {     // 周上の位置 f（0〜1）の点
+      const t = (((f % 1) + 1) % 1) * 6, i = Math.floor(t), u = t - i, a = Math.PI / 3 * i, b = Math.PI / 3 * (i + 1);
+      return [cx + Math.cos(a) * r * (1 - u) + Math.cos(b) * r * u, cy + Math.sin(a) * r * (1 - u) + Math.sin(b) * r * u];
+    }
+    // 資源・苗：六角形。外側の破線1本が、資源は体力1、苗は「育つまであと1ラウンド」（なくなった分はうすく残す）。動物は円
     function entity(x, y, size, kind, badge, v, th) {
-      const c = th.res[kind], cx = x + size / 2, cy = y + size / 2;
-      ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, 7); ctx.fill();
+      const c = th.res[kind], cx = x + size / 2, cy = y + size / 2, animal = kind === 'animal';
+      ctx.fillStyle = c[0];
+      if (animal) { ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, 7); } else hexPath(cx, cy, size / 2 * 1.08);
+      ctx.fill();
       icon(ctx, kind, cx, cy, size * 0.57, c[2]);
-      ctx.lineCap = 'round';
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       if (v && v.max) {
-        const n = v.max, step = Math.PI * 2 / n, span = step * 0.62, rr_ = size / 2 + size * 0.07;
+        const n = v.max;
         ctx.lineWidth = Math.max(1.6, size / 9); ctx.strokeStyle = c[1];
         for (let i = 0; i < n; i++) {
-          const a0 = -Math.PI / 2 + i * step + (step - span) / 2;
           ctx.globalAlpha = i < v.hp ? 1 : 0.18;
-          ctx.beginPath(); ctx.arc(cx, cy, rr_, a0, a0 + span); ctx.stroke();
+          ctx.beginPath();
+          if (animal) {
+            const step = Math.PI * 2 / n, span = step * 0.62, a0 = -Math.PI / 2 + i * step + (step - span) / 2;
+            ctx.arc(cx, cy, size / 2 + size * 0.07, a0, a0 + span);
+          } else {
+            const R = size / 2 * 1.08 + size * 0.1, f0 = (i + 0.19) / n, f1 = (i + 0.81) / n;
+            for (let k = 0; k <= 8; k++) { const q = hexAt(cx, cy, R, f0 + (f1 - f0) * k / 8); k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
+          }
+          ctx.stroke();
         }
         ctx.globalAlpha = 1;
-      } else {
-        ctx.strokeStyle = c[1]; ctx.lineWidth = Math.max(1, size / 15); ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, 7); ctx.stroke();
-        if (badge) {
-          ctx.font = `700 ${size * 0.4}px ${FONT}`;
-          const w = Math.max(size * 0.53, ctx.measureText(badge).width + size * 0.2);
-          const bx = x + size - w + size * 0.23, by = y + size - size * 0.3;
-          ctx.fillStyle = '#0f1620'; rr(ctx, bx, by, w, size * 0.53, size * 0.27); ctx.fill();
-          text(badge, bx + w / 2, by + size * 0.28, size * 0.4, '#fff', 700, 'center');
-        }
       }
     }
 
@@ -479,5 +501,5 @@
     return board;
   }
 
-  window.SnowBoard = { create, THEMES, PLAYER_COLORS, COLOR_NAMES, SHAPE_NAMES, shapeSvg, ICONS, ITEM_ICON, svgIcon, T };
+  window.SnowBoard = { borderOf, create, THEMES, PLAYER_COLORS, COLOR_NAMES, SHAPE_NAMES, shapeSvg, ICONS, ITEM_ICON, svgIcon, T };
 })();

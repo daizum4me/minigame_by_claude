@@ -232,7 +232,8 @@
         let r = this.doAct(c.id, a);
         if (!r.ok && a.type !== 'end') r = this.doAct(c.id, { type: 'end' });   // できなかったら手番を終える
       } else if (c.away) {
-        this.doAct(c.id, { type: 'end' });
+        const pd = g.pending && g.pending[0];
+        this.doAct(c.id, pd && pd.pid === c.id ? { type: 'overflow', drop: {} } : { type: 'end' });
       }
       this.schedule();
     }

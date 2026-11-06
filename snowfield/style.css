@@ -84,7 +84,7 @@ section.mapcol { flex: 1; min-width: 0; display: flex; }
 .phead .dot { width: 18px; height: 18px; font-size: 11px; } .phead .pn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .badge { font-size: 11px; background: var(--accBg); color: var(--accFg); border-radius: 999px; padding: 0 7px; font-weight: 700; white-space: nowrap; line-height: 17px; }
 .badge.red { background: var(--redBg); color: var(--redFg); } .badge.gray { background: var(--chip); color: var(--muted2); font-weight: 500; }
-.pstats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .pstats.three { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.pstats { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; } .pstats .ms.ap { grid-column: 1 / -1; }
 .ms { display: flex; align-items: center; gap: 4px; font-size: 11px; min-width: 0; } .ms .k { color: var(--muted); white-space: nowrap; }
 .ms .tr { flex: 1; min-width: 14px; height: 7px; border-radius: 4px; background: var(--track); overflow: hidden; } .ms .tr i { display: block; height: 100%; border-radius: 4px; }
 .ms b { font-size: 12px; min-width: 14px; text-align: right; }
@@ -172,3 +172,13 @@ button.sty { width: 40px; height: 40px; padding: 0; display: flex; align-items: 
 button.sty.on, button.sw.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 button.sw { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid rgba(150,165,180,.8); }
 button.sw:disabled { opacity: .25; }
+
+/* 上限を超えたとき・食料の必要量 */
+.overlay.ovr { position: absolute; z-index: 9; background: rgba(8,12,18,.45); border-radius: 12px; }
+.ovr-card { width: min(380px, 100%); gap: 10px; padding: 16px 18px; }
+.ovr-new { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.ovr-ico { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.ovr-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ovr-row button { width: 28px; height: 28px; padding: 0; font-size: 16px; font-weight: 700; }
+.ovr-n { min-width: 20px; text-align: center; }
+.food-need { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--pb); padding-top: 8px; line-height: 1.5; }
