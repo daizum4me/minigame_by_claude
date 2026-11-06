@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BUILDING_DEFS, ITEM_LABEL, ITEM_ORDER, WEATHER_LABEL, applyAction, createGame, isInsulated, itemCap, totalItems,
-  type Action, type BuildableType, type GameState, type ItemKey,
+  BUILDING_DEFS, ITEM_LABEL, ITEM_ORDER, WEATHER_LABEL, isInsulated, itemCap, totalItems,
+  type Action, type BuildableType, type ClientMsg, type ItemKey, type ServerMsg,
 } from '@snowfield/core';
+import { createGuest, createHost, createLocal, type Handlers, type Session } from './net';
+import { Lobby, Menu, type StartChoice } from './Screens';
 import { Board, type BoardHandle, type CardDrag } from './Board';
 import { DARK, LIGHT } from './theme';
 import { DESC, IDESC, T, WEATHER_FX, costText, isWarm, phaseLabel } from './ui';
@@ -10,9 +12,18 @@ import { buildMenu } from './menu';
 import { Icon, itemIcon } from './icons';
 
 const THEME_KEY = 'snowfield-theme';
+const initialCode = (() => { try { return (new URLSearchParams(location.search).get('room') ?? '').toUpperCase().slice(0, 5); } catch { return ''; } })();
 
 export default function App() {
-  const [game, setGame] = useState<GameState | null>(null);
+  type RoomMsg = Extract<ServerMsg, { type: 'room' }>;
+  const [room, setRoom] = useState<RoomMsg | null>(null);
+  const [net, setNet] = useState<'none' | 'local' | 'online'>('none');
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const session = useRef<Session | null>(null);
+  const roomRef = useRef<RoomMsg | null>(null);
+  roomRef.current = room;
+  const game = room?.state ?? null;
   const [viewer, setViewer] = useState(0);
   const [dark, setDark] = useState(() => { try { return localStorage.getItem(THEME_KEY) !== 'light'; } catch { return true; } });
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
@@ -24,12 +35,8 @@ export default function App() {
   const [color, setColor] = useState<'a' | 'b'>('a');
   const [cardDrag, setCardDrag] = useState<CardDrag | null>(null);
   const [itip, setItip] = useState<{ k: ItemKey; x: number; y: number } | null>(null);
-  const [setup, setSetup] = useState(true);
-  const [count, setCount] = useState(3);
   const board = useRef<BoardHandle>(null);
   const timer = useRef<number>();
-  const gameRef = useRef<GameState | null>(null);
-  gameRef.current = game;
   const th = dark ? DARK : LIGHT;
 
   useEffect(() => { try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch { /* 保存できなくても動く */ } }, [dark]);
@@ -41,22 +48,43 @@ export default function App() {
     timer.current = window.setTimeout(() => setToast(null), 5000);
   };
 
-  /** 行動を適用する。state は常に最新の ref から取る（ドラッグ中の連続呼び出し対策） */
-  const act = (a: Action, quiet = false) => {
-    const g = gameRef.current; if (!g) return;
-    const r = applyAction(g, a);
-    gameRef.current = r.state;
-    setGame(r.state);
-    if (!quiet || !r.ok) say(r.message, r.ok);
-    if (a.type === 'endTurn' && r.ok) { setViewer(r.state.turn); setMenuOpen(false); }
-    if (a.type === 'build' && r.ok) { setSel(r.state.buildings[r.state.buildings.length - 1].id); }
-  };
+  /** 行動はすべて部屋（ホスト）へ送る。結果は 'log' / 'result' で返ってくる */
+  const act = (a: Action, _quiet = false) => { session.current?.send({ type: 'action', action: a }); };
+  const send = (m: ClientMsg) => session.current?.send(m);
 
-  const start = () => {
-    const g = createGame({ players: count, seed: (Math.random() * 2 ** 31) | 0 });
-    gameRef.current = g; setGame(g); setViewer(0); setSetup(false); setSel(null); setMenuOpen(false); setTray(false); setDrawMode(false);
-    say('ゲーム開始。駒をドラッグで移動、クリックで行動できます');
+  const handlers: Handlers = {
+    onMsg: (m) => {
+      if (m.type === 'room') { setRoom(m); setStatus(null); }
+      else if (m.type === 'log') {
+        const r = roomRef.current;
+        const mine = r?.controls.includes(m.seat ?? -1);
+        const who = m.seat !== null && r && !mine && r.seats[m.seat] ? `${r.seats[m.seat].name}：` : '';
+        say(who + m.message, true);
+      } else if (m.type === 'result') say(m.message, m.ok);
+      else if (m.type === 'error') { leave(m.text); }
+    },
+    onStatus: setStatus,
+    onFatal: (text) => leave(text),
   };
+  const leave = (err: string | null = null) => {
+    session.current?.close(); session.current = null;
+    setRoom(null); setNet('none'); setStatus(null); setError(err);
+    setSel(null); setMenuOpen(false); setTray(false); setDrawMode(false);
+    try { history.replaceState(null, '', location.pathname); } catch { /* なくても動く */ }
+  };
+  const begin = (c: StartChoice) => {
+    session.current?.close();
+    setError(null); setRoom(null);
+    if (c.kind === 'cpu') { setNet('local'); session.current = createLocal(handlers, { multi: false, name: c.name, cpus: c.cpus, autoStart: true }); }
+    else if (c.kind === 'hotseat') {
+      setNet('local');
+      const s = createLocal(handlers, { multi: true, name: c.name, cpus: 0, autoStart: false });
+      for (let i = 1; i < c.players; i++) s.send({ type: 'addLocal' });
+      s.send({ type: 'start' }); session.current = s;
+    } else if (c.kind === 'host') { setNet('online'); setStatus('部屋を作っています…'); session.current = createHost(handlers, c.name); }
+    else { setNet('online'); setStatus('接続しています…'); session.current = createGuest(handlers, c.code, c.name); }
+  };
+  useEffect(() => () => { session.current?.close(); }, []);
 
   /* 建設カードのドラッグ（ウィンドウ全体でポインタを追う） */
   const dragging = useRef<BuildableType | null>(null);
@@ -67,7 +95,7 @@ export default function App() {
       dragging.current = null; setCardDrag(null);
       const c = board.current?.cellAt(e.clientX, e.clientY, BUILDING_DEFS[t].size);
       if (!c) { say('盤面の上にドロップしてください', false); return; }
-      act({ type: 'build', player: gameRef.current!.turn === viewerRef.current ? viewerRef.current : viewerRef.current, building: t, x: c.x, y: c.y });
+      act({ type: 'build', player: viewerRef.current, building: t, x: c.x, y: c.y });
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
@@ -79,10 +107,27 @@ export default function App() {
     [game, viewer, menuOpen, drawMode],
   );
 
-  if (!game) {
-    return <div className="app" style={themeStyle(th)}>{<SetupModal count={count} setCount={setCount} start={start} min={2} max={5} />}</div>;
+  const controls = room?.controls ?? [];
+  const turn = game?.turn ?? 0;
+  // 操作する席：自分の席が1つならそれ。同じ画面で遊ぶ場合は手番の席に自動で切り替える
+  useEffect(() => {
+    if (!controls.length) return;
+    if (controls.length === 1) setViewer(controls[0]);
+    else if (game && controls.includes(turn) && !room?.seats[turn]?.cpu) setViewer(turn);
+  }, [controls.join(','), turn, room?.phase]);
+
+  if (!room || room.phase === 'lobby') {
+    return (
+      <div className="app" style={themeStyle(th)}>
+        {!room && net === 'none' && <Menu onStart={begin} error={error} initialCode={initialCode} />}
+        {!room && net !== 'none' && <div className="modal-bg"><div className="modal" role="status"><div>{status ?? '接続しています…'}</div><button className="smallbtn" style={{ height: 34 }} onClick={() => leave()}>やめる</button></div></div>}
+        {room && <Lobby code={room.code} seats={room.seats} you={room.you} hostSeat={room.hostSeat} online={net === 'online'} status={status}
+          onAddCpu={() => send({ type: 'addCpu' })} onRemove={(i) => send({ type: 'removeSeat', seat: i })} onStart={() => send({ type: 'start' })} onLeave={() => leave()} />}
+      </div>
+    );
   }
-  const g = game, me = g.players[viewer], myTurn = g.turn === viewer;
+  const g = game!, me = g.players[viewer] ?? g.players[0], myTurn = g.turn === viewer;
+  const isHostSeat = room.you !== null && room.you === room.hostSeat;
   const cap = itemCap(g), total = totalItems(g);
   const ph = phaseLabel(g);
   const hasTower = g.buildings.some((b) => b.t === 'tower');
@@ -110,21 +155,23 @@ export default function App() {
         {hasTower && <div className="pill" style={{ background: 'var(--grnBg)', color: 'var(--grnFg)' }}>予報（見張り台）：{g.nextWeather ? `次ラウンドは${WEATHER_LABEL[g.nextWeather]}` : '次はありません'}</div>}
         <div style={{ flex: 1 }} />
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>現在の天候：<b style={{ color: 'var(--text)' }}>{WEATHER_LABEL[g.weather]}</b>（{WEATHER_FX[g.weather]}）</div>
-        <div className="seg" role="group" aria-label="操作するプレイヤー">
-          {g.players.map((p, i) => (
+        {room.controls.length > 1 && <div className="seg" role="group" aria-label="操作するプレイヤー">
+          {room.controls.map((i) => { const p = g.players[i]; return (
             <button key={i} aria-label={`${p.name}を操作`} aria-pressed={i === viewer} onClick={() => { setViewer(i); setMenuOpen(false); }}
               style={{ background: i === viewer ? 'var(--text)' : 'var(--btn)', color: i === viewer ? 'var(--panel)' : 'var(--text)' }}>{i + 1}</button>
-          ))}
-        </div>
+          ); })}
+        </div>}
+        {net === 'online' && <div className="pill" style={{ background: 'var(--chip)' }} title="部屋ID">部屋 {room.code}</div>}
+        {status && <div className="pill" style={{ background: 'var(--redBg)', color: 'var(--redFg)' }} role="status">{status}</div>}
         <div className="seg" role="group" aria-label="表示テーマ">
           {[['ライト', false], ['ダーク', true]].map(([l, d]) => (
             <button key={String(l)} aria-pressed={dark === d} onClick={() => setDark(d as boolean)}
               style={{ background: dark === d ? 'var(--text)' : 'var(--btn)', color: dark === d ? 'var(--panel)' : 'var(--text)' }}>{l}</button>
           ))}
         </div>
-        <button aria-label="手番を終える" disabled={g.turn !== viewer || g.phase !== 'playing'} onClick={() => act({ type: 'endTurn', player: viewer })}
+        <button aria-label="手番を終える" disabled={g.turn !== viewer || g.phase !== 'playing' || !room.controls.includes(viewer)} onClick={() => act({ type: 'endTurn', player: viewer })}
           style={{ height: 34, padding: '0 14px', border: '1px solid var(--accent)', background: 'var(--accBg)', color: 'var(--accFg)', borderRadius: 8, fontSize: 13, fontWeight: 700 }}>手番を終える</button>
-        <button aria-label="新しいゲーム" onClick={() => setSetup(true)} className="smallbtn" style={{ height: 34 }}>新規</button>
+        <button aria-label="ゲームをやめる" onClick={() => leave()} className="smallbtn" style={{ height: 34 }}>やめる</button>
       </header>
 
       <div className="body">
@@ -135,12 +182,14 @@ export default function App() {
               <div className="row">
                 <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.color, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
                 <div style={{ fontWeight: 700 }}>{p.name}</div><div style={{ flex: 1 }} />
+                {room.seats[i]?.cpu && <div style={{ fontSize: 12, background: 'var(--chip)', borderRadius: 999, padding: '2px 8px', fontWeight: 700 }}>CPU</div>}
+                {room.seats[i] && !room.seats[i].connected && <div style={{ fontSize: 12, background: 'var(--redBg)', color: 'var(--redFg)', borderRadius: 999, padding: '2px 8px', fontWeight: 700 }}>切断中</div>}
                 {p.incapacitated && <div style={{ fontSize: 12, background: 'var(--redBg)', color: 'var(--redFg)', borderRadius: 999, padding: '2px 8px', fontWeight: 700 }}>行動不能</div>}
                 {g.turn === i && <div style={{ fontSize: 12, background: 'var(--accBg)', color: 'var(--accFg)', borderRadius: 999, padding: '2px 8px', fontWeight: 700 }}>手番中</div>}
               </div>
               <Gauge label="体温" v={p.temp} max={g.config.maxTemp} col={p.temp <= 3 ? th.tempLow : th.temp} low={p.temp <= 3} />
               <Gauge label="満腹度" v={p.food} max={g.config.maxFood} col={p.food <= 3 ? th.foodLow : th.food} low={p.food <= 3} />
-              {i === viewer && <Gauge label="行動力" v={p.ap} max={g.config.apPerTurn} col="var(--ap)" />}
+              {(i === viewer) && <Gauge label="行動力" v={p.ap} max={g.config.apPerTurn} col="var(--ap)" />}
             </div>
           ))}
           <div style={{ flex: 1, minHeight: 120, background: 'var(--panel)', border: '1px dashed var(--bb)', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
@@ -213,15 +262,15 @@ export default function App() {
                   <div key={i} className="row" style={{ fontSize: 13, gap: 6 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>{p.name}</div>
                     <b style={{ color: v > 0 ? th.ok : v < 0 ? th.redFg : 'var(--muted)' }}>{v > 0 ? '賛成' : v < 0 ? '反対' : '未投票'}</b>
-                    {v === 0 && <>
+                    {v === 0 && room.controls.includes(i) && <>
                       <button className="smallbtn" aria-label={`${p.name}の賛成`} onClick={() => act({ type: 'castVote', player: i, value: 1 })}>賛成</button>
                       <button className="smallbtn" aria-label={`${p.name}の反対`} onClick={() => act({ type: 'castVote', player: i, value: -1 })}>反対</button>
                     </>}
                   </div>
                 );
               })}
-              <div className="row"><div className="tiny" style={{ flex: 1 }}>過半数の賛成で捨てます。他プレイヤーの票はここで代わりに押せます。</div>
-                <button className="smallbtn" onClick={() => act({ type: 'cancelVote' })}>取り下げ</button></div>
+              <div className="row"><div className="tiny" style={{ flex: 1 }}>過半数の賛成で捨てます。{net === 'local' && room.controls.length > 1 ? '他プレイヤーの票はここで代わりに押せます。' : 'CPUは自動で投票します。'}</div>
+                {room.controls.some((c) => g.vote!.votes[c] === 1) && <button className="smallbtn" onClick={() => act({ type: 'cancelVote' })}>取り下げ</button>}</div>
             </div>
           )}
 
@@ -292,10 +341,10 @@ export default function App() {
         <div className="modal-bg"><div className="modal" role="dialog" aria-label="ゲーム終了">
           <div style={{ fontSize: 22, fontWeight: 700 }}>{g.phase === 'won' ? '生還！' : 'ゲームオーバー'}</div>
           <div style={{ lineHeight: 1.7 }}>{g.endReason}</div>
-          <button className="primary" onClick={() => setSetup(true)}>もう一度あそぶ</button>
+          {isHostSeat && <button className="primary" onClick={() => send({ type: 'toLobby' })}>ロビーに戻る</button>}
+          <button className="smallbtn" style={{ height: 34 }} onClick={() => leave()}>やめる</button>
         </div></div>
       )}
-      {setup && <SetupModal count={count} setCount={setCount} start={start} min={2} max={5} onCancel={() => setSetup(false)} />}
     </div>
   );
 }
@@ -307,20 +356,6 @@ function Gauge({ label, v, max, col, low }: { label: string; v: number; max: num
       <div className="track"><div className="fill" style={{ width: `${(v / max) * 100}%`, background: col }} /></div>
       <div className="num" style={{ color: low ? 'var(--redFg)' : 'var(--text)' }}>{v}</div>
     </div>
-  );
-}
-
-function SetupModal({ count, setCount, start, min, max, onCancel }: { count: number; setCount: (n: number) => void; start: () => void; min: number; max: number; onCancel?: () => void }) {
-  return (
-    <div className="modal-bg"><div className="modal" role="dialog" aria-label="新しいゲーム">
-      <div style={{ fontSize: 22, fontWeight: 700 }}>Snowfield</div>
-      <div style={{ color: 'var(--muted2)', lineHeight: 1.7, fontSize: 13 }}>協力して準備期間の10ラウンドを乗り切り、最終猛吹雪の3ラウンドを生き延びよう。1つの画面で、手番のプレイヤーを順番に操作して遊びます。</div>
-      <div className="row"><div style={{ fontSize: 13, fontWeight: 700 }}>人数</div><div className="seg">
-        {Array.from({ length: max - min + 1 }, (_, i) => min + i).map((n) => (
-          <button key={n} aria-pressed={count === n} onClick={() => setCount(n)} style={{ background: count === n ? 'var(--text)' : 'var(--btn)', color: count === n ? 'var(--panel)' : 'var(--text)' }}>{n}人</button>
-        ))}</div></div>
-      <div className="row"><button className="primary" style={{ flex: 1 }} onClick={start}>ゲーム開始</button>{onCancel && <button className="smallbtn" style={{ height: 40 }} onClick={onCancel}>閉じる</button>}</div>
-    </div></div>
   );
 }
 
