@@ -165,3 +165,43 @@ test('CPUだけでもクリアできる（3人・20通りのマップのうち�
   }
   assert.ok(wins >= 4, `クリアは${wins}/20回`);
 });
+
+test('CPUは、同じ場所を行ったり来たりしない（1手番に、仕事をはさまない移動を3回続けない）', () => {
+  for (const n of [3, 5]) {
+    for (let seed = 1; seed <= 8; seed++) {
+      const st = E.createGame({ seed, players: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+      const mem = {};
+      let key = '', run = 0;
+      for (let k = 0; st.phase === 'play' && k < 30000; k++) {
+        const p = E.cur(st), tk = st.round + ':' + st.turn;
+        if (tk !== key) { key = tk; run = 0; }
+        for (const q of st.players) { const v = CPU.voteIntent(st, q.id); if (v) E.act(st, q.id, v); }
+        const a = CPU.decide(st, p.id, mem[p.id] || (mem[p.id] = {}));
+        run = a.type === 'move' ? run + 1 : 0;
+        assert.ok(run < 3, `n=${n} seed=${seed} R${st.round}：移動が${run}回続いた`);
+        if (!E.act(st, p.id, a).ok) E.act(st, p.id, { type: 'end' });
+      }
+    }
+  }
+});
+
+test('手番の制限時間：人間の手番は120秒で自動的に終わる。CPUには制限がない', () => {
+  const { room, timers, last, clock, inbox } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  const first = E.cur(room.game);
+  assert.strictEqual(first.id, h);
+  assert.strictEqual(last(h).room.turnLeft, E.RULES.turnLimitMs);
+  clock.t += 60000;
+  assert.strictEqual(room.view().turnLeft, 60000);
+  const t = timers.find(x => x.ms === E.RULES.turnLimitMs);
+  assert.ok(t);
+  timers.splice(timers.indexOf(t), 1);
+  t.fn();                                              // 時間切れ
+  assert.notStrictEqual(E.cur(room.game).id, h);
+  assert.strictEqual(room.view().turnLeft, null);       // CPUの手番
+  assert.match(room.game.log.map(l => l.t).join('|'), /制限時間/);
+  void inbox;
+});

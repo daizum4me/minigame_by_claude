@@ -19,6 +19,8 @@
     igloo: ['M3 19a9 9 0 0 1 18 0z', 'M10 19v-3a2 2 0 0 1 4 0v3'],
     storage: ['M3 10l9-6 9 6v10H3z', 'M9 20v-6h6v6'],
     tower: ['M8 21l2-12h4l2 12', 'M7 9h10l-1-4H8z', 'M9 15h6'],
+    woodshed: ['M5 20h14', 'M7 20V12h10v8', 'M12 12V4', 'M9 6l3-2 3 2'],     // 切り株と斧
+    firewood: [RC(3, 6, 18, 5), RC(3, 13, 18, 5), 'M6 8.5h5M6 15.5h5'],
     tree: ['M12 3l6 9h-3l4 6H5l4-6H6z', 'M12 18v3'],
     stone: ['M4 18l3-9 6-4 6 6 2 7z'],
     veg: ['M12 21c-4-3-5-8-2-12 3 1 5 3 5 6 0 2-1 4-3 6z', 'M10 9c0-3 2-5 4-6'],
@@ -31,7 +33,7 @@
     sapling: ['M12 21v-9', 'M12 12l-4-3M12 15l4-3', C(8, 7.5, 2.5), C(16, 9, 2.5), C(12, 5, 2.5)],
   };
   ICONS.vegItem = ICONS.veg;
-  const ITEM_ICON = { wood: 'wood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
+  const ITEM_ICON = { wood: 'wood', firewood: 'firewood', stone: 'stoneItem', veg: 'veg', meat: 'meat', snow: 'snow', sapling: 'sapling' };
   const P2D = {};
   function svgIcon(name, size) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name].map(d => `<path d="${d}"/>`).join('')}</svg>`;
@@ -52,11 +54,11 @@
       road: '#c3cfd8', roadBd: '#8497a8', hpTrack: 'rgba(36,50,63,.16)', hpOk: '#3c8f66', hpLow: '#c0463b', penA: '#2d5b88', penB: '#8a97a3',
       temp: '#4a90c8', tempLow: '#c0463b', food: '#e0a030', foodLow: '#c0463b', redFg: '#a8312a', ok: '#2f9a6a', ng: '#c0463b',
       bg: '#e9eff4', tile: '#f8fafc', reach: '#e8f1f7', grid: '#dbe5ed', accent: '#2f6fb5', text: '#24323f', panel: '#ffffff',
-      card: { fire: ['#fff1e4', '#e9722f', '#5c2a0c'], igloo: ['#e6f0f8', '#8fb2cf', '#24323f'], storage: ['#e7eaee', '#8a97a5', '#24323f'], tower: ['#eef0e6', '#9aa684', '#33402a'], off: ['#eceff1', '#b7c0c8', '#5d6f7e'] },
+      card: { fire: ['#fff1e4', '#e9722f', '#5c2a0c'], igloo: ['#e6f0f8', '#8fb2cf', '#24323f'], storage: ['#e7eaee', '#8a97a5', '#24323f'], tower: ['#eef0e6', '#9aa684', '#33402a'], woodshed: ['#f3ebe0', '#a88b62', '#4a3820'], off: ['#eceff1', '#b7c0c8', '#5d6f7e'] },
       chip: { ok: ['#dcf0e4', '#1d5a3a'], lost: ['#fbe0dd', '#8f261e'], fire: ['#ffe0c8', '#8a3a0e'] },
       fireOn: '#e9722f', fireOff: '#f3d9c6',
       res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'] },
-      item: { wood: ['#f3e8dc', '#8a5a2b'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
+      item: { wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
       tint: { clear: 'rgba(255,236,190,0.10)', snow: 'rgba(120,150,185,0.10)', blizzard: 'rgba(120,150,185,0.22)', rain: 'rgba(70,105,150,0.18)', storm: 'rgba(55,85,130,0.34)' },
       flake: '#7fa3c2', rain: '#4b79a8',
     },
@@ -64,11 +66,11 @@
       road: '#3a4958', roadBd: '#7089a0', hpTrack: 'rgba(255,255,255,.16)', hpOk: '#4fb27f', hpLow: '#ff6b5e', penA: '#7fb4e8', penB: '#9fb0bf',
       temp: '#5aaee8', tempLow: '#ff6b5e', food: '#f0b94a', foodLow: '#ff6b5e', redFg: '#ff9a90', ok: '#4fb27f', ng: '#ff6b5e',
       bg: '#0f1620', tile: '#121b26', reach: '#1b2a3b', grid: '#25364a', accent: '#5aa0e6', text: '#e6edf3', panel: '#17212d',
-      card: { fire: ['#3a2314', '#e9722f', '#ffd9bd'], igloo: ['#1b2e42', '#4a7aa6', '#dbe9f6'], storage: ['#252e39', '#6f7f90', '#e6edf3'], tower: ['#2a3220', '#7c8a5f', '#dfe8cf'], off: ['#1f2730', '#4a5663', '#8d9dab'] },
+      card: { fire: ['#3a2314', '#e9722f', '#ffd9bd'], igloo: ['#1b2e42', '#4a7aa6', '#dbe9f6'], storage: ['#252e39', '#6f7f90', '#e6edf3'], tower: ['#2a3220', '#7c8a5f', '#dfe8cf'], woodshed: ['#33291c', '#a8895a', '#f0e0c4'], off: ['#1f2730', '#4a5663', '#8d9dab'] },
       chip: { ok: ['#1c3d2e', '#8fe0b3'], lost: ['#4a2224', '#ffab9f'], fire: ['#4a2f1a', '#ffc9a0'] },
       fireOn: '#f08a4b', fireOff: '#4a3526',
       res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], plant: ['#24331a', '#8cc25a', '#c4e89a'] },
-      item: { wood: ['#3a2c1e', '#e0b27a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
+      item: { wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
       tint: { clear: 'rgba(0,0,0,0)', snow: 'rgba(150,185,225,0.07)', blizzard: 'rgba(170,200,235,0.16)', rain: 'rgba(40,80,140,0.22)', storm: 'rgba(190,215,245,0.26)' },
       flake: '#b8d4ee', rain: '#6f9fd0',
     },
@@ -304,8 +306,7 @@
       ctx.fillStyle = th.tile;
       for (const r of g.gen) ctx.fillRect(X(r[0]), Y(r[2]), (r[1] - r[0] + 1) * S, (r[3] - r[2] + 1) * S);
       ctx.fillStyle = th.reach;
-      const M = E.RULES.moveRange;
-      for (const b of g.b) ctx.fillRect(X(b.x - M), Y(b.y - M), (b.w + 2 * M) * S, (b.h + 2 * M) * S);
+      for (const b of g.b) { const M = E.rangeOf(b); ctx.fillRect(X(b.x - M), Y(b.y - M), (b.w + 2 * M) * S, (b.h + 2 * M) * S); }
       ctx.strokeStyle = th.grid; ctx.lineWidth = 1; ctx.beginPath();
       for (const r of g.gen) {
         const a = Math.max(r[0], vx0), b2 = Math.min(r[1] + 1, vx1), c2 = Math.max(r[2], vy0), d2 = Math.min(r[3] + 1, vy1);
@@ -368,7 +369,7 @@
         if (z < 0.5) continue;
         const px = x + 8 * z; let py = y + 7 * z + 9 * z;
         icon(ctx, b.t, px + 9 * z, py, 18 * z, col[2]);
-        text(({ fire: '焚き火', igloo: 'かまくら', storage: '倉庫', tower: '見張り台' })[b.t], px + 24 * z, py, 13 * z, col[2], 700);
+        text(({ fire: '焚き火', igloo: 'かまくら', storage: '倉庫', tower: '見張り台', woodshed: '薪割り台' })[b.t], px + 24 * z, py, 13 * z, col[2], 700);
         py += 16 * z;
         let chip = null, label = '';
         if (isFire) { chip = th.chip.fire; label = `火力 ${g.fire} / ${E.RULES.fireMax}`; }

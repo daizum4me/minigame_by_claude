@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 
@@ -83,7 +83,7 @@
       <button id="btn-log" class="bar-btn">ログ</button>
       <div id="log-pop" class="log-pop" hidden></div>
     </div>
-    <button class="bar-btn" data-act="theme">ライト／ダーク</button>
+    <button class="bar-btn" data-act="theme">テーマ</button>
     <button id="btn-sound" class="bar-btn" data-act="sound">音：ON</button>
     <button class="bar-btn" data-open="rules">ルール</button>
     <button id="btn-endturn" class="bar-btn primary">手番を終える</button>
@@ -91,8 +91,9 @@
   <div class="body">
     <aside class="left">
       <div id="players" class="players"></div>
+      <div id="endproj" class="panel endproj" hidden></div>
       <div class="tray-box">
-        <div class="tray-head"><span>建設カード</span><button id="btn-tray-close" class="x" aria-label="建設カードをしまう" hidden>×</button></div>
+        <div class="tray-head"><span id="tray-title">建設カード</span><button id="btn-tray-close" class="x" aria-label="建設カードをしまう" hidden>×</button></div>
         <div id="tray" class="tray"></div>
       </div>
     </aside>
@@ -139,7 +140,7 @@
 
 <!-- 結果 -->
 <div id="result" class="overlay" hidden>
-  <div class="card result-card">
+  <div class="card result-card wide">
     <h2 id="result-title"></h2>
     <p id="result-sub" class="lead"></p>
     <ul id="result-players" class="result-players"></ul>
@@ -160,12 +161,14 @@
       <p>みんなで協力して、<b>準備期間10ラウンド → 最終猛吹雪3ラウンド</b>を生き延びればクリアです。<b>全員が同時に行動不能</b>になるとゲームオーバー。最終猛吹雪が来ることは最初からわかっています。</p>
       <h3>手番</h3>
       <ul>
-        <li>全員が1回ずつ手番を行うのが1ラウンド。手番の始めに行動力が7になります（使い切らなくてOK・持ち越しなし）。</li>
+        <li>全員が1回ずつ手番を行うのが1ラウンド。手番の始めに行動力が7になります（使い切らなくてOK・持ち越しなし）。人間の手番には<b>制限時間（120秒）</b>があり、切れると自動で終わります。</li>
+        <li>手番中は、左に「このまま手番を終えると」の予測（満腹度・体温・火力）が出ます。</li>
         <li>手番の終わりに、①満腹度 −3 ②焚き火の火力 −1（雨ならさらに −1）③体温の低下 ④行動不能の判定、の順に処理します。</li>
         <li>手番でない人は「移動」と「お絵かき」と「捨てる投票」だけできます。動物は、各プレイヤーの手番の終わりに1回ずつ動きます。</li>
       </ul>
       <h3>体温・満腹度</h3>
       <ul>
+        <li>ゲーム開始時に、人数ぶんの野菜が配られます。</li>
         <li>どちらも最大10。0になると<b>行動不能</b>：焚き火へ運ばれ、0だった数値が3に回復します。次の自分の手番は「温まる」「食べる」だけできます。</li>
         <li>体温の低下（手番の終わり）：焚き火の上 <b>0</b> ／ かまくら・倉庫の中（防寒が有効）<b>−1</b> ／ 雪原・道・防寒が切れた建物・見張り台 <b>−2</b>。これに天候の補正が加わります（防寒が有効な建物の中では補正を最大2まで軽減）。</li>
         <li>天候補正：晴れ 0・雪 +1・吹雪 +2・猛吹雪 +4。雨は焚き火の火力が余分に1下がります。</li>
@@ -186,7 +189,7 @@
         <li><b>持ち物がいっぱい</b>のときは、持っている物を捨てて入れ替えるか、新しく得た物を捨てるかを選びます（雪が自動で付いてくるぶんは、入らなければ入りません）。</li>
         <li><b>攻撃</b>（1）：隣の動物の体力−1。倒すと肉が1〜7個。</li>
         <li><b>植える</b>（1）：野菜2個→野菜の苗／苗木1個→樹木の苗。雪原の空きマスに。1〜3ラウンド後に育ちます（苗の外側の線の区切り1つが「育つまであと1ラウンド」）。</li>
-        <li><b>建てる</b>：建設カードを盤面へドラッグ。<b>直す</b>：建物に隣接して、石材1＋行動力（直径ぶん）でHP+2。</li>
+        <li><b>建てる</b>：建設カードを盤面へドラッグ。<b>作る</b>：薪割り台の上かすぐ隣で、木材1→薪2（行動力1）。<b>直す</b>：建物に隣接して、石材1＋行動力（直径ぶん）でHP+2。</li>
       </ul>
       <h3>建物</h3>
       <ul>
@@ -194,7 +197,8 @@
         <li><b>道</b>（1×1）雪1。建物の仲間として移動範囲を広げます。</li>
         <li><b>かまくら</b>（2×2）雪5・行動力2。防寒施設。</li>
         <li><b>倉庫</b>（4×4）木材4＋石材4・行動力4。防寒施設。共有アイテムの上限+10。</li>
-        <li><b>見張り台</b>（2×2）木材5＋石材3・行動力2。1ラウンド先の天候の予報が見えます。</li>
+        <li><b>見張り台</b>（2×2）木材5＋石材3・行動力2。1ラウンド先の天候の予報が見え、<b>見張り台からは2マス以内</b>に移動できます。</li>
+        <li><b>薪割り台</b>（2×2・屋外）木材3＋石材1・行動力2。上かすぐ隣で「作る」と、木材1が薪2になります。薪は焚べるときに木材より先に使われます。</li>
         <li>建物のHPは直径×2。<b>猛吹雪の間は各プレイヤーの手番開始時に全建物（焚き火・道を除く）のHPが1減ります</b>。かまくら・倉庫はHPが半分以下で防寒が消え、0で壊れます。</li>
       </ul>
       <h3>共有アイテム</h3>
@@ -211,11 +215,11 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
 
-<script src="shared/engine.js?v=5"></script>
-<script src="shared/cpu.js?v=4"></script>
-<script src="shared/room.js?v=4"></script>
-<script src="sound.js?v=1"></script>
-<script src="board.js?v=5"></script>
-<script src="client.js?v=6"></script>
+<script src="shared/engine.js?v=6"></script>
+<script src="shared/cpu.js?v=6"></script>
+<script src="shared/room.js?v=5"></script>
+<script src="sound.js?v=2"></script>
+<script src="board.js?v=6"></script>
+<script src="client.js?v=8"></script>
 </body>
 </html>
