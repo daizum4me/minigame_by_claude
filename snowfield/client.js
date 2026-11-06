@@ -298,6 +298,15 @@
       else { mapToast(msg.text, 'bad'); SnowSound.play('error'); }
       return;
     }
+    if (msg.type === 'moveReq') {                         // ほかの人から、移動のお願い
+      const el = $('#movein');
+      el.innerHTML = `<b>${esc(msg.fromName)}さんが、移動をお願いしています</b><span class="small muted">あなたの駒が、行きたい道をふさいでいます。</span><div><button class="primary" data-mi="yes">場所を空ける</button><button data-mi="no">ことわる</button></div>`;
+      el.hidden = false;
+      SnowSound.play('warn');
+      clearTimeout(onMessage.t);
+      onMessage.t = setTimeout(() => { el.hidden = true; }, 30000);
+      return;
+    }
     if (msg.type === 'toast') { if (msg.text) mapToast(msg.text, msg.tone); if (msg.sfx) SnowSound.play(msg.sfx); return; }
     if (msg.type !== 'state') return;
     app.me = msg.you;
@@ -380,6 +389,35 @@
         `${fin ? '' : `準備期間 ${g.round} / ${R.prepRounds}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
     }
     if (E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
+  }
+
+  // 持ち物のアイコンをクリックして出る、操作のボタン（食べる・着ける・捨てる投票）
+  function renderItemPop(g, th) {
+    const el = $('#itempop'), ip = app.itemPop;
+    if (!ip || !g) { el.hidden = true; return; }
+    const btn = (label, action, r) => `<button class="ip-btn" data-ip="${action}" ${r.ok ? '' : 'disabled'}>${esc(label)}</button>${r.ok ? '' : `<div class="ip-why">${esc(r.why)}</div>`}`;
+    let html = '';
+    if (ip.k) {
+      const k = ip.k, n = g.items[k];
+      if (!n) { app.itemPop = null; el.hidden = true; return; }
+      const c = th.item[k];
+      html = `<div class="ip-head"><span class="ovr-ico" style="background:${c[0]};color:${c[1]}">${B.svgIcon(iconOf(k), 20)}</span><b>${E.ITEM_NAMES[k]}</b><span class="muted">所持 ${n}個</span><button class="x" data-ip="close" aria-label="閉じる">×</button></div>
+        <div class="small">${esc(IDESC[k])}</div>`;
+      if (R.eat[k]) html += btn(`食べる（満腹度 +${R.eat[k]}・行動力0）`, 'eat', probe({ type: 'eat', k }));
+      html += btn('捨てる（みんなで投票）', 'vote', probe({ type: 'vote', k }));
+    } else {
+      const x = g.gear.find(q => q.id === ip.gear);
+      if (!x) { app.itemPop = null; el.hidden = true; return; }
+      const d = E.GEAR[x.k], me = myP(), cur = me && (d.slot === 'gear' ? me.gear : me.tool);
+      html = `<div class="ip-head"><span class="ovr-ico" style="background:var(--accBg);color:var(--accent)">${B.svgIcon(x.k, 20)}</span><b>${esc(d.name)}</b><span class="muted">${x.dur ? `耐久 ${x.dur}` : ''}</span><button class="x" data-ip="close" aria-label="閉じる">×</button></div>
+        <div class="small">${esc(d.desc)}。${d.slot === 'gear' ? '装備' : '道具'}の枠は1つです。</div>`;
+      html += btn(cur ? `着ける（${E.GEAR[cur.k].name}を外す・行動力1）` : '着ける（行動力0）', 'equip', probe({ type: 'equip', id: x.id }));
+    }
+    el.innerHTML = html;
+    el.hidden = false;
+    const at = app.itemPopAt || { x: window.innerWidth - 320, y: 120 };
+    el.style.left = Math.max(8, at.x - 282) + 'px';
+    el.style.top = Math.max(8, Math.min(at.y, window.innerHeight - el.offsetHeight - 8)) + 'px';
   }
 
   // このまま手番を終えたときの予測
@@ -495,6 +533,7 @@
 
   function leaveRoom(text) {
     if (guide) guide.stop();
+    $('#movein').hidden = true; $('#movereq').hidden = true;
     if (app.conn) { app.conn.close(); app.conn = null; }
     app.room = null; app.game = null; app.me = null; app.gameKey = null; app.styleSent = false;
     $('#result').hidden = true;
@@ -598,6 +637,7 @@
     renderOverflow(g, th);
     renderFoodNeed(g);
     renderEndProj(g);
+    renderItemPop(g, th);
     updateTimer();
     renderHint();
     board.request();
@@ -659,12 +699,12 @@
     for (const k of E.ITEMS) {
       const c = th.item[k];
       for (let i = 0; i < g.items[k]; i++) {
-        html += `<button class="slot" data-drop="${k}" aria-label="${E.ITEM_NAMES[k]}を1個捨てる" style="background:${c[0]};color:${c[1]};border-color:${c[1]}66">${B.svgIcon(iconOf(k), 18)}</button>`;
+        html += `<button class="slot" data-item="${k}" aria-label="${E.ITEM_NAMES[k]}：クリックで操作" style="background:${c[0]};color:${c[1]};border-color:${c[1]}66">${B.svgIcon(iconOf(k), 18)}</button>`;
       }
     }
     for (const x of g.gear) {
       const d = E.GEAR[x.k];
-      html += `<div class="slot gear" title="${esc(d.name)}${x.dur ? `（耐久${x.dur}）` : ''}：${esc(d.desc)}。メニューの「着ける」で着用" style="color:var(--accent)">${B.svgIcon(x.k, 18)}</div>`;
+      html += `<button class="slot gear" data-gear="${x.id}" title="${esc(d.name)}${x.dur ? `（耐久${x.dur}）` : ''}：${esc(d.desc)}。クリックで「着ける」" style="color:var(--accent)">${B.svgIcon(x.k, 18)}</button>`;
     }
     for (let i = tot; i < cap; i++) html += '<div class="slot"></div>';
     $('#slots').innerHTML = html;
@@ -809,17 +849,8 @@
       add('植える：樹木の苗', `行動力${R.ap.plant}・苗木1`, { type: 'plant', kind: 'tree' });
     }
     g.b.forEach(b => { if (b.hp !== null && E.nearB(b, me)) add(`直す：${E.BUILD[b.t].name}`, `行動力${b.w}・石材1`, { type: 'repair', id: b.id }); });
-    head = '持ち物';
-    add('食べる：肉', `行動力0・満腹+${R.eat.meat}`, { type: 'eat', k: 'meat' });
-    add('食べる：野菜', `行動力0・満腹+${R.eat.veg}`, { type: 'eat', k: 'veg' });
-    if (g.items.steak > 0) add('食べる：ステーキ', `行動力0・満腹+${R.eat.steak}`, { type: 'eat', k: 'steak' });
-    if (g.items.soup > 0) add('食べる：スープ', `行動力0・満腹+${R.eat.soup}`, { type: 'eat', k: 'soup' });
-    if (g.gear.length || me.gear || me.tool) {
+    if (me.gear || me.tool) {
       head = '装備・道具';
-      g.gear.forEach(x => {
-        const slot = E.GEAR[x.k].slot, cur = slot === 'gear' ? me.gear : me.tool;
-        add(`着ける：${E.GEAR[x.k].name}${x.dur ? `（耐久${x.dur}）` : ''}`, cur ? `行動力1（${E.GEAR[cur.k].name}を外す）` : '行動力0', { type: 'equip', id: x.id });
-      });
       if (me.gear) add(`外す：${E.GEAR[me.gear.k].name}`, '行動力1', { type: 'unequip', slot: 'gear' });
       if (me.tool) add(`外す：${E.GEAR[me.tool.k].name}（耐久${me.tool.dur}）`, '行動力1', { type: 'unequip', slot: 'tool' });
     }
@@ -830,9 +861,10 @@
     entries.push({ label: '作る', cost: craftWhy || '料理・薪・装備・道具（左下に一覧）', ok: !craftWhy, head: '', fn: () => { disarm(); app.tray = 'craft'; mapToast('左下にレシピの一覧を出しました。クリックして作ります'); renderGame(); } });
     void it;
     app.menuEntries = entries;
+    const tail = '<div class="small muted" style="padding:4px 6px 0">食べる・着けるは、右の共有アイテムをクリックして選びます。</div>';
     const nm = here ? DESC[here.t].name + 'の上' : res ? ({ tree: '木', stone: '石', veg: '野菜' })[res.t] + 'のマス' : '雪原';
     el.innerHTML = `<div class="mh"><div><b>${esc(me.name)}（あなた）</b><small>いる場所：${nm}</small></div><button class="x" data-menu-close aria-label="メニューを閉じる">×</button></div>` +
-      entries.map((e, i) => `${e.head ? `<div class="sec">${e.head}</div>` : ''}<button class="ent ${e.ok ? '' : 'no'}" data-ent="${i}"><b>${esc(e.label)}</b><span>${esc(e.cost)}</span></button>`).join('');
+      entries.map((e, i) => `${e.head ? `<div class="sec">${e.head}</div>` : ''}<button class="ent ${e.ok ? '' : 'no'}" data-ent="${i}"><b>${esc(e.label)}</b><span>${esc(e.cost)}</span></button>`).join('') + tail;
     el.hidden = false;
     const wr = $('#mapwrap').getBoundingClientRect();
     const ts = board.tileScreen(me.x, me.y);
@@ -931,10 +963,19 @@
         tip.style.left = Math.max(4, Math.min(d.vx + 16, wr.width - 250)) + 'px';
         tip.style.top = Math.max(4, d.vy - 44) + 'px';
       },
-      onMove: (x, y) => act({ type: 'move', x, y }),
+      onMove: (x, y, v) => {
+        const info = myP() ? E.pathBlockers(app.game, myP(), x, y) : null;
+        // ほかの駒が道をふさいでいて、遠回りになる（体温が余計に減る）なら、どいてもらうお願いもできる
+        if (info && info.blockers.length && info.real != null && info.real > info.ideal) showMoveReq(info.blockers, x, y, v, false, info);
+        else act({ type: 'move', x, y });
+      },
       onBuild: (t, x, y) => act({ type: 'build', t, x, y }),
       onDisarm: () => disarm(),
-      onMoveFail: why => mapToast('移動できません：' + why, 'bad'),
+      onMoveFail: (why, x, y, v) => {
+        const info = myP() ? E.pathBlockers(app.game, myP(), x, y) : null;
+        if (info && info.blockers.length) showMoveReq(info.blockers, x, y, v, false, info); else mapToast('移動できません：' + why, 'bad');
+      },
+      onOtherPawn: (q, v) => { if (myP() && app.mode !== 'draw') showMoveReq([q], undefined, undefined, v, true); },
       onPawn: () => { app.menu = !app.menu; renderMenu(app.game, TH()); },
       onBackground: b => {
         app.menu = false;
@@ -947,6 +988,24 @@
     $('#z-in').onclick = () => board.zoom(1.2, board.state.W / 2, board.state.H / 2);
     $('#z-out').onclick = () => board.zoom(1 / 1.2, board.state.W / 2, board.state.H / 2);
     $('#z-reset').onclick = () => board.reset();
+  }
+
+  // ほかの駒が道をふさいでいるとき、どいてもらうようお願いする（CPUはすぐに動く。人間には確認が出る）
+  function showMoveReq(players, x, y, v, direct, info) {
+    const el = $('#movereq');
+    const names = players.map(p => esc(p.name)).join('・');
+    const detour = info && info.real != null ? `<button data-mr="go|${x}|${y}">遠回りで行く（体温 −${info.real}）</button>` : '';
+    el.innerHTML = `<b>${direct ? `${names}に、移動をお願いしますか？` : `${names}が道をふさいでいます`}</b>
+      <span>${direct ? 'どいてもらいます（CPUはすぐに動き、人にはお願いが届きます）。' : `どいてもらえば、体温 −${info ? info.ideal : 0} で行けます。${info && info.real != null ? `このまま行くと −${info.real} です。` : ''}`}</span>
+      ${players.map(p => `<button data-mr="${p.id}|${x == null ? '' : x}|${y == null ? '' : y}">${esc(p.name)}に、どいてもらう</button>`).join('')}
+      ${detour}
+      <button data-mr="close">やめる</button>`;
+    el.hidden = false;
+    const wr = $('#mapwrap').getBoundingClientRect(), p = v || { x: wr.width / 2, y: wr.height / 2 };
+    el.style.left = Math.max(4, Math.min(p.x + 12, wr.width - 280)) + 'px';
+    el.style.top = Math.max(4, Math.min(p.y - 20, wr.height - el.offsetHeight - 8)) + 'px';
+    clearTimeout(showMoveReq.t);
+    showMoveReq.t = setTimeout(() => { el.hidden = true; }, 12000);
   }
 
   // 建設モード：カードをクリックして選ぶと、マップをクリックして連続で置ける（もう一度クリック・Esc・右クリックで解除）
@@ -1050,11 +1109,49 @@
       renderDrawBox(app.game);
     });
 
-    $('#slots').addEventListener('click', e => { const b = e.target.closest('[data-drop]'); if (b) act({ type: 'vote', k: b.dataset.drop }); });
+    $('#slots').addEventListener('click', e => {
+      const b = e.target.closest('[data-item],[data-gear]');
+      if (!b) return;
+      const r = b.getBoundingClientRect();
+      app.itemPop = b.dataset.item ? { k: b.dataset.item } : { gear: +b.dataset.gear };
+      app.itemPopAt = { x: r.left, y: r.top };
+      $('#itip').hidden = true;
+      renderItemPop(app.game, TH());
+    });
+    $('#itempop').addEventListener('click', e => {
+      const b = e.target.closest('[data-ip]');
+      if (!b || b.disabled) return;
+      const a = b.dataset.ip, ip = app.itemPop;
+      if (a === 'close') app.itemPop = null;
+      else if (a === 'eat') act({ type: 'eat', k: ip.k });                           // 続けて食べられるよう、開いたままにする
+      else if (a === 'vote') { act({ type: 'vote', k: ip.k }); app.itemPop = null; }
+      else if (a === 'equip') { act({ type: 'equip', id: ip.gear }); app.itemPop = null; }
+      renderItemPop(app.game, TH());
+    });
+    document.addEventListener('pointerdown', e => {
+      if (!app.itemPop || e.target.closest('#itempop') || e.target.closest('[data-item],[data-gear]')) return;
+      app.itemPop = null; $('#itempop').hidden = true;
+    });
+    $('#movereq').addEventListener('click', e => {
+      const b = e.target.closest('[data-mr]');
+      if (!b) return;
+      if (b.dataset.mr !== 'close') {
+        const [to, x, y] = b.dataset.mr.split('|');
+        if (to === 'go') act({ type: 'move', x: +x, y: +y });                       // 遠回りで行く
+        else send({ type: 'moveReq', to, x: x === '' ? undefined : +x, y: y === '' ? undefined : +y });
+      }
+      $('#movereq').hidden = true;
+    });
+    $('#movein').addEventListener('click', e => {
+      const b = e.target.closest('[data-mi]');
+      if (!b) return;
+      send({ type: 'moveReqReply', accept: b.dataset.mi === 'yes' });
+      $('#movein').hidden = true;
+    });
     $('#slots').addEventListener('pointermove', e => {
-      const b = e.target.closest('[data-drop]'), tip = $('#itip');
-      if (!b || !app.game) { tip.hidden = true; return; }
-      const k = b.dataset.drop;
+      const b = e.target.closest('[data-item]'), tip = $('#itip');
+      if (!b || !app.game || app.itemPop) { tip.hidden = true; return; }
+      const k = b.dataset.item;
       tip.innerHTML = `<div class="tn">${E.ITEM_NAMES[k]}<span class="grow"></span><span style="font-size:12px;color:var(--muted2);font-weight:400">所持 ${app.game.items[k]}個</span></div><div class="tt">${IDESC[k]}</div>`;
       tip.hidden = false;
       tip.style.left = Math.max(4, e.clientX - 246) + 'px';

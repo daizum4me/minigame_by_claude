@@ -578,3 +578,36 @@ test('焚き火が消えたまま3手番が続くと敗北（火力1以上で手
   doIt(st, { type: 'end' });
   assert.deepStrictEqual([st.phase, st.over.reason], ['lost', 'fire']);
 });
+
+test('道をふさぐ駒：駒を無視すれば通れる道と、ふさいでいる駒がわかる。どいてもらう移動は、その道を避ける', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const a = me(st), b = E.pl(st, 'p2');
+  // 道を作る（焚き火の右に一直線）。aは焚き火の端、bは道の途中にいる
+  const f = E.fireOf(st);
+  for (let x = f.x + f.w; x < f.x + f.w + 4; x++) st.b.push({ id: 500 + x, t: 'road', x, y: f.y, w: 1, h: 1, hp: null, max: null });
+  a.x = f.x + f.w - 1; a.y = f.y;
+  const mid = f.x + f.w + 1;
+  b.x = mid; b.y = f.y;
+  const far = f.x + f.w + 3;
+  const info = E.pathBlockers(st, a, far, f.y);
+  assert.ok(info.blockers.some(q => q.id === 'p2'), 'bが道をふさいでいる');
+  assert.ok(info.path.includes(mid + ',' + f.y));
+  assert.strictEqual(info.ideal, 0);                                           // 道の上だけを通れば、体温は減らない
+  assert.ok(info.real == null || info.real > 0);                               // 道をふさがれると、遠回り（雪原を通る）か、行けない
+  // 行き先そのものにいても、ふさいでいる
+  b.x = far; b.y = f.y;
+  assert.ok(E.pathBlockers(st, a, far, f.y).blockers.some(q => q.id === 'p2'));
+  // どいてもらう：道のマスを避けて動く
+  b.x = mid; b.y = f.y;
+  const avoid = E.pathBlockers(st, a, far, f.y).path;
+  const r = E.act(st, 'p2', { type: 'moveAside', avoid });
+  assert.ok(r.ok, r.why);
+  assert.ok(!avoid.includes(b.x + ',' + b.y));
+  assert.ok(E.moveMap(st, a).has(far + ',' + f.y));                      // これで通れる
+  // 体温が低いときは動かない／行動不能中も動けない
+  b.x = mid; b.y = f.y; b.temp = 3;
+  const noRoad = E.act(st, 'p2', { type: 'moveAside', avoid: [] });
+  assert.ok(noRoad.ok || /体温/.test(noRoad.why));
+  b.down = 1;
+  assert.match(E.act(st, 'p2', { type: 'moveAside', avoid: [] }).why, /行動不能/);
+});

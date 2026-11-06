@@ -205,3 +205,37 @@ test('手番の制限時間：人間の手番は制限時間で自動的に終�
   assert.match(room.game.log.map(l => l.t).join('|'), /制限時間/);
   void inbox;
 });
+
+test('移動のお願い：CPUはすぐに道を空け、人間には確認が届く。ふさいでいない相手にはお願いできない', () => {
+  const { room, inbox, last, clock } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  const st = room.game, f = E.fireOf(st);
+  for (let x = f.x + f.w; x < f.x + f.w + 4; x++) st.b.push({ id: 500 + x, t: 'road', x, y: f.y, w: 1, h: 1, hp: null, max: null });
+  const a = E.pl(st, h), human = E.pl(st, g), cpu = st.players.find(p => p.cpu);
+  a.x = f.x + f.w - 1; a.y = f.y; a.temp = 10; cpu.temp = 10; human.temp = 10;
+  cpu.x = f.x + f.w + 1; cpu.y = f.y;
+  human.x = f.x; human.y = f.y + 1;
+  const far = f.x + f.w + 3;
+  room.handle(h, { type: 'moveReq', to: g, x: far, y: f.y });                    // 人間はふさいでいない
+  assert.match(inbox[h].at(-1).text, /ふさいでいません/);
+  clock.t += 3000;
+  room.handle(h, { type: 'moveReq', to: cpu.id, x: far, y: f.y });               // CPUは、すぐに空ける
+  assert.ok(!(cpu.x === f.x + f.w + 1 && cpu.y === f.y));
+  assert.match(inbox[h].at(-2).text + inbox[h].at(-1).text, /道を空けました/);
+  // 人間がふさいでいるとき：確認が届き、「空ける」で動く／「ことわる」では動かない
+  clock.t += 3000;
+  human.x = f.x + f.w + 2; human.y = f.y;
+  room.handle(h, { type: 'moveReq', to: g, x: far, y: f.y });
+  assert.strictEqual(inbox[g].find(m => m.type === 'moveReq').fromName, 'A');
+  room.handle(g, { type: 'moveReqReply', accept: false });
+  assert.deepStrictEqual([human.x, human.y], [f.x + f.w + 2, f.y]);
+  assert.match(inbox[h].at(-1).text, /ことわりました/);
+  clock.t += 3000;
+  room.handle(h, { type: 'moveReq', to: g, x: far, y: f.y });
+  room.handle(g, { type: 'moveReqReply', accept: true });
+  assert.ok(!(human.x === f.x + f.w + 2 && human.y === f.y));
+  assert.ok(last(h).game.players.find(p => p.id === g).x !== f.x + f.w + 2 || last(h).game.players.find(p => p.id === g).y !== f.y);
+});

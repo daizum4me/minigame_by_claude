@@ -234,3 +234,14 @@ button.sw:disabled { opacity: .25; }
 /* 装備・道具 */
 .slot.gear { border-style: solid; border-color: var(--accent); background: var(--accBg); }
 .worn { display: inline-flex; align-items: center; gap: 1px; color: var(--accent); font-size: 10px; } .worn small { font-weight: 700; }
+
+/* アイテムをクリックして出る操作、移動のお願い */
+.itempop { position: fixed; z-index: 35; width: 270px; background: var(--menu); border: 1px solid var(--menuB); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 6px; }
+.itempop .ip-head { display: flex; align-items: center; gap: 8px; } .itempop .ip-head b { font-size: 14px; } .itempop .ip-head .muted { font-size: 12px; flex: 1; }
+.itempop .ip-btn { width: 100%; text-align: left; padding: 7px 10px; font-size: 13px; font-weight: 700; background: var(--menuBtn); border: 1px solid var(--menuB); }
+.itempop .ip-why { font-size: 12px; color: var(--redFg); margin-top: -2px; }
+.slot[data-item], .slot[data-gear] { cursor: pointer; }
+.movereq { position: absolute; z-index: 7; width: 270px; background: var(--menu); border: 2px solid var(--accent); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 6px; }
+.movereq b { font-size: 14px; } .movereq span { font-size: 12px; color: var(--muted2); } .movereq button { text-align: left; padding: 6px 10px; font-size: 13px; }
+.movein { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; width: min(420px, 92vw); background: var(--menu); border: 2px solid var(--accent); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 16px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 8px; text-align: center; }
+.movein b { font-size: 15px; } .movein div { display: flex; gap: 8px; justify-content: center; }

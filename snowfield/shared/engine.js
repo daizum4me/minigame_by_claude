@@ -361,7 +361,9 @@
     return null;
   }
   // 現在地から行ける全マスの経路コスト（雪原に入るたび100、建物・道は1）。体温コスト＝floor(値/100)
-  function moveMap(st, p) {
+  // opts.ignorePlayers：ほかの駒を無視して経路を探す／opts.prev：経路をたどるための記録を受け取る Map
+  function moveMap(st, p, opts) {
+    opts = opts || {};
     const dist = new Map();
     if (p.down > 0) return dist;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -385,14 +387,41 @@
       for (const [dx, dy] of DIRS) {
         const x = ux + dx, y = uy + dy;
         if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-        if (!reach(st, x, y) || animalAt(st, x, y) || playerAt(st, x, y, p.id)) continue;
+        if (!reach(st, x, y) || animalAt(st, x, y) || (!opts.ignorePlayers && playerAt(st, x, y, p.id))) continue;
         const nd = d + (bAt(st, x, y) ? 0 : 100) + 1, k = key(x, y);
-        if (nd < (dist.has(k) ? dist.get(k) : Infinity)) { dist.set(k, nd); push([nd, x, y]); }
+        if (nd < (dist.has(k) ? dist.get(k) : Infinity)) { dist.set(k, nd); if (opts.prev) opts.prev.set(k, uk); push([nd, x, y]); }
       }
     }
     return dist;
   }
   const moveCost = d => Math.floor(d / 100);
+
+  // ほかの駒がふさいでいて行けないとき、駒を無視すれば通れる最短の道と、その道の上にいる駒（動いてほしい相手）を返す
+  function pathBlockers(st, p, x, y) {
+    const out = { path: [], blockers: [], ideal: null, real: null };   // ideal：駒がなければ体温がいくつ減るか／real：いまの体温の減り方（行けなければ null）
+    if (!p || p.down > 0) return out;
+    const prev = new Map(), dist = moveMap(st, p, { ignorePlayers: true, prev });
+    const tk = key(x, y);
+    if (!dist.has(tk) || tk === key(p.x, p.y)) return out;
+    for (let k = tk; k && k !== key(p.x, p.y); k = prev.get(k)) out.path.push(k);
+    out.blockers = st.players.filter(q => q.id !== p.id && out.path.includes(key(q.x, q.y)));
+    out.ideal = moveCost(dist.get(tk));
+    const real = moveMap(st, p).get(tk);
+    out.real = real == null ? null : moveCost(real);
+    return out;
+  }
+  // 道を空けるために動く先：avoid（空けてほしい道のマス）以外で、体温がいちばん減らない近いマス
+  function moveAsideTile(st, q, avoid) {
+    const map = moveMap(st, q), skip = new Set(avoid || []);
+    let best = null;
+    for (const [k, d] of map) {
+      if (k === key(q.x, q.y) || skip.has(k)) continue;
+      const [x, y] = parseKey(k);
+      const sc = d * 100 + Math.abs(x - q.x) + Math.abs(y - q.y);
+      if (!best || sc < best.sc) best = { x, y, sc, cost: moveCost(d) };
+    }
+    return best;
+  }
 
   // ---------- 建設 ----------
   function buildWhy(st, t, x, y) {
@@ -557,6 +586,15 @@
       r = { ok: true, sfx: 'tick', msg: total ? `${parts.join('・')}を捨てて、${ITEM_NAMES[pend.k]}${total}個を持った${lost ? `（${ITEM_NAMES[pend.k]}${lost}個は捨てた）` : ''}` : `${ITEM_NAMES[pend.k]}${pend.n}個を捨てた` };
       log(st, `${p.name}：${r.msg}`);
     } else if (t === 'move') r = doMove(st, p, a);
+    else if (t === 'moveAside') {            // 「どいて」と頼まれたときの移動（自動で、道をふさがない近いマスへ）
+      if (p.down > 0) return fail('行動不能中は移動できません');
+      const avoid = Array.isArray(a.avoid) ? a.avoid.filter(x => typeof x === 'string').slice(0, 300) : [];
+      const tile = moveAsideTile(st, p, avoid);
+      if (!tile) return fail('動ける場所がありません');
+      if (p.temp - tile.cost < 3) return fail('体温が低いので、動けません');
+      r = doMove(st, p, tile);
+      if (r.ok) r.msg = '道を空けた：' + r.msg;
+    }
     else if (t === 'draw' || t === 'erase') {
       if (mine) return fail('お絵かきは自分の手番以外で使えます');
       if (t === 'draw') {
@@ -830,6 +868,6 @@
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,
-    moveMap, moveCost, moveWhy, buildWhy, lacking, genCells,
+    moveMap, moveCost, moveWhy, buildWhy, lacking, genCells, pathBlockers, moveAsideTile,
   };
 });

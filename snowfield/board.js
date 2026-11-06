@@ -238,7 +238,8 @@
       }
       const me = o.me();
       const tx = Math.floor(w.x), ty = Math.floor(w.y);
-      s.press = { vx: v.x, vy: v.y, kind: (me && tx === me.x && ty === me.y) ? 'pawn' : 'pan', cam0: { x: s.cam.x, y: s.cam.y }, moved: false };
+      const other = me ? g.players.find(q => q.id !== me.id && q.x === tx && q.y === ty) : null;     // ほかの人の駒
+      s.press = { vx: v.x, vy: v.y, kind: (me && tx === me.x && ty === me.y) ? 'pawn' : other ? 'other' : 'pan', other, cam0: { x: s.cam.x, y: s.cam.y }, moved: false };
     });
     function erase(w) {
       const now = Date.now();
@@ -291,13 +292,14 @@
       board.request();
       if (!pr || !g) return;
       if (d) {
-        if (d.ok) o.onMove(d.x, d.y);
-        else if (d.why && d.why !== 'いまいるマスです') o.onMoveFail(d.why);
+        if (d.ok) o.onMove(d.x, d.y, { x: d.vx, y: d.vy });
+        else if (d.why && d.why !== 'いまいるマスです') o.onMoveFail(d.why, d.x, d.y, { x: d.vx, y: d.vy });
         return;
       }
       if (pr.moved) return;
       if (s.armed && s.preview) { o.onBuild(s.armed, s.preview.x, s.preview.y); return; }
       const v = pos(e), w = toWorld(v.x, v.y), tx = Math.floor(w.x), ty = Math.floor(w.y);
+      if (pr.kind === 'other') { o.onOtherPawn(pr.other, { x: v.x, y: v.y }); return; }
       if (pr.kind === 'pawn') { o.onPawn(); return; }
       const b = E.bAt(g, tx, ty);
       o.onBackground(b);

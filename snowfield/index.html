@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <!-- 更新したら ?v= の数字を上げる（GitHub Pages ではブラウザが古いファイルを最大10分ほど使い回すため） -->
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 
@@ -113,6 +113,7 @@
           <button id="z-reset" class="txt">リセット</button>
         </div>
         <div id="endpop" class="endpop" hidden></div>
+        <div id="movereq" class="movereq" hidden></div>
         <div id="overflow" class="overlay ovr" hidden></div>
         <div id="banner" class="banner" hidden></div>
         <div id="maptoast" class="pill toast-map" hidden></div>
@@ -127,7 +128,7 @@
         <div id="slots" class="slots"></div>
         <div id="item-summary" class="small muted"></div>
         <div id="food-need" class="food-need small"></div>
-        <div class="small muted">アイコンをクリックすると「捨てる」投票を始めます。上限＝2×人数＋10＋10×倉庫数。</div>
+        <div class="small muted">アイコンをクリックすると、食べる・着ける・捨てる（投票）の操作が出ます。上限＝2×人数＋10＋10×倉庫数。</div>
       </div>
       <div id="vote" class="panel vote" hidden></div>
       <div id="detail" class="panel detail"></div>
@@ -139,6 +140,8 @@
     </aside>
   </div>
   <div id="itip" class="tip itip" hidden></div>
+  <div id="itempop" class="itempop" hidden></div>
+  <div id="movein" class="movein" hidden></div>
   <div id="ghost" class="ghost" hidden></div>
 </main>
 
@@ -173,12 +176,12 @@
 <div id="toast" class="toast" hidden></div>
 <div id="reconnecting" class="reconnecting" hidden>ホストとの接続が切れました。つなぎ直しています…</div>
 
-<script src="shared/engine.js?v=9"></script>
+<script src="shared/engine.js?v=11"></script>
 <script src="shared/cpu.js?v=10"></script>
-<script src="shared/room.js?v=6"></script>
+<script src="shared/room.js?v=7"></script>
 <script src="sound.js?v=2"></script>
-<script src="board.js?v=8"></script>
-<script src="guide.js?v=4"></script>
-<script src="client.js?v=12"></script>
+<script src="board.js?v=10"></script>
+<script src="guide.js?v=6"></script>
+<script src="client.js?v=14"></script>
 </body>
 </html>

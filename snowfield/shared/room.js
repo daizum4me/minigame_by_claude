@@ -41,6 +41,8 @@
       this.timer = null;
       this.turnTimer = null;     // 手番の制限時間
       this.turnKey = '';
+      this.moveReqs = {};         // 「どいて」のお願い（相手の id → { from, avoid, at }）
+      this.moveReqAt = {};
       this.tutorial = false;     // チュートリアル中は、手番の制限時間をつけない
       this.turnEndsAt = 0;
       this.mem = {};          // CPU ごとの覚え書き
@@ -198,6 +200,43 @@
           this.players = this.players.filter(p => p.cpu || p.connected);
           this.clearCpuTimer();
           return this.changed();
+        }
+        case 'moveReq': {     // ほかの駒が道をふさいでいるとき、移動をお願いする
+          const g = this.game;
+          if (this.phase !== 'game' || !g || g.phase !== 'play') return;
+          const from = E.pl(g, id), to = E.pl(g, msg.to);
+          if (!from || !to || to.id === id) return;
+          if (this.now() - (this.moveReqAt[id] == null ? -1e9 : this.moveReqAt[id]) < 2000) return this.error(id, 'お願いは、少し間をあけてください');
+          let avoid = [];
+          if (Number.isInteger(msg.x) && Number.isInteger(msg.y)) {
+            const info = E.pathBlockers(g, from, msg.x, msg.y);
+            if (!info.blockers.some(b => b.id === to.id)) return this.error(id, `${to.name}は、道をふさいでいません`);
+            avoid = info.path;
+          }
+          this.moveReqAt[id] = this.now();
+          if (to.cpu || to.away) {                        // CPU と切断中の人は、すぐに空ける
+            const r = E.act(g, to.id, { type: 'moveAside', avoid });
+            this.toast(id, r.ok ? `${to.name}が道を空けました` : `${to.name}は動けません：${r.why}`, r.ok ? '' : 'bad');
+            if (r.ok) this.changed();
+          } else {
+            this.moveReqs[to.id] = { from: id, avoid, at: this.now() };
+            this.sendFn(to.id, { type: 'moveReq', from: id, fromName: from.name });
+            this.toast(id, `${to.name}に、移動をお願いしました`);
+          }
+          return;
+        }
+        case 'moveReqReply': {
+          const g = this.game, rq = this.moveReqs[id];
+          if (!rq || !g || g.phase !== 'play') return;
+          delete this.moveReqs[id];
+          const me_ = E.pl(g, id);
+          if (this.now() - rq.at > 60000) return;
+          if (!msg.accept) { this.toast(rq.from, `${me_.name}は、ことわりました`, 'bad'); return; }
+          const r = E.act(g, id, { type: 'moveAside', avoid: rq.avoid });
+          this.toast(id, r.ok ? '道を空けました' : `動けません：${r.why}`, r.ok ? '' : 'bad');
+          this.toast(rq.from, r.ok ? `${me_.name}が道を空けました` : `${me_.name}は動けません：${r.why}`, r.ok ? '' : 'bad');
+          if (r.ok) this.changed();
+          return;
         }
         case 'act': {
           if (this.phase !== 'game' || !this.game) return;
