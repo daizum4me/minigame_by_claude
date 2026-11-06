@@ -228,3 +228,5 @@ button.sw:disabled { opacity: .25; }
 .gi { color: var(--accent); } .gi svg { display: inline-block; }
 .rules-nav button .gi { margin-right: 6px; }
 .rules-body h3 .gi { margin-right: 8px; vertical-align: -5px; }
+
+.chip.red { background: var(--redBg); color: var(--redFg); font-weight: 700; }

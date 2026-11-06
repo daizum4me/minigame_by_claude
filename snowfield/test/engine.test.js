@@ -8,7 +8,7 @@ const mk = (seed = 1) => {
   const d = E.RULES.fireDiv; E.RULES.fireDiv = 1;
   const st = E.createGame({ seed, players: P3 });
   E.RULES.fireDiv = d;
-  st.items.veg = 0;   // 最初の野菜は別のテストで確かめる
+  for (const k of Object.keys(st.items)) st.items[k] = 0;   // 最初に配られるアイテムは別のテストで確かめる
   return st;
 };
 const me = st => E.cur(st);
@@ -165,7 +165,7 @@ test('植える：苗→1〜3ラウンド後に資源へ', () => {
   assert.ok(doIt(st, { type: 'plant', kind: 'veg' }).ok);
   assert.strictEqual(st.items.veg, 0);
   assert.match(doIt(st, { type: 'plant', kind: 'tree' }).why, /ここには植えられません/);
-  for (let i = 0; i < 3 * 3; i++) doIt(st, { type: 'end' }, me(st).id);
+  for (let i = 0; i < 3 * 3; i++) { st.fire = 5; doIt(st, { type: 'end' }, me(st).id); }   // 焚き火が消えたまま続くと負けるので、火を保つ
   assert.strictEqual(st.plants.length, 0);
   assert.strictEqual(E.resAt(st, x, y).t, 'veg');
   assert.ok(E.resAt(st, x, y).hp >= 3 && E.resAt(st, x, y).hp <= 7);
@@ -267,6 +267,7 @@ test('13ラウンドを終えるとクリア・最終猛吹雪は11〜13・予�
   const seen = [];
   for (let i = 0; i < 200 && st.phase === 'play'; i++) {
     for (const p of st.players) { p.temp = 10; p.food = 10; }
+    st.fire = 5;
     seen[st.round] = st.weather;
     if (st.round < 13) assert.ok(st.next);
     doIt(st, { type: 'end' });
@@ -373,9 +374,9 @@ test('猛吹雪を生き延びるのに必要な食料', () => {
   assert.strictEqual(E.foodNeed(st).need, (3 * 3 + 1 - 2) + 0 + 0);
 });
 
-test('ゲーム開始：人数ぶんの野菜が配られる', () => {
+test('ゲーム開始：人数ぶんの野菜と薪、雪3個が配られる', () => {
   const st = E.createGame({ seed: 1, players: P3 });
-  assert.strictEqual(st.items.veg, 3);
+  assert.deepStrictEqual([st.items.veg, st.items.firewood, st.items.snow, st.items.wood], [3, 3, 3, 0]);
   assert.strictEqual(E.createGame({ seed: 1, players: [...P3, { id: 'p4', name: 'P4', color: 'red' }] }).items.veg, 4);
 });
 
@@ -451,4 +452,26 @@ test('結果画面の統計：行動の集計', () => {
   st.items.wood = 1; st.fire = 0;
   doIt(st, { type: 'stoke' });
   assert.strictEqual(ps.stoked, 1);
+});
+
+test('焚き火が消えたまま3手番が続くと敗北（火力1以上で手番を終えると数え直し）', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  for (const p of st.players) { p.temp = 10; p.food = 10; }
+  st.fire = 0;
+  doIt(st, { type: 'end' });
+  assert.deepStrictEqual([st.fireOut, st.phase], [1, 'play']);
+  assert.strictEqual(E.endProjection(st, me(st).id).fireOutNext, 2);
+  // 薪を入れて手番を終えると、数え直し（手番の終わりに火が点いていた）
+  st.items.firewood = 1;
+  doIt(st, { type: 'stoke' });
+  doIt(st, { type: 'end' });
+  assert.deepStrictEqual([st.fireOut, st.fire], [0, 0]);          // 焚べた手番は数えず、そのあと火力は0に戻る
+  for (const p of st.players) { p.temp = 10; p.food = 10; }
+  doIt(st, { type: 'end' }); assert.strictEqual(st.fireOut, 1);
+  for (const p of st.players) { p.temp = 10; p.food = 10; }
+  doIt(st, { type: 'end' }); assert.strictEqual(st.fireOut, 2);
+  assert.strictEqual(E.endProjection(st, me(st).id).fireLose, true);
+  for (const p of st.players) { p.temp = 10; p.food = 10; }
+  doIt(st, { type: 'end' });
+  assert.deepStrictEqual([st.phase, st.over.reason], ['lost', 'fire']);
 });

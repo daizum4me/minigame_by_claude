@@ -26,6 +26,9 @@
     towerRange: 2,                      // 見張り台からは、このマス以内に移動できる
     turnLimitMs: 120000,                // 手番の制限時間（人間のプレイヤーだけ。ルームで使う）
     startVegPerPlayer: 1,               // ゲーム開始時に、人数 × この数の野菜を配る
+    startFirewoodPerPlayer: 1,          // 同じく、人数 × この数の薪を配る
+    startSnow: 3,                       // ゲーム開始時に配る雪
+    fireOutLimit: 3,                    // 焚き火が消えたまま（火力0）手番が、この回数続くと敗北
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
     resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
@@ -209,7 +212,7 @@
     const seed = (opts.seed == null ? Math.floor(Math.random() * 4294967296) : opts.seed) | 0;
     const st = {
       v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null,
-      weather: 'clear', next: 'clear', fire: RULES.fireInit,
+      weather: 'clear', next: 'clear', fire: RULES.fireInit, fireOut: 0,
       items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, snow: 0, sapling: 0 }, RULES.startItems),
       stats: { players: {}, team: { gained: {}, built: 0, destroyed: 0, discarded: 0 } },
       b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], draw: {}, vote: null, pending: [], log: [],
@@ -223,6 +226,8 @@
     const spots = [];
     for (let y = f.y + f.h - 1; y >= f.y; y--) for (let x = f.x; x < f.x + f.w; x++) spots.push([x, y]);
     st.items.veg += opts.players.length * RULES.startVegPerPlayer;   // 最初の食料
+    st.items.firewood += opts.players.length * RULES.startFirewoodPerPlayer;
+    st.items.snow += RULES.startSnow;
     opts.players.forEach(p => { st.stats.players[p.id] = { ap: 0, collect: 0, kills: 0, built: 0, crafted: 0, stoked: 0, planted: 0, repaired: 0, eaten: 0, warmed: 0, downs: 0 }; });
     opts.players.forEach((p, i) => st.players.push({
       id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
@@ -285,6 +290,7 @@
   }
   function endTurn(st) {
     const p = cur(st);
+    const fireDead = st.fire <= 0;         // 焚き火が消えた状態で、手番を終えるか
     if (p.down === 2) p.down = 0;
     p.food = Math.max(0, p.food - RULES.hunger);
     st.fire = Math.max(0, st.fire - 1 - (st.weather === 'rain' ? 1 : 0));
@@ -300,8 +306,16 @@
     }
     moveAnimals(st);
     if (st.players.every(q => q.down > 0)) {
-      st.phase = 'lost'; st.over = { result: 'lost', round: st.round };
+      st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'down' };
       log(st, '全員が行動不能になった…ゲームオーバー');
+      return;
+    }
+    // 焚き火が消えたまま手番が続くと敗北（火力が1以上の状態で手番を終えれば、数え直し）
+    st.fireOut = fireDead ? st.fireOut + 1 : 0;
+    if (st.fireOut > 0) log(st, `焚き火が消えたまま手番が終わった（${st.fireOut} / ${RULES.fireOutLimit}）`);
+    if (st.fireOut >= RULES.fireOutLimit) {
+      st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'fire' };
+      log(st, `焚き火が消えたまま${RULES.fireOutLimit}手番が過ぎた…ゲームオーバー`);
       return;
     }
     st.turn++;
@@ -719,6 +733,10 @@
       fire0: st.fire, fire: Math.max(0, st.fire - fireLoss),
     };
     out.collapse = out.temp <= 0 || out.food <= 0;
+    // 焚き火が消えたまま手番を終えると、敗北に近づく
+    out.fireOut = st.fireOut;
+    out.fireOutNext = st.fire <= 0 ? st.fireOut + 1 : 0;
+    out.fireLose = out.fireOutNext >= RULES.fireOutLimit;
     return out;
   }
 
