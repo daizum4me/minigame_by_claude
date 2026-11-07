@@ -111,7 +111,7 @@ test('CPUだけの対戦が最後まで進む（3〜5人）', () => {
       const g = playAll(seed * 11 + n, n);
       assert.notStrictEqual(g.phase, 'play', `n=${n} seed=${seed} が終わらない`);
       assert.ok(g.players.every(p => p.temp >= 0 && p.temp <= 10 && p.food >= 0 && p.food <= 10));
-      assert.ok(E.total(g) <= E.cap(g) + 10 * 0);
+      assert.ok(E.total(g) <= E.cap(g) || g.stats.team.destroyed > 0);   // 倉庫が壊れて上限が下がったときは、超えたままになることがある
       results.push(g.phase + ':' + g.round);
     }
   }

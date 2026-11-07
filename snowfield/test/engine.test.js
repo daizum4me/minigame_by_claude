@@ -45,8 +45,11 @@ test('体温低下：場所と天候の組み合わせ', () => {
   p.x = x; p.y = y;
   assert.deepStrictEqual(['clear', 'snow', 'blizzard', 'rain', 'storm'].map(loss), [2, 3, 4, 2, 6]);   // 雪原
   st.b.push({ id: 99, t: 'igloo', x, y, w: 2, h: 2, hp: 4, max: 4 });
-  assert.deepStrictEqual(['clear', 'snow', 'blizzard', 'rain', 'storm'].map(loss), [1, 1, 1, 1, 3]);   // かまくらの中：猛吹雪でも -3
-  st.b[st.b.length - 1].hp = 2;                                                                        // 半分以下で防寒が消える
+  assert.deepStrictEqual(['clear', 'snow', 'blizzard', 'rain', 'storm'].map(loss), [2, 3, 4, 2, 6]);   // かまくらの中にいても、変わらない（かまくらは、夜の寒さを防ぐ）
+  st.b.pop();
+  st.b.push({ id: 99, t: 'storage', x, y, w: 4, h: 4, hp: 8, max: 8 });
+  assert.deepStrictEqual(['clear', 'snow', 'blizzard', 'rain', 'storm'].map(loss), [1, 1, 1, 1, 3]);   // 倉庫の中：猛吹雪でも -3
+  st.b[st.b.length - 1].hp = 4;                                                                        // 半分以下で防寒が消える
   assert.strictEqual(loss('clear'), 2);
 });
 
@@ -491,6 +494,53 @@ test('同時に動く：上限を超えたアイテムの選択は、人ごと�
   assert.deepStrictEqual(st.pending.map(q => q.pid), [p1.id]);
   E.forceEndRound(st);                                                  // 時間切れ
   assert.strictEqual(st.round, 2);
+});
+
+test('夜の寒さ：準備期間の最初の2ラウンドはなし。そのあとは、晴れでも毎ラウンド体温-1。かまくら1個で2人ぶん防げる（体温が低い人から）', () => {
+  const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  const [a, b, c] = st.players;
+  const R = E.RULES;
+  const [x, y] = freeSpot(st);
+  for (const p of st.players) { p.x = x; p.y = y; }                       // 同じ位置は気にせず、計算だけ確かめる
+  a.temp = 9; b.temp = 5; c.temp = 7;
+  // 最初の2ラウンドは、夜の寒さなし
+  assert.strictEqual(E.coldOn(st), false);
+  assert.strictEqual(E.tempLoss(st, a), 2);                              // 雪原・晴れ
+  st.round = R.coldFreeRounds + 1;
+  assert.strictEqual(E.coldOn(st), true);
+  assert.deepStrictEqual(st.players.map(p => E.tempLoss(st, p)), [3, 3, 3]);   // 2 + 夜の寒さ1
+  // 防寒着は、夜の寒さも合わせて1減らす
+  a.gear = { k: 'coat' };
+  assert.strictEqual(E.tempLoss(st, a), 2);
+  a.gear = null;
+  // かまくら1個＝2人ぶん。体温が低い人（b=5、c=7）から防げる
+  st.b.push({ id: 91, t: 'igloo', x: 20, y: 20, w: 2, h: 2, hp: 4, max: 4 });
+  const cov = E.covered(st);
+  assert.deepStrictEqual([...cov].sort(), [b.id, c.id].sort());
+  assert.deepStrictEqual(st.players.map(p => E.tempLoss(st, p)), [3, 2, 2]);   // どこにいても効く
+  assert.strictEqual(E.endProjection(st, b.id).covered, true);
+  assert.strictEqual(E.endProjection(st, a.id).cold, 1);
+  // HPが半分以下になると、防げなくなる
+  st.b[st.b.length - 1].hp = 2;
+  assert.strictEqual(E.covered(st).size, 0);
+  // 2個なら4人ぶん（3人なら全員）
+  st.b[st.b.length - 1].hp = 4;
+  st.b.push({ id: 92, t: 'igloo', x: 30, y: 30, w: 2, h: 2, hp: 4, max: 4 });
+  assert.strictEqual(E.covered(st).size, 3);
+});
+
+test('夜の寒さ：ラウンドの終わりに、全員同時に決める（順番に動くときは、手番の終わりに）', () => {
+  const st = mkN(3);
+  st.weather = 'clear'; st.next = 'clear';
+  st.round = E.RULES.coldFreeRounds + 1;
+  const [a, b, c] = st.players;
+  for (const p of st.players) { const [x, y] = [0, 0]; void x; void y; p.temp = 10; }
+  a.temp = 8; b.temp = 4; c.temp = 6;
+  st.b.push({ id: 91, t: 'igloo', x: 20, y: 20, w: 2, h: 2, hp: 4, max: 4 });
+  for (const p of st.players) E.act(st, p.id, { type: 'end' });
+  assert.strictEqual(st.round, E.RULES.coldFreeRounds + 2);              // ラウンドが進んだ
+  // 焚き火の上（基本0・晴れ0）。かまくらで防げた b・c は減らず、a だけ夜の寒さで -1
+  assert.deepStrictEqual([a.temp, b.temp, c.temp], [8 - 1, 4, 6]);
 });
 
 test('行動不能：焚き火へ強制移動・3に回復・次の手番は温まる/食べるだけ', () => {

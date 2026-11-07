@@ -40,6 +40,9 @@
     startFirewoodPerPlayer: 1,          // 同じく、人数 × この数の薪を配る
     startSnow: 3,                       // ゲーム開始時に配る雪（人数の半分が、これより多ければ、そちら）
     fireOutLimit: 3,                    // すべての焚き火が消えたまま（火力0）ラウンドが、この回数続くと敗北
+    coldExtra: 1,                       // ラウンドの終わりの、追加の体温低下（夜の寒さ。晴れでもかかる）
+    coldFreeRounds: 2,                  // 準備期間の最初のこのラウンド数は、夜の寒さはかからない
+    iglooCover: 2,                      // かまくら1個で、夜の寒さを防げる人数
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
     resHpMin: 3, resHpMax: 7, resChance: 0.10, resChancePerExtra: 0.006, resChanceFrom: 5,   // 資源の確率は、resChanceFrom 人を超えた人数ぶんだけ増える
@@ -143,7 +146,15 @@
   const rangeOf = b => (b.t === 'tower' ? RULES.towerRange : RULES.moveRange);
   const reach = (st, x, y) => st.b.some(b => { const g = rectGap(b, x, y), m = rangeOf(b); return g.dx <= m && g.dy <= m; });
   const nearStation = (st, p, t) => st.b.some(b => { if (b.t !== t) return false; const g = rectGap(b, p.x, p.y); return g.dx <= 1 && g.dy <= 1; });
-  const insul = b => !!b && (b.t === 'igloo' || b.t === 'storage') && b.hp * 2 > b.max;
+  const insul = b => !!b && b.t === 'storage' && b.hp * 2 > b.max;          // 防寒が有効な倉庫（中にいると、体温の低下が軽くなる）
+  const iglooOk = b => !!b && b.t === 'igloo' && b.hp * 2 > b.max;           // 防寒が有効なかまくら（HPが半分以下で消える）
+  const coldOn = st => st.round > RULES.coldFreeRounds;
+  // かまくらの枠：1個で iglooCover 人ぶん。夜の寒さを防げる人（体温が低い人から。同じなら、参加順）
+  function covered(st) {
+    const cap = RULES.iglooCover * st.b.filter(iglooOk).length;
+    const order = st.players.map((p, i) => ({ id: p.id, t: p.temp, i })).sort((u, v) => u.t - v.t || u.i - v.i);
+    return new Set(order.slice(0, cap).map(o => o.id));
+  }
   const fires = st => st.b.filter(b => b.t === 'fire');
   const fireOf = st => st.b.find(b => b.t === 'fire');
   const fireGap = (b, p) => { const g = rectGap(b, p.x, p.y); return Math.max(g.dx, g.dy); };
@@ -186,10 +197,12 @@
     if (insul(b)) return { kind: 'warm', b };
     return { kind: 'out', b };
   }
-  function tempLoss(st, p, weather) {
+  // ラウンドの終わりの体温の低下。夜の寒さ（coldExtra）も入る（かまくらで防げる人は除く）。cov：かまくらで防げる人の集合
+  function tempLoss(st, p, weather, cov) {
     const w = RULES.tempMod[weather || st.weather];
     const k = where(st, p).kind;
-    const v = k === 'fire' ? RULES.base.fire + w : k === 'warm' ? RULES.base.warm + Math.max(0, w - RULES.relief) : RULES.base.out + w;
+    const extra = coldOn(st) && !(cov || covered(st)).has(p.id) ? RULES.coldExtra : 0;
+    const v = (k === 'fire' ? RULES.base.fire + w : k === 'warm' ? RULES.base.warm + Math.max(0, w - RULES.relief) : RULES.base.out + w) + extra;
     return p.gear && p.gear.k === 'coat' ? Math.max(0, v - RULES.coatRelief) : v;   // 防寒着
   }
   function warmAmount(st, p) {
@@ -402,10 +415,10 @@
     }
   }
   // 1人ぶんの、手番（ラウンド）の終わりの処理：満腹度・体温が減り、0になると行動不能
-  function finishPlayer(st, p) {
+  function finishPlayer(st, p, cov) {
     if (p.down === 2) p.down = 0;
     p.food = Math.max(0, p.food - RULES.hunger);
-    p.temp = Math.max(0, p.temp - tempLoss(st, p));
+    p.temp = Math.max(0, p.temp - tempLoss(st, p, undefined, cov));
     if (p.temp <= 0 || p.food <= 0) {
       const what = [p.temp <= 0 ? '体温' : '', p.food <= 0 ? '満腹度' : ''].filter(Boolean).join('と');
       if (p.temp <= 0) p.temp = RULES.recoverTo;
@@ -462,7 +475,8 @@
   }
   // 同時に動くとき：全員が行動を終えたか、時間切れで、ラウンドを終える
   function endRoundAll(st) {
-    for (const p of st.players) finishPlayer(st, p);
+    const cov = covered(st);                          // かまくらの枠は、ラウンドの終わりの体温で決める（みんなに同時に）
+    for (const p of st.players) finishPlayer(st, p, cov);
     if (checkAllDown(st)) return;
     if (!closeRound(st)) return;
     for (const p of st.players) beginPlayer(st, p);
@@ -975,11 +989,11 @@
   function endProjection(st, pid) {
     const p = pl(st, pid);
     if (!p) return null;
-    const w = where(st, p), loss = tempLoss(st, p);
+    const w = where(st, p), cov = covered(st), loss = tempLoss(st, p, undefined, cov);
     const fb = nearestFire(st, p) || fireOf(st);
     const fireLoss = fb.drain + (st.weather === 'rain' ? 1 : 0);
     const out = {
-      place: w.kind, loss, hunger: RULES.hunger, fireLoss,
+      place: w.kind, loss, hunger: RULES.hunger, fireLoss, cold: coldOn(st) ? RULES.coldExtra : 0, covered: cov.has(p.id),
       temp0: p.temp, temp: Math.max(0, p.temp - loss), food0: p.food, food: Math.max(0, p.food - RULES.hunger),
       fire0: fb.fire, fire: Math.max(0, fb.fire - fireLoss),
     };
@@ -1015,7 +1029,7 @@
   return {
     prepRoundsOf, finalRoundsOf, totalRoundsOf, repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
-    cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
+    cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect, iglooOk, covered, coldOn,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,
     moveMap, moveCost, moveWhy, buildWhy, lacking, genCells, pathBlockers, moveAsideTile,
   };

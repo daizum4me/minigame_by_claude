@@ -26,6 +26,7 @@
   const BRIDGE_WOOD = 6;   // 橋をかけるのに必要な木材の持ち数（これ以上あれば、川の向こうへ橋をかける）
   // 倉庫（上限+10・避難所）：木材がこれだけ貯まったら建てる／倉庫のために、木材を残す・石材を集める（3人以上）
   const STORE_WOOD = 5, STORE_MINP = 3, KEEP_W = 5, STONE_V = 5;
+  const IGLOO_ON = true, IG_R = 1, IG_FR = 1;   // かまくらを、人数ぶん（1個で2人ぶんの夜の寒さを防ぐ）そろえる
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
@@ -165,6 +166,7 @@
     if (STEAK_FIRST && it.meat >= 1 && p.ap >= 2 && E.nearFire(st, p)) return { type: 'craft', recipe: 'steak' };
     if (STEAK_FIRST && it.fish >= 1 && p.ap >= 2 && E.nearFire(st, p)) return { type: 'craft', recipe: 'grilled' };
 
+    const igloosWanted = Math.ceil(nP * IG_FR / R.iglooCover), igloosHave = st.b.filter(E.iglooOk).length;
     const map = E.moveMap(st, p);
     const costAt = (x, y) => { const d = map.get(E.key(x, y)); return d == null ? null : E.moveCost(d); };
     const canMove = mem.moves < MAX_MOVES;
@@ -237,6 +239,12 @@
       if (s) return { type: 'build', t: 'storage', x: s.x, y: s.y };
     }
 
+    // かまくら（1個で2人ぶんの夜の寒さを防ぐ）：人数ぶん、そろえる
+    if (IGLOO_ON && st.round >= IG_R && igloosHave < igloosWanted && it.snow >= E.BUILD.igloo.cost.snow && p.ap >= E.BUILD.igloo.ap) {
+      const g = findSpot(st, 'igloo');
+      if (g) return { type: 'build', t: 'igloo', x: g.x, y: g.y };
+    }
+
     const hasShop = st.b.some(b => b.t === 'workshop');
     // 釣り竿で届く魚がいるか（移動できるマスから3マス以内）
     const fishNear = () => (st.fish || []).some(f => { for (const [k] of map) { const [x, y] = E.parseKey(k); if (Math.max(Math.abs(f.x - x), Math.abs(f.y - y)) <= R.fishRange) return true; } return false; });
@@ -281,7 +289,7 @@
     const toolStone = hasShop && !p.tool && !toolInPool && it.stone < (USE_BOW ? 3 : 1);   // 道具の材料
     const noStore = E.count(st, 'storage') < 1 && !last(st);
     const stoneWant = toolStone || (nP >= STORE_MINP && noStore && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
-    const needSnow = it.snow < 2;
+    const needSnow = it.snow < (igloosHave < igloosWanted && IGLOO_ON ? E.BUILD.igloo.cost.snow : 2);
     const resValue = r => {
       const item = E.RES_ITEM[r.t];
       let v = 0;

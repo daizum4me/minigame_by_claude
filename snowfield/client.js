@@ -486,7 +486,7 @@
     const cls = (v, lim) => (v <= lim ? 'bad' : '');
     el.innerHTML = `<b class="t">このまま${E.simul(g) ? '行動を終える' : '手番を終える'}と</b>
       <div class="ep-row"><span class="k">満腹度</span><span class="v ${cls(e.food, 0)}">${e.food0} → ${e.food}</span><span class="n">−${e.hunger}</span></div>
-      <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}）</span></div>
+      <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}${e.cold ? (e.covered ? '・夜の寒さはかまくらで防ぐ' : '・夜の寒さ −' + e.cold) : ''}）</span></div>
       <div class="ep-row"><span class="k">火力</span><span class="v">${e.fire0} → ${e.fire}</span><span class="n">−${e.fireLoss}</span></div>
       ${e.fireOutNext ? `<div class="${e.fireLose ? 'warnbox' : 'ep-row bad'}">${e.fireLose ? '焚き火が消えたまま手番を終えると、敗北します！ 先に焚べましょう' : `焚き火が消えたままです（終えると ${e.fireOutNext} / ${R.fireOutLimit}）`}</div>` : ''}
       ${e.collapse ? `<div class="warnbox">${e.temp <= 0 && e.food <= 0 ? '体温と満腹度が0になり' : e.temp <= 0 ? '体温が0になり' : '満腹度が0になり'}、行動不能になります！</div>` : ''}`;
@@ -655,7 +655,7 @@
       eff: ['川にだけ建てられる', '建物の仲間として扱われ、橋から1マス以内に移動できる', '橋の上には、ほかの建物を建てられる（上書き）'], build: null, repair: '壊れない' },
     road: { name: '道', tip: '雪1個で作れる最小の建物。移動できる範囲が広がる。', desc: '雪1個で作れる最小の建物。建物の仲間として扱われ、道から1マス以内に移動できる。',
       eff: ['道・建物の上に入るときは体温が減らない', '隣り合う道は一つにつながって表示される'], build: null, repair: '壊れない' },
-    igloo: { name: 'かまくら', tip: '防寒施設。中では体温低下が軽くなる。', desc: '雪で作る防寒施設。',
+    igloo: { name: 'かまくら', tip: '1個で2人ぶんの夜の寒さ（体温-1）を、どこにいても防ぐ。', desc: '雪で作る防寒施設。ラウンドの終わりの「夜の寒さ」（体温-1）を、1個で2人ぶん、どこにいても防ぎます（体温が低い人から）。HPが半分以下になると防げなくなります。',
       eff: ['体温低下 -1＋天候補正（補正は最大2まで軽減）', '温まる回復量 +1', 'HPが半分以下になると防寒が消える'], build: null, repair: null },
     storage: { name: '倉庫', tip: '防寒施設。共有アイテムの上限が+10される。', desc: '大きな防寒施設。',
       eff: ['共有アイテムの上限 +10', '防寒効果はかまくらと同じ'], build: null, repair: null },
@@ -733,11 +733,13 @@
     return `<div class="ms ${cls || ''}"><span class="k">${label}</span><span class="tr"><i style="width:${pct}%;background:${color}"></i></span><b style="color:${fg}">${v}</b></div>`;
   }
   function renderPlayers(g, th) {
+    const cov = E.covered(g);
     $('#players').innerHTML = g.players.map(p => {
       const sim = E.simul(g);
       const turn = g.phase === 'play' && (sim ? !p.done : E.cur(g).id === p.id);
       const me = p.id === app.me;
       const tags = [
+        g.phase === 'play' && E.coldOn(g) && cov.has(p.id) ? '<span class="badge" title="かまくらで、夜の寒さ（体温-1）を防げます">かまくら</span>' : '',
         p.cpu ? '<span class="badge gray">CPU</span>' : '',
         p.away ? '<span class="badge red">切断中</span>' : '',
         p.down === 1 ? '<span class="badge red">行動不能</span>' : p.down === 2 ? '<span class="badge red">復帰中</span>' : '',
@@ -804,7 +806,7 @@
       el.innerHTML = '<div class="small muted" style="font-weight:700">建物の詳細（建物をクリック）</div><div class="muted" style="line-height:1.6">建物をクリックすると、説明・効果・建設と修理のコストがここに表示されます。</div>';
       return;
     }
-    const d = DESC[b.t], bd = E.BUILD[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
+    const d = DESC[b.t], bd = E.BUILD[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = b.t === 'igloo' ? E.iglooOk(b) : E.insul(b);
     const meta = [['サイズ', `${b.w}×${b.h}`]];
     let status = '', chip = null;
     if (b.t === 'fire') { meta.push(['火力', `${b.fire} / ${b.fmax}`]); status = '壊れない'; chip = th.chip.fire; }
@@ -1004,7 +1006,7 @@
         let html = '';
         const b = info.b;
         if (b) {
-          const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
+          const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = b.t === 'igloo' ? E.iglooOk(b) : E.insul(b);
           const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${b.fire} / ${b.fmax}` : '';
           html += `<div class="tn">${esc(d.name)}<span class="grow"></span><span style="font-size:12px;color:${warm ? (ins ? th.chip.ok[1] : th.chip.lost[1]) : th.chip.fire[1]}">${status}</span></div><div class="tt">${esc(d.tip)}</div>${b.hp === null ? '' : `<div class="th">HP ${b.hp} / ${b.max}</div>`}`;
         }

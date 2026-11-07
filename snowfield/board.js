@@ -466,7 +466,7 @@
       // 建物
       for (const b of g.b) {
         if (E.isPath(b.t) || !(b.x <= vx1 && b.x + b.w >= vx0 && b.y <= vy1 && b.y + b.h >= vy0)) continue;
-        const isFire = b.t === 'fire', warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b), lost = warm && !ins;
+        const isFire = b.t === 'fire', warm = b.t === 'igloo' || b.t === 'storage', ins = b.t === 'igloo' ? E.iglooOk(b) : E.insul(b), lost = warm && !ins;
         const col = th.card[lost ? 'off' : b.t];
         const x = X(b.x) + 3 * z, y = Y(b.y) + 3 * z, w = b.w * S - 6 * z, h = b.h * S - 6 * z;
         ctx.fillStyle = col[0]; rr(ctx, x, y, w, h, 10 * z); ctx.fill();
