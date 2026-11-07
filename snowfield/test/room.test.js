@@ -298,7 +298,8 @@ test('同時に動く：CPUだけの対戦が、最後まで進む（3人・8人
     while (room.game.phase === 'play' && guard++ < 100000 && step());
     assert.notStrictEqual(room.game.phase, 'play', `n=${n} が終わらない`);
     assert.ok(room.game.players.every(p => p.temp >= 0 && p.temp <= 10 && p.food >= 0 && p.food <= 10));
-    assert.ok(E.total(room.game) <= E.cap(room.game));
+    // 持ち物の上限は「新しく得る」ときの制限。倉庫が壊れて上限が下がった場合は、上限を超えたままになることがある
+    assert.ok(E.total(room.game) <= E.cap(room.game) || room.game.stats.team.destroyed > 0);
   }
 });
 

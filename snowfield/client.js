@@ -600,7 +600,7 @@
   const FX = { clear: '補正なし', snow: '体温低下 +1', blizzard: '体温低下 +2', rain: '焚き火の火力低下 +1', storm: '体温低下 +4・建物HP減少' };
   const DESC = {
     fire: { name: '焚き火', tip: '上で温まると火力ぶん回復。薪を焚べると火力+1。', desc: '唯一の本格的な暖房。上に立って「温まる」と、火力の値だけ体温が回復する。',
-      eff: ['焚き火の上の体温低下は 0＋天候補正（軽減なし）', `温まる：行動力${R.ap.warm}、火力の値だけ体温回復`, `焚べる：行動力${R.ap.stoke}＋木材1 → 火力+1（最大${R.fireMax}）`], build: '最初からある', repair: '壊れない' },
+      eff: ['焚き火の上の体温低下は 0＋天候補正（軽減なし）', `温まる：行動力${R.ap.warm}、火力の値だけ体温回復`, `焚べる：行動力${R.ap.stoke}＋木材1 → 火力+1（最大は、その焚き火で始まる人数。最低${R.fireMaxMin}）`], build: '最初からある', repair: '壊れない' },
     bridge: { name: '橋', tip: '川にだけ建てられる。木材1。道と同じように歩ける。', desc: '川の上にかける橋。道と同じ扱い（建物の仲間・体温が減らない・壊れない）。橋の上には、ほかの建物を建てて上書きできる。',
       eff: ['川にだけ建てられる', '建物の仲間として扱われ、橋から1マス以内に移動できる', '橋の上には、ほかの建物を建てられる（上書き）'], build: null, repair: '壊れない' },
     road: { name: '道', tip: '雪1個で作れる最小の建物。移動できる範囲が広がる。', desc: '雪1個で作れる最小の建物。建物の仲間として扱われ、道から1マス以内に移動できる。',
@@ -757,7 +757,7 @@
     const d = DESC[b.t], bd = E.BUILD[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
     const meta = [['サイズ', `${b.w}×${b.h}`]];
     let status = '', chip = null;
-    if (b.t === 'fire') { meta.push(['火力', `${b.fire} / ${R.fireMax}`]); status = '壊れない'; chip = th.chip.fire; }
+    if (b.t === 'fire') { meta.push(['火力', `${b.fire} / ${b.fmax}`]); status = '壊れない'; chip = th.chip.fire; }
     else if (E.isPath(b.t)) { status = '壊れない'; chip = ['var(--chip)', 'var(--muted2)']; }
     else {
       meta.push(['HP', `${b.hp} / ${b.max}`]);
@@ -955,7 +955,7 @@
         const b = info.b;
         if (b) {
           const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
-          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${b.fire} / ${R.fireMax}` : '';
+          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${b.fire} / ${b.fmax}` : '';
           html += `<div class="tn">${esc(d.name)}<span class="grow"></span><span style="font-size:12px;color:${warm ? (ins ? th.chip.ok[1] : th.chip.lost[1]) : th.chip.fire[1]}">${status}</span></div><div class="tt">${esc(d.tip)}</div>${b.hp === null ? '' : `<div class="th">HP ${b.hp} / ${b.max}</div>`}`;
         }
         if (info.res) {

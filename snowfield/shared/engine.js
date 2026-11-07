@@ -19,8 +19,8 @@
     finalBy: [[4, 5], [8, 4], [12, 3], [16, 2]],   // 最終猛吹雪のラウンド数：[人数の上限, ラウンド数]
     maxTemp: 10, maxFood: 10, maxAp: 7,
     hunger: 3,                         // 手番（ラウンド）の終わりの満腹度の減少
-    fireInit: 3, fireMax: 5,
-    fireDrain: 3,                      // 焚き火の火力は、ラウンドの終わりに、この数だけ減る（雨ならさらに-1）
+    fireInit: 3, fireMaxMin: 5,        // 焚き火の火力の上限 = その焚き火で始まる人数（最低 fireMaxMin）
+    fireDrainDiv: 2,                   // 焚き火の火力は、ラウンドの終わりに、「その焚き火で始まる人数 ÷ fireDrainDiv の切り上げ」だけ減る（雨ならさらに-1）
     stormDmg: 2,                       // 猛吹雪のラウンドの始めに、建物のHPがこの数だけ減る
     downLoseRatio: 0.5,                // 大人数（twoFiresFrom 人以上）では、行動不能の人がこの割合以上になると敗北
     twoFiresFrom: 8,                   // この人数以上のときは、焚き火が2つになり、プレイヤーが分かれて始まる
@@ -326,6 +326,7 @@
     const sizes = counts.map(fireSize);
     let fx = -Math.floor((sizes.reduce((a, c) => a + c, 0) + (F - 1) * RULES.fireGap) / 2);
     const fs = sizes.map(sz => { const f = addBuilding(st, 'fire', fx, -Math.floor(sz / 2), sz); f.fire = RULES.fireInit; fx += sz + RULES.fireGap; return f; });
+    fs.forEach((f, k) => { f.fmax = Math.max(RULES.fireMaxMin, counts[k]); f.drain = Math.ceil(counts[k] / RULES.fireDrainDiv); f.fire = Math.min(f.fire, f.fmax); });
     st.clear = Math.max(RULES.riverClear, ...fs.map(f => Math.max(Math.abs(f.x), Math.abs(f.x + f.w - 1), Math.abs(f.y), Math.abs(f.y + f.h - 1))) .map(v => v + 2));
     fs.forEach(f => expandGen(st, f));
     guaranteeStart(st);
@@ -430,8 +431,8 @@
     for (let i = 0; i < RULES.animalSteps; i++) moveAnimals(st);
     for (let i = 0; i < RULES.fishSteps; i++) moveFish(st);
     const dead = allFiresOut(st);
-    const drain = RULES.fireDrain + (st.weather === 'rain' ? 1 : 0);
-    for (const b of fires(st)) b.fire = Math.max(0, b.fire - drain);
+    const rain = st.weather === 'rain' ? 1 : 0;
+    for (const b of fires(st)) b.fire = Math.max(0, b.fire - (b.drain + rain));
     st.fireOut = dead ? st.fireOut + 1 : 0;
     if (st.fireOut > 0) log(st, `焚き火が消えたままラウンドが終わった（${st.fireOut} / ${RULES.fireOutLimit}）`);
     if (st.fireOut >= RULES.fireOutLimit) {
@@ -815,8 +816,8 @@
         if ((e = needAp(ap.stoke))) return fail(e);
         const fb = fires(st).filter(b => fireGap(b, p) <= 1);
         if (!fb.length) return fail('焚き火の上か、すぐ隣に移動してください');
-        const tgt = fb.find(b => b.fire < RULES.fireMax);
-        if (!tgt) return fail(`火力は最大（${RULES.fireMax}）です`);
+        const tgt = fb.find(b => b.fire < b.fmax);
+        if (!tgt) return fail(`火力は最大（${fb[0].fmax}）です`);
         p.ap -= ap.stoke;
         const used = it.firewood > 0 ? 'firewood' : 'wood';      // 薪は建物に使えないので、先に使う
         it[used]--; tgt.fire++;
@@ -975,8 +976,8 @@
     const p = pl(st, pid);
     if (!p) return null;
     const w = where(st, p), loss = tempLoss(st, p);
-    const fireLoss = RULES.fireDrain + (st.weather === 'rain' ? 1 : 0);
     const fb = nearestFire(st, p) || fireOf(st);
+    const fireLoss = fb.drain + (st.weather === 'rain' ? 1 : 0);
     const out = {
       place: w.kind, loss, hunger: RULES.hunger, fireLoss,
       temp0: p.temp, temp: Math.max(0, p.temp - loss), food0: p.food, food: Math.max(0, p.food - RULES.hunger),

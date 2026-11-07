@@ -65,7 +65,7 @@ test('手番終了：満腹度-3・次の手番。ラウンドの終わりに、
   assert.match(E.act(st, 'p3', { type: 'warm' }).why, /手番/);
   doIt(st, { type: 'end' }); doIt(st, { type: 'end' });      // ラウンドの終わり
   assert.strictEqual(st.round, 2);
-  assert.strictEqual(st.fire, Math.max(0, 3 - (E.RULES.fireDrain + 1)));   // 雨は、さらに-1
+  assert.strictEqual(st.fire, Math.max(0, 3 - (Math.ceil(3 / E.RULES.fireDrainDiv) + 1)));   // 雨は、さらに-1
   assert.notStrictEqual(JSON.stringify(st.animals), before);
 });
 
@@ -422,6 +422,23 @@ test('大人数：8人以上は焚き火が2つになり、プレイヤーが分
   for (const f of fs) for (let y = f.y; y < f.y + f.h; y++) for (let x = f.x; x < f.x + f.w; x++) assert.ok(!E.isRiver(st, x, y));
 });
 
+test('焚き火の火力の上限は、そこで始まる人数（最低5）。1ラウンドに減る火力は、その人数÷2の切り上げ', () => {
+  const f = n => E.fires(mkN(n)).map(b => [b.fmax, b.drain]);
+  assert.deepStrictEqual(f(3), [[5, 2]]);
+  assert.deepStrictEqual(f(5), [[5, 3]]);
+  assert.deepStrictEqual(f(7), [[7, 4]]);
+  assert.deepStrictEqual(f(16), [[8, 4], [8, 4]]);
+  assert.deepStrictEqual(f(9), [[5, 3], [5, 2]]);                          // 5人と4人（上限は最低5）
+  const st = mkN(16);
+  const [a] = E.fires(st);
+  const p = st.players.find(q => q.home === a.id);
+  a.fire = a.fmax - 1; st.items.firewood = 5; p.ap = 7;
+  assert.ok(E.act(st, p.id, { type: 'stoke' }).ok);
+  assert.match(E.act(st, p.id, { type: 'stoke' }).why, /最大（8）/);
+  st.weather = 'rain';
+  assert.strictEqual(E.endProjection(st, p.id).fire, Math.max(0, a.fmax - (a.drain + 1)));
+});
+
 test('焚き火が2つ：それぞれに火力があり、ラウンドごとに減る。すべて消えたまま3ラウンドで敗北', () => {
   const st = mkN(16);
   st.weather = 'clear'; st.next = 'clear';
@@ -435,7 +452,7 @@ test('焚き火が2つ：それぞれに火力があり、ラウンドごとに�
   const endRound = () => { for (const q of st.players) { q.temp = 10; q.food = 10; E.act(st, q.id, { type: 'end' }); } };
   endRound();
   assert.strictEqual(st.round, 2);
-  assert.deepStrictEqual([a.fire, b.fire], [3 - E.RULES.fireDrain, 4 - E.RULES.fireDrain].map(v => Math.max(0, v)));
+  assert.deepStrictEqual([a.fire, b.fire], [3 - a.drain, 4 - b.drain].map(v => Math.max(0, v)));
   a.fire = 0; b.fire = 0;
   endRound(); assert.strictEqual(st.fireOut, 1);
   a.fire = 1;                                                           // 片方でも点いていれば、数え直し
@@ -793,13 +810,13 @@ test('手番を終えたときの予測', () => {
   const st = mk(); st.weather = 'snow';
   const p = me(st);
   let e = E.endProjection(st, p.id);
-  assert.deepStrictEqual([e.food, e.temp, e.fire, e.place, e.collapse], [10 - E.RULES.hunger, 9, Math.max(0, 3 - E.RULES.fireDrain), 'fire', false]);
+  assert.deepStrictEqual([e.food, e.temp, e.fire, e.place, e.collapse], [10 - E.RULES.hunger, 9, Math.max(0, 3 - 2), 'fire', false]);
   const [x, y] = freeSpot(st);
   p.x = x; p.y = y; p.temp = 3; p.food = 3;
   e = E.endProjection(st, p.id);
   assert.deepStrictEqual([e.food, e.temp, e.collapse, e.loss], [0, 0, true, 3]);
   st.weather = 'rain';
-  assert.strictEqual(E.endProjection(st, p.id).fire, Math.max(0, 3 - E.RULES.fireDrain - 1));
+  assert.strictEqual(E.endProjection(st, p.id).fire, Math.max(0, 3 - 2 - 1));
 });
 
 test('結果画面の統計：行動の集計', () => {

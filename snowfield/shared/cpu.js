@@ -24,6 +24,8 @@
   const STEAK_FIRST = true;  // 焚き火のそばでは、肉を先にステーキにする
   const VEG_MIN = 2, VEG_FOOD = 0, VEG_LATE = 5;   // 野菜の苗を植える：野菜2個から・食料が足りていても・準備期間の終わり5ラウンド前まで
   const BRIDGE_WOOD = 6;   // 橋をかけるのに必要な木材の持ち数（これ以上あれば、川の向こうへ橋をかける）
+  // 倉庫（上限+10・避難所）：木材がこれだけ貯まったら建てる／倉庫のために、木材を残す・石材を集める（3人以上）
+  const STORE_WOOD = 5, STORE_MINP = 3, KEEP_W = 5, STONE_V = 5;
   const MAX_MOVES = 6;      // 1手番に動く回数の上限
   const MAX_ROADS = 4;      // 1手番に道を建てる数の上限
   const SAFE_TEMP = 4;      // これ以下なら暖かい場所へ戻って温まる
@@ -45,7 +47,7 @@
     return {
       food: (fin ? 6 : (st.round >= 8 ? 5 : 3)) * nP,                                    // 食料（満腹度ぶん）
       wood: Math.min(cap - 4, 2 + st.round + Math.max(0, nP - 3)), // 薪：最終猛吹雪に向けて増やす
-      fire: fin ? E.RULES.fireMax : (st.round >= st.prep ? 4 : 0),
+      fire: fin ? 99 : (st.round >= st.prep ? 4 : 0),
     };
   }
 
@@ -205,7 +207,7 @@
     }
     // 焚き火を消さないための薪（3手番連続で消えると敗北）は、温まるために使い切らない（体温がとても低いときと、消えかけのときは使う）
     const fuelFloor = fireAlert || p.temp <= 3 ? 0 : FUEL_RESERVE;
-    const stoke = () => nearFire && p.ap >= R.ap.stoke && fuelOf(st) > fuelFloor && !!fb && fb.fire < Math.min(R.fireMax, wantFire);
+    const stoke = () => nearFire && p.ap >= R.ap.stoke && fuelOf(st) > fuelFloor && !!fb && fb.fire < Math.min(fb.fmax, wantFire);
 
     // 火力：必要なぶんだけ焚べる
     if (stoke()) return { type: 'stoke' };
@@ -230,7 +232,7 @@
     }
 
     // 倉庫（共有アイテムの上限+10）
-    if (!fin && E.count(st, 'storage') < 1 && it.wood >= 8 && it.stone >= 4 && p.ap >= E.BUILD.storage.ap) {
+    if (!fin && E.count(st, 'storage') < 1 && it.wood >= STORE_WOOD && it.stone >= 4 && p.ap >= E.BUILD.storage.ap) {
       const s = findSpot(st, 'storage');
       if (s) return { type: 'build', t: 'storage', x: s.x, y: s.y };
     }
@@ -243,7 +245,7 @@
       const sp = findSpot(st, 'workshop');
       if (sp) return { type: 'build', t: 'workshop', x: sp.x, y: sp.y };
     }
-    const keepWood = E.count(st, 'storage') < 1 && it.stone >= 3 && !fin ? 4 : 0;
+    const keepWood = E.count(st, 'storage') < 1 && it.stone >= 3 && !fin ? KEEP_W : 0;
     // 持ち物の防寒着・道具を着ける（行動力0）
     const coatInPool = st.gear.find(x => x.k === 'coat'), toolInPool = st.gear.find(x => E.GEAR[x.k].slot === 'tool');
     if (coatInPool && !p.gear) return { type: 'equip', id: coatInPool.id };
@@ -277,14 +279,15 @@
     // 目当ての価値
     // 石材：倉庫（避難所・上限+10）のため（3人では、倉庫のために石材を追うと負担のほうが大きいので、4人以上）。倉庫があれば、猛吹雪の修理のために貯める
     const toolStone = hasShop && !p.tool && !toolInPool && it.stone < (USE_BOW ? 3 : 1);   // 道具の材料
-    const stoneWant = toolStone || (nP >= 4 && E.count(st, 'storage') < 1 && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
+    const noStore = E.count(st, 'storage') < 1 && !last(st);
+    const stoneWant = toolStone || (nP >= STORE_MINP && noStore && it.stone < 4) || (E.count(st, 'storage') >= 1 && st.round >= 6 && it.stone < 3);
     const needSnow = it.snow < 2;
     const resValue = r => {
       const item = E.RES_ITEM[r.t];
       let v = 0;
       if (item === 'wood') v = woodEq(st) < 3 ? 10 : (woodEq(st) < T.wood ? 7 : 0);
       else if (item === 'veg') v = foodStock(st) < T.food ? 5 : (it.veg < 4 ? 2 : 0);
-      else if (item === 'stone') v = stoneWant ? 3 : 0;
+      else if (item === 'stone') v = stoneWant ? (noStore ? STONE_V : 3) : 0;
       if (needSnow) v += 2;
       return v;
     };

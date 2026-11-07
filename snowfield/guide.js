@@ -55,7 +55,7 @@
         <li>${ic('bolt')}<b>始め</b>：行動力が${R.maxAp}になります（使い切らなくてOK・持ち越しなし）。猛吹雪のあいだは、建物のHPが${R.stormDmg}減ります。</li>
         <li>${ic('hand')}<b>行動</b>：移動は行動力0。ほかの行動は、それぞれの行動力を使います。</li>
         <li>${ic('clock')}<b>自分の手番（行動）の終わり</b>：${ic('food', 16)}満腹度 −${R.hunger}、${ic('temp', 16)}体温が下がる（場所と天候で決まる）、${ic('bolt', 16)}行動不能の判定。</li>
-        <li>${ic('fire', 16)}<b>ラウンドの終わり</b>：すべての焚き火の火力が −${R.fireDrain}（雨なら−${R.fireDrain + 1}）。${ic('animal', 16)}動物と${ic('fish', 16)}魚が${R.animalSteps}マスずつ動きます。</li>
+        <li>${ic('fire', 16)}<b>ラウンドの終わり</b>：焚き火の火力が、<b>その焚き火で始まる人数÷${R.fireDrainDiv}の切り上げ</b>だけ減る（雨ならさらに−1。3人なら−2）。${ic('animal', 16)}動物と${ic('fish', 16)}魚が${R.animalSteps}マスずつ動きます。</li>
       </ol>
       ${note('行動中の左には、「このまま手番を終えると」満腹度・体温・火力がどうなるかが出ます。行動不能になりそうなときや、焚き火が消えたままで敗北に近づくときは、赤く警告します。')}
       <p>${ic('fire')}<b>すべての焚き火が消えたまま</b>（火力0でラウンドが終わる）が<b>${R.fireOutLimit}ラウンド連続</b>で続くと、ゲームオーバーです。上のバーに、いま何回目かが出ます。</p>
@@ -115,7 +115,7 @@
       <p>自分の駒をクリックすると、行動のメニューが開きます（手番のみ）。</p>
       ${table(['行動', '行動力', 'できること'], [
         [withIc('fire', '温まる'), R.ap.warm, '体温を回復（焚き火の上は火力ぶん）'],
-        [withIc('firewood', '焚べる'), R.ap.stoke, `薪（なければ木材）1個で火力+1（最大${R.fireMax}）。焚き火の上かすぐ隣で`],
+        [withIc('firewood', '焚べる'), R.ap.stoke, `薪（なければ木材）1個で火力+1（最大は、その焚き火で始まる人数。最低${R.fireMaxMin}）。焚き火の上かすぐ隣で`],
         [withIc('meat', '食べる'), 0, '右の共有アイテム（肉・野菜・ステーキ・スープ）をクリックして「食べる」'],
         [withIc('hand', '集める'), R.ap.collect, '資源のマスで、体力−1につき1個。雪原なら雪も1個'],
         [withIc('sword', '攻撃'), R.ap.attack, `隣のマス（上下左右）の動物の体力−1（弓を着けていれば${R.bowRange}マス以内）`],
@@ -154,7 +154,7 @@
 
     { id: 'buildings', icon: 'hammer', title: '建物と作る', html: () => {
       const feat = { road: '建物の仲間。移動できる範囲を広げ、体温を減らさず歩ける', bridge: '川にだけ建てられる。道と同じ。橋の上には、ほかの建物を建てられる（上書き）', igloo: '防寒施設（HPが半分以下で防寒が消える）', storage: '防寒施設。共有アイテムの上限+10', tower: `屋外。1ラウンド先の天候予報。ここから${R.towerRange}マス以内に移動できる`, workshop: '屋外。上かすぐ隣で「作る」と、薪・防寒着・道具が作れる' };
-      const rows = [[withIc('fire', '焚き火'), '人数で変わる', '最初からある', '—', '壊れない', `火力${R.fireInit}から（最大${R.fireMax}）。上で温まると火力ぶん回復`]];
+      const rows = [[withIc('fire', '焚き火'), '人数で変わる', '最初からある', '—', '壊れない', `火力${R.fireInit}から（最大は、そこで始まる人数。最低${R.fireMaxMin}）。上で温まると火力ぶん回復`]];
       Object.keys(E.BUILD).forEach(k => { const d = E.BUILD[k]; rows.push([withIc(k, d.name), `${d.size}×${d.size}`, costStr(d.cost), d.ap, E.isPath(k) ? '壊れない' : d.size * 2, feat[k]]); });
       return `
       <p>建設は、カードを盤面へドラッグして置くか、カードをクリックで選んでマップをクリックして置きます（自分の手番のみ。選んだままなら続けて置けます。Escか右クリックで解除）。</p>
@@ -304,7 +304,7 @@
         done: () => mine().collect > T.snap.collect },
       { title: '焚き火に焚べる', page: 'actions',
         enter(g) { ensure(g, 'wood', 1); g.fire = 2; refill(g); T.snap = Object.assign({}, mine()); push(); },
-        text: () => `焚き火は、ラウンドの終わりに−${R.fireDrain}されます。<b>焚き火の上か隣</b>へ移動して、駒をクリック →「焚べる」。薪（なければ木材）1個で、火力が+1されます。`,
+        text: () => `焚き火は、ラウンドの終わりに、そこで始まる人数÷${R.fireDrainDiv}の切り上げだけ（3人なら−2）減ります。<b>焚き火の上か隣</b>へ移動して、駒をクリック →「焚べる」。薪（なければ木材）1個で、火力が+1されます。`,
         hl: () => fireRect(game()),
         done: () => mine().stoked > T.snap.stoked },
       { title: '温まる', page: 'stats',
