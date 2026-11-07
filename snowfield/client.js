@@ -344,8 +344,58 @@
     if (app.menu && !myP()) app.menu = false;
     toastNewLog(g);
     announce(g);
+    fxFromChanges(g);
     renderGame();
     guide.onState();
+  }
+
+  // 前の状態との違いから、パーティクルを出す（自分も、ほかの人の行動も、同じように見える）
+  function snapOf(g) {
+    const sn = { seed: g.seed, round: g.round, res: {}, an: {}, fish: {}, b: {}, plants: {}, pl: {} };
+    for (const k of Object.keys(g.res)) sn.res[k] = { t: g.res[k].t, hp: g.res[k].hp };
+    for (const a of g.animals) sn.an[a.id] = { x: a.x, y: a.y, hp: a.hp };
+    for (const f of g.fish || []) sn.fish[f.id] = { x: f.x, y: f.y, hp: f.hp };
+    for (const b of g.b) sn.b[b.id] = { t: b.t, x: b.x, y: b.y, w: b.w, h: b.h, hp: b.hp, fire: b.fire };
+    for (const p of g.plants) sn.plants[p.x + ',' + p.y] = 1;
+    for (const p of g.players) sn.pl[p.id] = { x: p.x, y: p.y, food: p.food, temp: p.temp, ap: p.ap };
+    return sn;
+  }
+  function fxFromChanges(g) {
+    const cur = snapOf(g), pv = app.fxSnap;
+    app.fxSnap = cur;
+    if (!board || !pv || pv.seed !== cur.seed) return;
+    const ctr = b => [b.x + b.w / 2, b.y + b.h / 2];
+    const sc = b => Math.max(1, Math.min(3, b.w / 1.5));
+    for (const k of Object.keys(pv.res)) {
+      const a = pv.res[k], b = cur.res[k];
+      if (b && b.hp >= a.hp) continue;
+      const [x, y] = E.parseKey(k);
+      board.fx(a.t === 'tree' ? 'tree' : a.t === 'stone' ? 'stone' : 'veg', x + 0.5, y + 0.5, b ? 0.7 : 1.4);
+    }
+    for (const id of Object.keys(pv.an)) {
+      const a = pv.an[id], b = cur.an[id];
+      if (!b) board.fx('kill', a.x + 0.5, a.y + 0.5, 1.3);
+      else if (b.hp < a.hp) board.fx('hit', b.x + 0.5, b.y + 0.5, 1);
+    }
+    for (const id of Object.keys(pv.fish)) {
+      const a = pv.fish[id], b = cur.fish[id];
+      if (!b) board.fx('splash', a.x + 0.5, a.y + 0.5, 1.3);
+      else if (b.hp < a.hp) board.fx('splash', b.x + 0.5, b.y + 0.5, 0.7);
+    }
+    for (const id of Object.keys(cur.b)) {
+      const b = cur.b[id], a = pv.b[id];
+      if (!a) { if (b.t !== 'fire') board.fx('build', ...ctr(b), sc(b), b.w * 0.35); continue; }
+      if (b.t === 'fire' && b.fire > a.fire) board.fx('stoke', ...ctr(b).map((v, i) => v + (i ? 0 : 0)), 1 + (b.fire - a.fire) * 0.3, Math.min(1.5, b.w / 3));
+      else if (b.hp != null && a.hp != null && b.hp > a.hp) board.fx('repair', ...ctr(b), sc(b), b.w * 0.3);
+    }
+    for (const id of Object.keys(pv.b)) if (!cur.b[id] && cur.round === pv.round) board.fx('crumble', ...ctr(pv.b[id]), sc(pv.b[id]), pv.b[id].w * 0.35);
+    for (const k of Object.keys(cur.plants)) if (!pv.plants[k]) { const [x, y] = k.split(',').map(Number); board.fx('plant', x + 0.5, y + 0.5, 1); }
+    for (const id of Object.keys(cur.pl)) {
+      const a = pv.pl[id], b = cur.pl[id];
+      if (!a || cur.round !== pv.round) continue;
+      if (b.food > a.food) board.fx('eat', b.x + 0.5, b.y + 0.2, 1);
+      else if (b.temp > a.temp) board.fx('warm', b.x + 0.5, b.y + 0.2, 1);
+    }
   }
 
   function toastNewLog(g) {
@@ -460,7 +510,7 @@
   function renderOverflow(g, th) {
     const el = $('#overflow'), note = $('#ovr-note');
     const pd = (g.pending || []).find(q => q.pid === app.me);        // 選ぶ必要があるのは、持ち主だけ（ほかの人は、そのまま行動できる）
-    const others = (g.pending || []).filter(q => q.pid !== app.me).map(q => (g.players.find(p => p.id === q.pid) || {}).name).filter(Boolean);
+    const others = (g.pending || []).filter(q => q.pid !== app.me).map(q => (g.players.find(p => p.id === q.pid) || {}).name).filter((n, i, arr) => n && arr.indexOf(n) === i);
     note.hidden = !others.length || !!pd;
     if (others.length) note.textContent = `${others.length > 2 ? others.slice(0, 2).join('・') + `ほか${others.length - 2}人` : others.join('・')}が、持ち物の入れ替えを選んでいます`;
     if (!pd) { el.hidden = true; app.ovrKey = null; return; }
