@@ -11,7 +11,7 @@
   'use strict';
 
   // バージョン。違うバージョンの人とは遊べない（変えるときは changelog.js にも書く）
-  const VERSION = '2.0';
+  const VERSION = '3.0';
 
   const RULES = {
     minPlayers: 3, maxPlayers: 16,
@@ -37,7 +37,7 @@
     roundLimitMs: 120000,               // ラウンドの制限時間（同時に動くとき）
     startVegPerPlayer: 1,               // ゲーム開始時に、人数 × この数の野菜を配る
     startFirewoodPerPlayer: 1,          // 同じく、人数 × この数の薪を配る
-    startSnow: 3,                       // ゲーム開始時に配る雪
+    startSnow: 3,                       // ゲーム開始時に配る雪（人数の半分が、これより多ければ、そちら）
     fireOutLimit: 3,                    // すべての焚き火が消えたまま（火力0）ラウンドが、この回数続くと敗北
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
@@ -328,7 +328,7 @@
     const spots = fs.map(f => { const sp = []; for (let y = f.y + f.h - 1; y >= f.y; y--) for (let x = f.x; x < f.x + f.w; x++) sp.push([x, y]); return sp; });
     st.items.veg += n * RULES.startVegPerPlayer;   // 最初の食料
     st.items.firewood += n * RULES.startFirewoodPerPlayer;
-    st.items.snow += Math.max(RULES.startSnow, n);
+    st.items.snow += Math.max(RULES.startSnow, Math.ceil(n / 2));   // 持ち物の上限（2×人数＋10）を超えないように、人数の半分
     opts.players.forEach(p => { st.stats.players[p.id] = { ap: 0, collect: 0, kills: 0, built: 0, crafted: 0, stoked: 0, planted: 0, repaired: 0, eaten: 0, warmed: 0, downs: 0 }; });
     const used = fs.map(() => 0);
     opts.players.forEach((p, i) => {

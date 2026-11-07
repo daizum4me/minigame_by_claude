@@ -263,3 +263,52 @@ test('バージョン：違うバージョンの人は部屋に入れない', ()
   assert.ok(room.join('t4', 'D', E.VERSION).id);
   assert.strictEqual(room.players.length, 2);
 });
+
+test('同時に動く：ロビーで設定できる（ホストだけ）。ラウンドの制限時間が切れると、全員のラウンドが終わる', () => {
+  const { room, last, timers, step, clock } = makeRoom(5, { simul: true });
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  assert.strictEqual(last(h).room.settings.simul, true);
+  room.handle(g, { type: 'settings', simul: false });                      // ホスト以外は変えられない
+  assert.strictEqual(room.settings.simul, true);
+  room.handle(h, { type: 'start' });
+  const game = room.game;
+  assert.strictEqual(E.simul(game), true);
+  assert.strictEqual(last(h).room.turnLeft, E.RULES.roundLimitMs);        // ラウンドごとの制限時間
+  const t = timers.find(x => x.ms === E.RULES.roundLimitMs);
+  assert.ok(t);
+  // 人間が2人とも行動していなくても、時間切れでラウンドが進む（CPU は、その間に動く）
+  clock.t += E.RULES.roundLimitMs;
+  timers.splice(timers.indexOf(t), 1);
+  t.fn();
+  assert.strictEqual(game.round, 2);
+  assert.ok(game.players.every(p => !p.done));
+  void step;
+});
+
+test('同時に動く：CPUだけの対戦が、最後まで進む（3人・8人・16人）', () => {
+  for (const n of [3, 8, 16]) {
+    const { room, step } = makeRoom(n * 3, { simul: true });
+    const h = room.join('t1', 'A').id;
+    for (let i = 1; i < n; i++) room.handle(h, { type: 'addCpu' });
+    room.players[0].cpu = true;
+    room.handle(h, { type: 'start' });
+    let guard = 0;
+    while (room.game.phase === 'play' && guard++ < 100000 && step());
+    assert.notStrictEqual(room.game.phase, 'play', `n=${n} が終わらない`);
+    assert.ok(room.game.players.every(p => p.temp >= 0 && p.temp <= 10 && p.food >= 0 && p.food <= 10));
+    assert.ok(E.total(room.game) <= E.cap(room.game));
+  }
+});
+
+test('同時に動く：切断中の人は、すぐに行動を終える', () => {
+  const { room, step } = makeRoom(2, { simul: true });
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  room.disconnect(h); room.disconnect(g);
+  for (let i = 0; i < 20 && step(); i++);
+  assert.ok(room.game.round > 1);
+});

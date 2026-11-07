@@ -421,7 +421,7 @@
         text(({ fire: '焚き火', igloo: 'かまくら', storage: '倉庫', tower: '見張り台', workshop: '作業場' })[b.t], px + 24 * z, py, 13 * z, col[2], 700);
         py += 16 * z;
         let chip = null, label = '';
-        if (isFire) { chip = th.chip.fire; label = `火力 ${g.fire} / ${E.RULES.fireMax}`; }
+        if (isFire) { chip = th.chip.fire; label = `火力 ${b.fire} / ${E.RULES.fireMax}`; }
         else if (warm) { chip = ins ? th.chip.ok : th.chip.lost; label = ins ? '防寒 有効' : '防寒 消失'; }
         if (chip && h > 50 * z) {
           ctx.font = `700 ${12 * z}px ${FONT}`;
@@ -432,7 +432,7 @@
         }
         if (isFire) {
           const sw = (w - 16 * z - 3 * z * (E.RULES.fireMax - 1)) / E.RULES.fireMax;
-          for (let i = 0; i < E.RULES.fireMax; i++) { ctx.fillStyle = i < g.fire ? th.fireOn : th.fireOff; ctx.fillRect(px + i * (sw + 3 * z), py - 4 * z, sw, 8 * z); }
+          for (let i = 0; i < E.RULES.fireMax; i++) { ctx.fillStyle = i < b.fire ? th.fireOn : th.fireOff; ctx.fillRect(px + i * (sw + 3 * z), py - 4 * z, sw, 8 * z); }
           py += 14 * z;
         } else {
           const bw = w - 16 * z - 60 * z;

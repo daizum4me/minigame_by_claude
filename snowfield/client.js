@@ -241,7 +241,7 @@
       this.room = new window.SnowRoom.Room({ code: '', send: (pid, msg) => { if (pid === this.id) { const m = clone(msg); setTimeout(() => onMessage(m), 0); } } });
       this.id = this.room.join(token(), name).id;
       for (let i = 0; i < R.minPlayers - 1; i++) this.room.handle(this.id, { type: 'addCpu' });
-      if (opts && opts.tutorial) { this.room.tutorial = true; this.room.handle(this.id, { type: 'start' }); }   // チュートリアルは、すぐに始める
+      if (opts && opts.tutorial) { this.room.tutorial = true; this.room.settings.simul = false; this.room.handle(this.id, { type: 'start' }); }   // チュートリアルは、すぐに始める
     }
     send(msg) { setTimeout(() => { if (!this.room.closed) this.room.handle(this.id, msg); }, 0); }
     close() { this.room.close(); }
@@ -263,7 +263,9 @@
   const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
   const TH = () => B.THEMES[theme()];
   const myP = () => (app.game ? E.pl(app.game, app.me) : null);
-  const myTurn = () => !!app.game && app.game.phase === 'play' && E.cur(app.game).id === app.me;
+  const myTurn = () => !!app.game && E.isTurn(app.game, app.me);
+  const tkey = g => (E.simul(g) ? 'r' + g.round : g.round + ':' + g.turn);   // 手番（同時ならラウンド）が変わったか見分けるキー
+  const simulOf = g => !!g && E.simul(g);
   const pcol = c => B.PLAYER_COLORS[c] || '#888';
   const pawnIco = (p, size) => B.shapeSvg(p.shape, p.color, size || 22);
   const send = msg => { if (app.conn) app.conn.send(msg); };
@@ -382,7 +384,7 @@
       if (app.over !== g.phase) { app.over = g.phase; SnowSound.play(g.phase === 'won' ? 'win' : 'lose'); }
       return;
     }
-    const key = g.round + ':' + g.turn;
+    const key = tkey(g);
     if (app.turnKey === key) return;
     const roundChanged = app.annRound !== g.round;
     app.turnKey = key; app.annRound = g.round;
@@ -391,7 +393,7 @@
       banner(fin ? `最終猛吹雪 ${g.round - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${g.round}`,
         `${fin ? '' : `準備期間 ${g.round} / ${R.prepRounds}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
     }
-    if (E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
+    if (!E.simul(g) && E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
   }
 
   // 持ち物のアイコンをクリックして出る、操作のボタン（食べる・着ける・捨てる投票）
@@ -432,7 +434,7 @@
     const place = { fire: '焚き火の上', warm: '防寒の中', out: '屋外' }[e.place];
     const wn = E.WEATHER_NAMES[g.weather];
     const cls = (v, lim) => (v <= lim ? 'bad' : '');
-    el.innerHTML = `<b class="t">このまま手番を終えると</b>
+    el.innerHTML = `<b class="t">このまま${E.simul(g) ? '行動を終える' : '手番を終える'}と</b>
       <div class="ep-row"><span class="k">満腹度</span><span class="v ${cls(e.food, 0)}">${e.food0} → ${e.food}</span><span class="n">−${e.hunger}</span></div>
       <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}）</span></div>
       <div class="ep-row"><span class="k">火力</span><span class="v">${e.fire0} → ${e.fire}</span><span class="n">−${e.fireLoss}</span></div>
@@ -451,12 +453,12 @@
     chip.classList.toggle('timer', secs != null);
     chip.classList.toggle('low', secs != null && secs <= 10);
     chip.textContent = secs == null ? base : `${base}　残り ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    if (secs != null && secs <= 10 && myTurn() && app.warnedKey !== g.round + ':' + g.turn) { app.warnedKey = g.round + ':' + g.turn; SnowSound.play('warn'); }
+    if (secs != null && secs <= 10 && myTurn() && app.warnedKey !== tkey(g)) { app.warnedKey = tkey(g); SnowSound.play('warn'); }
   }
 
   // 上限を超えたアイテム：既存の物を捨てて持つか、新しい物をあきらめるかを選ぶ
   function renderOverflow(g, th) {
-    const el = $('#overflow'), pd = g.pending && g.pending[0];
+    const el = $('#overflow'), pd = (g.pending || []).find(q => q.pid === app.me) || (g.pending && g.pending[0]);
     if (!pd) { el.hidden = true; app.ovrKey = null; return; }
     const who = g.players.find(p => p.id === pd.pid);
     if (pd.pid !== app.me) {
@@ -499,7 +501,7 @@
   // 行動力がなくなったら、手番を終えるよう促す
   function renderEndPop(g) {
     const el = $('#endpop'), me = myP();
-    const key = g.round + ':' + g.turn;
+    const key = tkey(g);
     const show = !!(myTurn() && me && me.ap === 0 && app.endPopDismiss !== key && !app.card);
     if (show === !el.hidden) return;
     el.hidden = !show;
@@ -573,17 +575,20 @@
       app.styleSent = true;
       const sh = store.get('shape'), co = store.get('color');
       if (sh && sh !== mine.shape) send({ type: 'style', shape: sh });
-      if (co && co !== mine.color && !r.players.some(p => p !== mine && p.color === co) && B.PLAYER_COLORS[co]) send({ type: 'style', color: co });
+      if (co && co !== mine.color && !r.players.some(p => p !== mine && p.color === co && p.shape === (sh || mine.shape)) && B.PLAYER_COLORS[co]) send({ type: 'style', color: co });
     }
     $('#style-box').hidden = !mine;
     if (mine) {
-      $('#style-shapes').innerHTML = Object.keys(B.SHAPE_NAMES).map(k => `<button class="sty ${mine.shape === k ? 'on' : ''}" data-shape="${k}" title="${B.SHAPE_NAMES[k]}" aria-label="${B.SHAPE_NAMES[k]}">${B.shapeSvg(k, mine.color, 26)}</button>`).join('');
+      $('#style-shapes').innerHTML = Object.keys(B.SHAPE_NAMES).map(k => `<button class="sty ${mine.shape === k ? 'on' : ''}" data-shape="${k}" ${r.players.some(p => p !== mine && p.color === mine.color && p.shape === k) ? 'disabled' : ''} title="${B.SHAPE_NAMES[k]}" aria-label="${B.SHAPE_NAMES[k]}">${B.shapeSvg(k, mine.color, 26)}</button>`).join('');
       $('#style-colors').innerHTML = Object.keys(B.PLAYER_COLORS).map(k => {
-        const taken = r.players.some(p => p !== mine && p.color === k);
-        return `<button class="sw ${mine.color === k ? 'on' : ''}" data-color="${k}" ${taken ? 'disabled' : ''} title="${B.COLOR_NAMES[k]}${taken ? '（使用中）' : ''}" aria-label="${B.COLOR_NAMES[k]}" style="background:${B.PLAYER_COLORS[k]}"></button>`;
+        const taken = r.players.some(p => p !== mine && p.color === k && p.shape === mine.shape);
+        return `<button class="sw ${mine.color === k ? 'on' : ''}" data-color="${k}" ${taken ? 'disabled' : ''} title="${B.COLOR_NAMES[k]}${taken ? '（この形では使用中）' : ''}" aria-label="${B.COLOR_NAMES[k]}" style="background:${B.PLAYER_COLORS[k]}"></button>`;
       }).join('');
     }
     $('#btn-add-cpu').hidden = !host || r.players.length >= r.max;
+    const sim = !r.settings || r.settings.simul !== false;
+    $('#opt-simul').checked = sim; $('#opt-simul').disabled = !host;
+    $('#lobby-opt span').textContent = host ? '全員が同時に動く（オフなら、1人ずつ順番に動く）' : (sim ? '全員が同時に動きます' : '1人ずつ順番に動きます');
     $('#btn-start').hidden = !host;
     $('#btn-start').disabled = r.players.length < r.min;
     $('#lobby-hint').textContent = r.players.length < r.min
@@ -658,14 +663,17 @@
     fore.hidden = !E.hasTower(g);
     fore.textContent = g.next ? `予報：次は${E.WEATHER_NAMES[g.next]}` : '予報：最後のラウンド';
     const fc = $('#chip-fire');
-    fc.hidden = !(g.phase === 'play' && (g.fireOut > 0 || g.fire <= 0));
-    fc.textContent = `焚き火が消えています ${g.fireOut} / ${R.fireOutLimit}`;
-    fc.title = `火力0のまま手番が終わるのが${R.fireOutLimit}回続くと敗北です。薪を焚べて火を点けましょう`;
-    const c = E.cur(g);
-    $('#chip-turn').dataset.base = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー');
+    const nf = E.fires(g).length, out = E.fires(g).filter(b => b.fire <= 0).length;
+    fc.hidden = !(g.phase === 'play' && (g.fireOut > 0 || out > 0));
+    fc.textContent = nf > 1 && !E.allFiresOut(g) ? `焚き火が消えています ${out} / ${nf}` : `焚き火が消えています ${g.fireOut} / ${R.fireOutLimit}`;
+    fc.title = `すべての焚き火が火力0のままラウンドが終わるのが${R.fireOutLimit}回続くと敗北です。薪を焚べて火を点けましょう`;
+    const doneN = g.players.filter(q => q.done).length;
+    if (g.phase === 'play' && E.simul(g)) $('#chip-turn').dataset.base = `全員が行動中（終了 ${doneN} / ${g.players.length}）`;
+    else { const c = E.cur(g); $('#chip-turn').dataset.base = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー'); }
+    if (g.phase !== 'play') $('#chip-turn').dataset.base = g.phase === 'won' ? 'クリア' : 'ゲームオーバー';
     $('#weather').innerHTML = `現在の天候：<b>${E.WEATHER_NAMES[g.weather]}</b>（${FX[g.weather]}）`;
     $('#btn-endturn').disabled = !myTurn();
-    $('#btn-endturn').textContent = myTurn() ? '手番を終える' : '手番を待っています';
+    $('#btn-endturn').textContent = E.simul(g) ? (myTurn() ? '行動を終える' : '他の人を待っています') : (myTurn() ? '手番を終える' : '手番を待っています');
     const logPop = $('#log-pop');
     if (!logPop.hidden) logPop.innerHTML = logHtml(g);
   }
@@ -678,20 +686,25 @@
   }
   function renderPlayers(g, th) {
     $('#players').innerHTML = g.players.map(p => {
-      const turn = g.phase === 'play' && E.cur(g).id === p.id;
+      const sim = E.simul(g);
+      const turn = g.phase === 'play' && (sim ? !p.done : E.cur(g).id === p.id);
       const me = p.id === app.me;
       const tags = [
         p.cpu ? '<span class="badge gray">CPU</span>' : '',
         p.away ? '<span class="badge red">切断中</span>' : '',
         p.down === 1 ? '<span class="badge red">行動不能</span>' : p.down === 2 ? '<span class="badge red">復帰中</span>' : '',
-        turn ? '<span class="badge">手番中</span>' : '',
+        g.phase === 'play' && sim ? (p.done ? '<span class="badge gray">終了</span>' : '') : (turn ? '<span class="badge">手番中</span>' : ''),
       ].join('');
+      if (g.players.length > 6 && !me) {          // 大人数：ほかの人は1行に詰める
+        return `<div class="pcard compact">${pawnIco(p, 16)}<span class="pn">${esc(p.name)}</span>${wornIcons(p)}<span class="grow"></span>${tags}
+          <span class="cmp ${p.temp <= 3 ? 'low' : ''}" title="体温">体${p.temp}</span><span class="cmp ${p.food <= 3 ? 'low' : ''}" title="満腹度">満${p.food}</span></div>`;
+      }
       return `<div class="pcard ${me ? 'me' : ''}">
         <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span>${wornIcons(p)}<span class="grow"></span>${tags}</div>
         <div class="pstats">
           ${mini('体温', p.temp, p.temp * 10, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
           ${mini('満腹', p.food, p.food * 10, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
-          ${turn ? mini('行動力', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)', 'ap') : ''}
+          ${turn && (!sim || me) ? mini('行動力', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)', 'ap') : ''}
         </div>
       </div>`;
     }).join('');
@@ -746,7 +759,7 @@
     const d = DESC[b.t], bd = E.BUILD[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
     const meta = [['サイズ', `${b.w}×${b.h}`]];
     let status = '', chip = null;
-    if (b.t === 'fire') { meta.push(['火力', `${g.fire} / ${R.fireMax}`]); status = '壊れない'; chip = th.chip.fire; }
+    if (b.t === 'fire') { meta.push(['火力', `${b.fire} / ${R.fireMax}`]); status = '壊れない'; chip = th.chip.fire; }
     else if (E.isPath(b.t)) { status = '壊れない'; chip = ['var(--chip)', 'var(--muted2)']; }
     else {
       meta.push(['HP', `${b.hp} / ${b.max}`]);
@@ -842,7 +855,7 @@
       head = '';
     };
     const w = E.where(g, me);
-    add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${g.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
+    add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${w.b.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
     if (E.nearFire(g, me)) add('焚べる', `行動力${R.ap.stoke}・薪（なければ木材）1`, { type: 'stoke' });
     if (res) add('集める', `行動力${R.ap.collect}`, { type: 'collect' });
     if (me.tool && me.tool.k === 'rod') {
@@ -912,7 +925,7 @@
     if (g.phase === 'play' || app.resultHidden) { el.hidden = true; return; }
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
-    $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
+    $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の${E.TOTAL_ROUNDS}ラウンドを乗り越えました。' : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
     const S = g.stats, cols = [['ap', '行動力', '使った行動力'], ['collect', '集めた', '集めた回数'], ['kills', '狩り', '倒した動物'], ['built', '建てた', '建てた建物'], ['crafted', '作った', '作った回数'], ['stoked', '焚べた', '焚べた回数'], ['planted', '植えた', '植えた苗'], ['repaired', '直した', '直した回数'], ['eaten', '食べた', '食べて増えた満腹度'], ['warmed', '温まり', '温まって増えた体温'], ['downs', '行動不能', '行動不能になった回数']];
     const top = {};
     cols.forEach(([k]) => { const m = Math.max(...g.players.map(p => S.players[p.id][k])); top[k] = k === 'downs' ? -1 : m; });
@@ -944,7 +957,7 @@
         const b = info.b;
         if (b) {
           const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
-          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${g.fire} / ${R.fireMax}` : '';
+          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${b.fire} / ${R.fireMax}` : '';
           html += `<div class="tn">${esc(d.name)}<span class="grow"></span><span style="font-size:12px;color:${warm ? (ins ? th.chip.ok[1] : th.chip.lost[1]) : th.chip.fire[1]}">${status}</span></div><div class="tt">${esc(d.tip)}</div>${b.hp === null ? '' : `<div class="th">HP ${b.hp} / ${b.max}</div>`}`;
         }
         if (info.res) {
@@ -1074,6 +1087,7 @@
     });
     $('#btn-start').onclick = () => send({ type: 'start' });
     $('#btn-leave').onclick = () => leaveRoom('');
+    $('#opt-simul').addEventListener('change', e => send({ type: 'settings', simul: e.target.checked }));
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-rm-cpu]'); if (b) send({ type: 'removeCpu', id: b.dataset.rmCpu }); });
 
     $$('[data-open]').forEach(b => { b.onclick = () => { if (b.dataset.open === 'rules') guide.openRules(); else if (b.dataset.open === 'changelog') openChangelog(); else $('#' + b.dataset.open).hidden = false; }; });
@@ -1098,7 +1112,7 @@
     });
     $('#endpop').addEventListener('click', e => {
       if (e.target.closest('[data-endpop-end]')) { app.menu = false; act({ type: 'end' }); }
-      else if (e.target.closest('[data-endpop-close]')) { app.endPopDismiss = app.game.round + ':' + app.game.turn; $('#endpop').hidden = true; }
+      else if (e.target.closest('[data-endpop-close]')) { app.endPopDismiss = tkey(app.game); $('#endpop').hidden = true; }
     });
 
     $('#btn-endturn').onclick = () => { app.menu = false; act({ type: 'end' }); renderMenu(app.game, TH()); };

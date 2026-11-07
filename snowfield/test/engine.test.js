@@ -416,7 +416,8 @@ test('大人数：8人以上は焚き火が2つになり、プレイヤーが分
   assert.deepStrictEqual(E.fires(st9).map(f => f.w).sort(), [E.fireSize(4), E.fireSize(5)]);
   // 焚き火の周りは川にならず、動物・魚・資源・配布が人数に比例して増える
   assert.strictEqual(st.animals.length, 16 + E.RULES.animalsExtra);
-  assert.ok(st.items.veg === 16 && st.items.firewood === 16 && st.items.snow >= 16);
+  assert.ok(st.items.veg === 16 && st.items.firewood === 16 && st.items.snow === 8);
+  assert.ok(E.total(st) <= E.cap(st));                                   // 最初に配られる物が、上限を超えない
   assert.ok(Object.keys(st.res).length > Object.keys(mkN(3).res).length * 2);
   for (const f of fs) for (let y = f.y; y < f.y + f.h; y++) for (let x = f.x; x < f.x + f.w; x++) assert.ok(!E.isRiver(st, x, y));
 });
