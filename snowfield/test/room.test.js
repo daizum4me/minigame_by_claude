@@ -5,7 +5,7 @@ const CPU = require('../shared/cpu');
 const { Room } = require('../shared/room');
 
 // タイマーと時計は手で進める
-function makeRoom(seed) {
+function makeRoom(seed, o) {
   const inbox = {};
   const timers = [];
   const clock = { t: 1000 };
@@ -18,6 +18,7 @@ function makeRoom(seed) {
     now: () => clock.t,
     rng: () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; },
   });
+  if (!(o && o.simul)) room.settings.simul = false;       // 既存のテストは、順番に動く設定で書いてある（同時に動く設定は別のテストで確かめる）
   const last = id => [...inbox[id]].reverse().find(m => m.type === 'state');
   // タイマーを1つ進める（時計も進める）
   const step = () => { const t = timers.shift(); if (!t) return false; clock.t += t.ms; t.fn(); return true; };
@@ -118,7 +119,7 @@ test('CPUだけの対戦が最後まで進む（3〜5人）', () => {
 });
 
 test('CPU：食べる・復帰中は温まる/食べるだけ・捨てる投票', () => {
-  const st = E.createGame({ seed: 3, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+  const st = E.createGame({ seed: 3, simul: false, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
   const p = E.cur(st);
   p.food = 3; st.items.meat = 2;
   assert.deepStrictEqual(CPU.decide(st, p.id, {}), { type: 'eat', k: 'meat' });
@@ -133,16 +134,19 @@ test('CPU：食べる・復帰中は温まる/食べるだけ・捨てる投票'
   assert.deepStrictEqual(CPU.voteIntent(st, 'p2'), { type: 'voteCast', val: 1 });
 });
 
-test('駒の形と色：選べる・ほかの人と同じ色は不可・ゲーム中は変えられない', () => {
+test('駒の形と色：選べる・ほかの人と、形と色の組み合わせが同じなのは不可（色だけ同じならよい）・ゲーム中は変えられない', () => {
   const { room, inbox, last } = makeRoom();
   const h = room.join('t1', 'A').id;
   const g = room.join('t2', 'B').id;
   room.handle(g, { type: 'style', shape: 'hex', color: 'black' });
   assert.deepStrictEqual([last(h).room.players[1].shape, last(h).room.players[1].color], ['hex', 'black']);
-  room.handle(h, { type: 'style', color: 'black' });
-  assert.match(inbox[h].at(-1).text, /使っている/);
+  room.handle(h, { type: 'style', color: 'black' });                       // 形が違うので、同じ色でもよい
+  assert.deepStrictEqual([last(g).room.players[0].shape, last(g).room.players[0].color], ['circle', 'black']);
+  room.handle(h, { type: 'style', shape: 'hex' });                         // 形も色も同じになるので不可
+  assert.match(inbox[h].at(-1).text, /形も色も同じ/);
+  assert.strictEqual(last(g).room.players[0].shape, 'circle');
   room.handle(h, { type: 'style', shape: 'nope', color: 'zzz' });
-  assert.strictEqual(last(g).room.players[0].color, 'blue');
+  assert.strictEqual(last(g).room.players[0].color, 'black');
   room.handle(h, { type: 'addCpu' });
   room.handle(h, { type: 'start' });
   room.handle(g, { type: 'style', shape: 'up' });
@@ -150,10 +154,20 @@ test('駒の形と色：選べる・ほかの人と同じ色は不可・ゲー�
   assert.strictEqual(last(g).game.players[1].color, 'black');
 });
 
+test('16人までの部屋：形と色の組み合わせが、全員ちがう', () => {
+  const { room, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  for (let i = 1; i < 16; i++) room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'addCpu' });                                       // 17人目は入れない
+  const ps = last(h).room.players;
+  assert.strictEqual(ps.length, 16);
+  assert.strictEqual(new Set(ps.map(p => p.color + '/' + p.shape)).size, 16);
+});
+
 test('CPUだけでもクリアできる（3人・20通りのマップのうち、複数回）', () => {
   let wins = 0;
   for (let seed = 1; seed <= 20; seed++) {
-    const st = E.createGame({ seed, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+    const st = E.createGame({ seed, simul: false, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
     const mem = {};
     for (let n = 0; st.phase === 'play' && n < 30000; n++) {
       const p = E.cur(st);
@@ -169,7 +183,7 @@ test('CPUだけでもクリアできる（3人・20通りのマップのうち�
 test('CPUは、同じ場所を行ったり来たりしない（1手番に、仕事をはさまない移動を3回続けない）', () => {
   for (const n of [3, 5]) {
     for (let seed = 1; seed <= 8; seed++) {
-      const st = E.createGame({ seed, players: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+      const st = E.createGame({ seed, simul: false, players: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
       const mem = {};
       let key = '', run = 0;
       for (let k = 0; st.phase === 'play' && k < 30000; k++) {

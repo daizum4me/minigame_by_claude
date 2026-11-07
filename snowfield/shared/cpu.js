@@ -53,13 +53,15 @@
 
   // 新しい建物を置く場所（既存の建物に隣接する場所のうち、焚き火に近いもの）
   function findSpot(st, t) {
-    const d = E.BUILD[t], f = E.fireOf(st);
+    const d = E.BUILD[t], fs = E.fires(st);
     let best = null;
-    for (let y = f.y - 7; y <= f.y + f.h + 6; y++) {
-      for (let x = f.x - 7; x <= f.x + f.w + 6; x++) {
-        if (E.buildWhy(st, t, x, y) || E.resAt(st, x, y)) continue;
-        const far = Math.abs(x + d.size / 2 - (f.x + f.w / 2)) + Math.abs(y + d.size / 2 - (f.y + f.h / 2));
-        if (!best || far < best.score) best = { x, y, score: far };
+    for (const f of fs) {
+      for (let y = f.y - 7; y <= f.y + f.h + 6; y++) {
+        for (let x = f.x - 7; x <= f.x + f.w + 6; x++) {
+          if (E.buildWhy(st, t, x, y) || E.resAt(st, x, y)) continue;
+          const far = Math.min(...fs.map(g => Math.abs(x + d.size / 2 - (g.x + g.w / 2)) + Math.abs(y + d.size / 2 - (g.y + g.h / 2))));
+          if (!best || far < best.score) best = { x, y, score: far };
+        }
       }
     }
     return best;
@@ -130,11 +132,11 @@
 
   function decide(st, pid, mem) {
     const p = E.pl(st, pid), it = st.items, R = E.RULES, nP = st.players.length;
-    const tk = st.round + ':' + st.turn;
+    const tk = st.round + ':' + (E.simul(st) ? 0 : st.turn);
     if (mem.tk !== tk) { mem.tk = tk; mem.moves = 0; mem.roads = 0; mem.noTrip = false; mem.tripped = {}; mem.shedTrip = false; mem.repairTrip = false; }
     // 上限を超えたアイテムの扱いを選ぶ
-    const pend = st.pending && st.pending[0];
-    if (pend && pend.pid === pid) return { type: 'overflow', drop: overflowDrop(st, pend) };
+    const pend = (st.pending || []).find(q => q.pid === pid);
+    if (pend) return { type: 'overflow', drop: overflowDrop(st, pend) };
     const here = E.where(st, p);
     const warmHere = E.warmAmount(st, p);
     const end = { type: 'end' };
@@ -184,7 +186,8 @@
     };
     const lowest = Math.min(...st.players.map(q => q.temp));
     // 焚き火が消えたまま手番が続いている（3手番続くと敗北）：最優先で火を点ける
-    const fireAlert = st.fire <= 0 && st.fireOut >= 1;
+    const fb = E.nearFireB(st, p), anyFire = Math.max(...E.fires(st).map(b => b.fire));
+    const fireAlert = E.allFiresOut(st) && st.fireOut >= 1;
     const wantFire = Math.max(T.fire, lowest <= 4 ? 3 : 0, p.temp <= 5 ? 2 : 0, fireAlert ? 1 : 0);
     // 焚き火のそば（歩いて体温が減らない所を優先）
     const tileNear = pred => {
@@ -202,12 +205,12 @@
     }
     // 焚き火を消さないための薪（3手番連続で消えると敗北）は、温まるために使い切らない（体温がとても低いときと、消えかけのときは使う）
     const fuelFloor = fireAlert || p.temp <= 3 ? 0 : FUEL_RESERVE;
-    const stoke = () => nearFire && p.ap >= R.ap.stoke && fuelOf(st) > fuelFloor && st.fire < Math.min(R.fireMax, wantFire);
+    const stoke = () => nearFire && p.ap >= R.ap.stoke && fuelOf(st) > fuelFloor && !!fb && fb.fire < Math.min(R.fireMax, wantFire);
 
     // 火力：必要なぶんだけ焚べる
     if (stoke()) return { type: 'stoke' };
     // 猛吹雪：避難所（倉庫）にいて体温が低ければ、焚き火へ温まりに行く
-    if (st.weather === 'storm' && here.kind === 'warm' && st.fire >= 2 && p.temp <= 7 && p.ap >= 3 && canMove && !mem.noTrip) {
+    if (st.weather === 'storm' && here.kind === 'warm' && anyFire >= 2 && p.temp <= 7 && p.ap >= 3 && canMove && !mem.noTrip) {
       const t = tileNear(q => E.where(st, q).kind === 'fire' && E.moveCost(map.get(E.key(q.x, q.y))) === 0);
       if (t) return go(t.x, t.y, 'warmup');
     }
@@ -325,7 +328,7 @@
           return go(w.x, w.y, 'cold');
         }
       }
-      if (stoke() && st.fire < 3) return { type: 'stoke' };
+      if (stoke() && fb.fire < 3) return { type: 'stoke' };
       if (p.ap >= R.ap.warm && warmHere > 0 && p.temp < R.maxTemp) return { type: 'warm' };
     }
 
@@ -333,7 +336,7 @@
 
     // 体温の予算：帰り道ぶんと、手番の終わりの低下ぶんを残す
     // 薪も火力もないときは、少しの無理をしてでも薪を探しに行く
-    const urgent = fuelOf(st) === 0 && st.fire <= 1;
+    const urgent = fuelOf(st) === 0 && anyFire <= 1;
     const budget = p.temp - (urgent ? 1 : MIN_END_TEMP) - Math.max(0, wMod) - (fin ? 1 : 0);
     // 往復の体温コスト：行きは雪原に入る回数、帰りは目当ての雪原を除いた回数（道・建物の上は0）
     const tripCost = c => (c > 0 ? 2 * c - 1 : 0);

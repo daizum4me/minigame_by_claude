@@ -14,27 +14,35 @@
   const VERSION = '2.0';
 
   const RULES = {
-    minPlayers: 3, maxPlayers: 5,
-    prepRounds: 10, finalRounds: 3,
+    minPlayers: 3, maxPlayers: 16,
+    prepRounds: 6, finalRounds: 2,
     maxTemp: 10, maxFood: 10, maxAp: 7,
-    hunger: 3,                         // 手番終了時の満腹度の減少
+    hunger: 3,                         // 手番（ラウンド）の終わりの満腹度の減少
     fireInit: 3, fireMax: 5,
+    fireDrain: 2,                      // 焚き火の火力は、ラウンドの終わりに、この数だけ減る（雨ならさらに-1）
+    stormDmg: 2,                       // 猛吹雪のラウンドの始めに、建物のHPがこの数だけ減る
+    twoFiresFrom: 8,                   // この人数以上のときは、焚き火が2つになり、プレイヤーが分かれて始まる
+    fireGap: 4,                        // 焚き火どうしの間のマス数
+    animalSteps: 2, fishSteps: 2,      // 動物・魚が、ラウンドの終わりに動く回数
     weights: { clear: 3, snow: 2, blizzard: 1, rain: 2 },
-    fireDiv: 1.5,                      // 焚き火の一辺 = ceil(人数 ÷ fireDiv)
+    fireDiv: 1.5,                      // 焚き火の一辺 = ceil(その焚き火で始まる人数 ÷ fireDiv)
     resWeights: { tree: 3, stone: 2, veg: 2 },   // 資源の比率
     tempMod: { clear: 0, snow: 1, blizzard: 2, rain: 0, storm: 4 },
     base: { fire: 0, warm: 1, out: 2 }, // 手番終了時の体温低下の基本値
     relief: 2,                          // 防寒施設の中で天候補正を軽減する量
     moveRange: 1,                       // 建物（道を含む）からこのマス以内に移動できる
     towerRange: 2,                      // 見張り台からは、このマス以内に移動できる
-    turnLimitMs: 180000,                // 手番の制限時間（人間のプレイヤーだけ。ルームで使う）
+    turnLimitMs: 180000,                // 手番の制限時間（順番に動くとき。人間のプレイヤーだけ。ルームで使う）
+    roundLimitMs: 120000,               // ラウンドの制限時間（同時に動くとき）
     startVegPerPlayer: 1,               // ゲーム開始時に、人数 × この数の野菜を配る
     startFirewoodPerPlayer: 1,          // 同じく、人数 × この数の薪を配る
     startSnow: 3,                       // ゲーム開始時に配る雪
-    fireOutLimit: 3,                    // 焚き火が消えたまま（火力0）手番が、この回数続くと敗北
+    fireOutLimit: 3,                    // すべての焚き火が消えたまま（火力0）ラウンドが、この回数続くと敗北
     recoverTo: 3,                       // 行動不能からの回復量
     growMin: 1, growMax: 3,
-    resHpMin: 3, resHpMax: 7, resChance: 0.10, genRadius: 8,
+    resHpMin: 3, resHpMax: 7, resChance: 0.10, resChancePerExtra: 0.006, resChanceFrom: 5,   // 資源の確率は、resChanceFrom 人を超えた人数ぶんだけ増える
+    startReachPer: 4,                  // 開始時に移動範囲へ置く資源は、この人数ごとに startReach 1セット
+    genRadius: 8,
     sapChance: 0.5,
     fishPerPlayer: 1, fishHpMin: 1, fishHpMax: 3, fishMin: 1, fishMax: 3, fishRange: 3,   // 魚：川にいる。数 = 人数×fishPerPlayer
     riverPeriod: 40, riverWidth: 2, riverWobble: 1.6, riverWave: 40, riverClear: 4,   // 川：雪原にはない・橋がないと移動も建設もできない（焚き火の周り riverClear マスは川にならない）
@@ -118,7 +126,7 @@
   // ---------- 参照 ----------
   const cur = st => st.players[st.turn];
   const pl = (st, id) => st.players.find(p => p.id === id) || null;
-  const isTurn = (st, id) => st.phase === 'play' && cur(st).id === id;
+  const isTurn = (st, id) => st.phase === 'play' && (st.mode && st.mode.simul ? !!(pl(st, id) && !pl(st, id).done) : cur(st).id === id);
   const inRect = (b, x, y) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
   const bAt = (st, x, y) => st.b.find(b => inRect(b, x, y)) || null;
   const resAt = (st, x, y) => st.res[key(x, y)] || null;
@@ -131,8 +139,16 @@
   const reach = (st, x, y) => st.b.some(b => { const g = rectGap(b, x, y), m = rangeOf(b); return g.dx <= m && g.dy <= m; });
   const nearStation = (st, p, t) => st.b.some(b => { if (b.t !== t) return false; const g = rectGap(b, p.x, p.y); return g.dx <= 1 && g.dy <= 1; });
   const insul = b => !!b && (b.t === 'igloo' || b.t === 'storage') && b.hp * 2 > b.max;
+  const fires = st => st.b.filter(b => b.t === 'fire');
   const fireOf = st => st.b.find(b => b.t === 'fire');
-  const nearFire = (st, p) => { const g = rectGap(fireOf(st), p.x, p.y); return g.dx <= 1 && g.dy <= 1; };
+  const fireGap = (b, p) => { const g = rectGap(b, p.x, p.y); return Math.max(g.dx, g.dy); };
+  // 駒のすぐ隣（上も含む）にある焚き火（なければ null）
+  const nearFireB = (st, p) => fires(st).filter(b => fireGap(b, p) <= 1).sort((u, v) => fireGap(u, p) - fireGap(v, p))[0] || null;
+  const nearFire = (st, p) => !!nearFireB(st, p);
+  // 駒にいちばん近い焚き火
+  const nearestFire = (st, p) => fires(st).sort((u, v) => fireGap(u, p) - fireGap(v, p))[0] || null;
+  const allFiresOut = st => fires(st).every(b => b.fire <= 0);
+  const simul = st => !!(st.mode && st.mode.simul);
   const nearB = (b, p) => { const g = rectGap(b, p.x, p.y); return g.dx + g.dy <= 1; };
   const count = (st, t) => st.b.filter(b => b.t === t).length;
   const cap = st => RULES.capPerPlayer * st.players.length + RULES.capBase + RULES.capPerStorage * count(st, 'storage');
@@ -173,7 +189,7 @@
   }
   function warmAmount(st, p) {
     const k = where(st, p).kind;
-    return k === 'fire' ? st.fire : k === 'warm' ? 1 : 0;
+    return k === 'fire' ? where(st, p).b.fire : k === 'warm' ? 1 : 0;
   }
 
   // ---------- 天候 ----------
@@ -189,18 +205,19 @@
   // 川のマス（座標とシードだけで決まる）。雪原ではないので、移動も建設もできない。魚がいる
   // 川のマス：ゆるく曲がった、太さ riverWidth マスほどの川が、まっすぐ（縦か横。ゲームごとに決まる）に、riverPeriod マスおきに流れる。
   // 川の位置・曲がり方は、座標とシードだけで決まる（保存しなくてよい）。焚き火の近くは、川にならない
-  function riverCenter(seed, k, v) {
-    const P = RULES.riverPeriod, margin = RULES.riverClear + RULES.riverWobble + 1;
+  function riverCenter(seed, k, v, clear) {
+    const P = RULES.riverPeriod, margin = clear + RULES.riverWobble + 1;
     // 川の位置：焚き火から margin マスほどはなれた所（最初に生成される範囲に、川が少し入る）。そこから P マスおきに、もう1本ずつ
     const base = k * P + margin + 0.6 * hash(seed, 0, 0, 64) + (k === 0 ? 0 : (hash(seed, k, 0, 61) - 0.5) * 8);
     const ph = hash(seed, k, 1, 62) * Math.PI * 2, ph2 = hash(seed, k, 2, 63) * Math.PI * 2;
     return base + RULES.riverWobble * (0.8 * Math.sin(v * 2 * Math.PI / RULES.riverWave + ph) + 0.2 * Math.sin(v * 2 * Math.PI / (RULES.riverWave * 0.37) + ph2));
   }
   function isRiver(st, x, y) {
-    if (Math.abs(x) <= RULES.riverClear && Math.abs(y) <= RULES.riverClear) return false;
+    const clear = st.clear || RULES.riverClear;
+    if (Math.abs(x) <= clear && Math.abs(y) <= clear) return false;
     const vertical = hash(st.seed, 0, 0, 60) < 0.5, u = vertical ? x : y, v = vertical ? y : x;
     const k0 = Math.floor(u / RULES.riverPeriod);
-    for (let k = k0 - 1; k <= k0 + 1; k++) if (Math.abs(u - riverCenter(st.seed, k, v)) < RULES.riverWidth / 2) return true;
+    for (let k = k0 - 1; k <= k0 + 1; k++) if (Math.abs(u - riverCenter(st.seed, k, v, clear)) < RULES.riverWidth / 2) return true;
     return false;
   }
   // 橋がかかった川のマスは、道と同じように歩ける
@@ -229,13 +246,14 @@
 
   // ---------- マップ ----------
   // 建物の周囲 genRadius マスを生成済みにする（新しく生成されたマスだけ資源が置かれる）
+  const resChanceOf = st => RULES.resChance + RULES.resChancePerExtra * Math.max(0, (st.n || 0) - RULES.resChanceFrom);
   function expandGen(st, b) {
     const R = RULES.genRadius;
     const r = [b.x - R, b.x + b.w - 1 + R, b.y - R, b.y + b.h - 1 + R];
     for (let y = r[2]; y <= r[3]; y++) {
       for (let x = r[0]; x <= r[1]; x++) {
         if (inGen(st, x, y) || bAt(st, x, y) || isRiver(st, x, y)) continue;
-        if (hash(st.seed, x, y, 1) >= RULES.resChance) continue;
+        if (hash(st.seed, x, y, 1) >= resChanceOf(st)) continue;
         const W = RULES.resWeights, tot = W.tree + W.stone + W.veg, q = hash(st.seed, x, y, 2) * tot;
         const t = q < W.tree ? 'tree' : q < W.tree + W.stone ? 'stone' : 'veg';
         const hp = RULES.resHpMin + Math.floor(hash(st.seed, x, y, 3) * (RULES.resHpMax - RULES.resHpMin + 1));
@@ -270,10 +288,12 @@
   }
 
   function guaranteeStart(st) {
+    const sets = Math.max(1, Math.ceil(st.n / RULES.startReachPer));
     for (const t of Object.keys(RULES.startReach)) {
       const have = () => Object.keys(st.res).filter(k => st.res[k].t === t && reach(st, ...parseKey(k))).length;
-      while (have() < RULES.startReach[t]) {
+      while (have() < RULES.startReach[t] * sets) {
         const free = genCells(st).filter(([x, y]) => reach(st, x, y) && !isRiver(st, x, y) && !bAt(st, x, y) && !resAt(st, x, y));
+        if (!free.length) break;
         const [x, y] = free[Math.floor(rnd(st) * free.length)];
         const hp = ri(st, RULES.resHpMin, RULES.resHpMax);
         st.res[key(x, y)] = { t, hp, max: hp };
@@ -283,36 +303,46 @@
 
   function createGame(opts) {
     const seed = (opts.seed == null ? Math.floor(Math.random() * 4294967296) : opts.seed) | 0;
+    const n = opts.players.length;
     const st = {
-      v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null,
-      weather: 'clear', next: 'clear', fire: RULES.fireInit, fireOut: 0,
+      v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null, n,
+      mode: { simul: opts.simul !== false },          // 同時に動く（既定）か、順番に動くか
+      weather: 'clear', next: 'clear', fireOut: 0,
       items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, fish: 0, fur: 0, steak: 0, grilled: 0, soup: 0, snow: 0, sapling: 0 }, RULES.startItems),
       gear: [],
       stats: { players: {}, team: { gained: {}, built: 0, destroyed: 0, discarded: 0 } },
       b: [], nid: 1, gen: [], res: {}, plants: [], animals: [], fish: [], draw: {}, vote: null, pending: [], log: [],
       players: [],
     };
-    const fs = fireSize(opts.players.length), f0 = -Math.floor(fs / 2);
-    const f = addBuilding(st, 'fire', f0, f0, fs);
-    expandGen(st, f);
+    // 焚き火：人数が多いと2つになり、プレイヤーが交互に分かれて始まる。大きさは、そこで始まる人数に比例
+    const F = n >= RULES.twoFiresFrom ? 2 : 1;
+    const counts = Array.from({ length: F }, (_, k) => opts.players.filter((_p, i) => i % F === k).length);
+    const sizes = counts.map(fireSize);
+    let fx = -Math.floor((sizes.reduce((a, c) => a + c, 0) + (F - 1) * RULES.fireGap) / 2);
+    const fs = sizes.map(sz => { const f = addBuilding(st, 'fire', fx, -Math.floor(sz / 2), sz); f.fire = RULES.fireInit; fx += sz + RULES.fireGap; return f; });
+    st.clear = Math.max(RULES.riverClear, ...fs.map(f => Math.max(Math.abs(f.x), Math.abs(f.x + f.w - 1), Math.abs(f.y), Math.abs(f.y + f.h - 1))) .map(v => v + 2));
+    fs.forEach(f => expandGen(st, f));
     guaranteeStart(st);
     // 焚き火の下側のマスから順に（上側は焚き火のカードの文字がある）
-    const spots = [];
-    for (let y = f.y + f.h - 1; y >= f.y; y--) for (let x = f.x; x < f.x + f.w; x++) spots.push([x, y]);
-    st.items.veg += opts.players.length * RULES.startVegPerPlayer;   // 最初の食料
-    st.items.firewood += opts.players.length * RULES.startFirewoodPerPlayer;
-    st.items.snow += RULES.startSnow;
+    const spots = fs.map(f => { const sp = []; for (let y = f.y + f.h - 1; y >= f.y; y--) for (let x = f.x; x < f.x + f.w; x++) sp.push([x, y]); return sp; });
+    st.items.veg += n * RULES.startVegPerPlayer;   // 最初の食料
+    st.items.firewood += n * RULES.startFirewoodPerPlayer;
+    st.items.snow += Math.max(RULES.startSnow, n);
     opts.players.forEach(p => { st.stats.players[p.id] = { ap: 0, collect: 0, kills: 0, built: 0, crafted: 0, stoked: 0, planted: 0, repaired: 0, eaten: 0, warmed: 0, downs: 0 }; });
-    opts.players.forEach((p, i) => st.players.push({
-      id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false,
-      x: spots[i][0], y: spots[i][1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0, gear: null, tool: null,
-    }));
+    const used = fs.map(() => 0);
+    opts.players.forEach((p, i) => {
+      const k = i % F, sp = spots[k][used[k]++];
+      st.players.push({
+        id: p.id, name: p.name, color: p.color, shape: p.shape || 'circle', cpu: !!p.cpu, no: i + 1, away: false, home: fs[k].id, done: false,
+        x: sp[0], y: sp[1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0, gear: null, tool: null,
+      });
+    });
     for (let i = 0; i < opts.players.length + RULES.animalsExtra; i++) spawnAnimal(st);
     for (let i = 0; i < fishTarget(st); i++) if (!spawnFish(st)) break;
     st.weather = rollWeather(st, 1);
     st.next = rollWeather(st, 2);
     log(st, `ゲーム開始。最初の天候は${WEATHER_NAMES[st.weather]}`);
-    startTurn(st);
+    if (simul(st)) st.players.forEach(p => beginPlayer(st, p)); else beginPlayer(st, cur(st));
     return st;
   }
 
@@ -332,14 +362,9 @@
     }
     st.plants = keep;
     log(st, `ラウンド${r}（${phaseOf(r) === 'final' ? '最終猛吹雪' : '準備期間'}）：天候は${WEATHER_NAMES[st.weather]}`);
-  }
-  function startTurn(st) {
-    const p = cur(st);
-    p.ap = RULES.maxAp;
-    if (p.down === 1) { p.down = 2; log(st, `${p.name}：行動不能から復帰中（温まる・食べるだけ可能）`); }
-    if (st.weather === 'storm') {
+    if (st.weather === 'storm') {                       // 猛吹雪：ラウンドの始めに、建物のHPが減る
       const gone = [];
-      for (const b of st.b) if (b.hp !== null) { b.hp--; if (b.hp <= 0) gone.push(b); }
+      for (const b of st.b) if (b.hp !== null) { b.hp -= RULES.stormDmg; if (b.hp <= 0) gone.push(b); }
       if (gone.length) {
         st.b = st.b.filter(b => !gone.includes(b));
         st.stats.team.destroyed += gone.length;
@@ -347,8 +372,14 @@
       }
     }
   }
+  // 行動力が戻り、行動不能からは復帰中になる（順番なら手番の始め、同時ならラウンドの始め）
+  function beginPlayer(st, p) {
+    p.ap = RULES.maxAp;
+    p.done = false;
+    if (p.down === 1) { p.down = 2; log(st, `${p.name}：行動不能から復帰中（温まる・食べるだけ可能）`); }
+  }
   function moveToFire(st, p) {
-    const f = fireOf(st);
+    const f = st.b.find(b => b.id === p.home && b.t === 'fire') || nearestFire(st, p) || fireOf(st);
     const tiles = [];
     for (let y = f.y; y < f.y + f.h; y++) for (let x = f.x; x < f.x + f.w; x++) tiles.push([x, y]);
     const score = ([x, y]) => (playerAt(st, x, y, p.id) ? 100 : 0) + (animalAt(st, x, y) ? 10 : 0) + Math.abs(x - p.x) + Math.abs(y - p.y);
@@ -363,12 +394,10 @@
       if (inGen(st, x, y) && !animalAt(st, x, y) && !playerAt(st, x, y)) { a.x = x; a.y = y; }
     }
   }
-  function endTurn(st) {
-    const p = cur(st);
-    const fireDead = st.fire <= 0;         // 焚き火が消えた状態で、手番を終えるか
+  // 1人ぶんの、手番（ラウンド）の終わりの処理：満腹度・体温が減り、0になると行動不能
+  function finishPlayer(st, p) {
     if (p.down === 2) p.down = 0;
     p.food = Math.max(0, p.food - RULES.hunger);
-    st.fire = Math.max(0, st.fire - 1 - (st.weather === 'rain' ? 1 : 0));
     p.temp = Math.max(0, p.temp - tempLoss(st, p));
     if (p.temp <= 0 || p.food <= 0) {
       const what = [p.temp <= 0 ? '体温' : '', p.food <= 0 ? '満腹度' : ''].filter(Boolean).join('と');
@@ -379,32 +408,57 @@
       moveToFire(st, p);
       log(st, `${p.name}：${what}が0になり行動不能。焚き火へ運ばれた`);
     }
-    moveAnimals(st);
-    moveFish(st);
-    if (st.players.every(q => q.down > 0)) {
-      st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'down' };
-      log(st, '全員が行動不能になった…ゲームオーバー');
-      return;
-    }
-    // 焚き火が消えたまま手番が続くと敗北（火力が1以上の状態で手番を終えれば、数え直し）
-    st.fireOut = fireDead ? st.fireOut + 1 : 0;
-    if (st.fireOut > 0) log(st, `焚き火が消えたまま手番が終わった（${st.fireOut} / ${RULES.fireOutLimit}）`);
+  }
+  function checkAllDown(st) {
+    if (!st.players.every(q => q.down > 0)) return false;
+    st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'down' };
+    log(st, '全員が行動不能になった…ゲームオーバー');
+    return true;
+  }
+  // ラウンドの終わり：動物・魚が動き、焚き火の火力が減る。すべての焚き火が消えたまま3ラウンドで敗北。最終ラウンドを終えればクリア
+  // 続けられるなら true
+  function closeRound(st) {
+    for (let i = 0; i < RULES.animalSteps; i++) moveAnimals(st);
+    for (let i = 0; i < RULES.fishSteps; i++) moveFish(st);
+    const dead = allFiresOut(st);
+    const drain = RULES.fireDrain + (st.weather === 'rain' ? 1 : 0);
+    for (const b of fires(st)) b.fire = Math.max(0, b.fire - drain);
+    st.fireOut = dead ? st.fireOut + 1 : 0;
+    if (st.fireOut > 0) log(st, `焚き火が消えたままラウンドが終わった（${st.fireOut} / ${RULES.fireOutLimit}）`);
     if (st.fireOut >= RULES.fireOutLimit) {
       st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'fire' };
-      log(st, `焚き火が消えたまま${RULES.fireOutLimit}手番が過ぎた…ゲームオーバー`);
-      return;
+      log(st, `焚き火が消えたまま${RULES.fireOutLimit}ラウンドが過ぎた…ゲームオーバー`);
+      return false;
     }
+    if (st.round >= TOTAL_ROUNDS) {
+      st.phase = 'won'; st.over = { result: 'won', round: st.round };
+      log(st, '最終猛吹雪を生き延びた！ クリア');
+      return false;
+    }
+    startRound(st, st.round + 1);
+    return true;
+  }
+  // 順番に動くとき：いまの人の手番を終える
+  function endTurn(st) {
+    const p = cur(st);
+    finishPlayer(st, p);
+    if (checkAllDown(st)) return;
     st.turn++;
     if (st.turn >= st.players.length) {
       st.turn = 0;
-      if (st.round >= TOTAL_ROUNDS) {
-        st.phase = 'won'; st.over = { result: 'won', round: st.round };
-        log(st, '最終猛吹雪を生き延びた！ クリア');
-        return;
-      }
-      startRound(st, st.round + 1);
+      if (!closeRound(st)) return;
     }
-    startTurn(st);
+    beginPlayer(st, cur(st));
+  }
+  // 同時に動くとき：全員が行動を終えたか、時間切れで、ラウンドを終える
+  function endRoundAll(st) {
+    for (const p of st.players) finishPlayer(st, p);
+    if (checkAllDown(st)) return;
+    if (!closeRound(st)) return;
+    for (const p of st.players) beginPlayer(st, p);
+  }
+  function forceEndRound(st) {
+    if (st.phase === 'play' && simul(st)) endRoundAll(st);
   }
 
   // ---------- 移動 ----------
@@ -617,18 +671,18 @@
     const p = pl(st, pid);
     if (!p) return fail('プレイヤーが見つかりません');
     if (st.phase !== 'play') return fail('ゲームは終わっています');
-    const mine = cur(st).id === pid;
+    const mine = simul(st) ? !p.done : cur(st).id === pid;
     const t = a.type;
     let r;
 
     // 上限を超えたアイテムの扱いを選ぶまでは、ほかの行動はできない
-    const pend = st.pending && st.pending[0];
-    if (pend && pend.pid === pid && !['overflow', 'vote', 'voteCast', 'voteCancel'].includes(t)) {
+    const pend = (st.pending || []).find(q => q.pid === pid);
+    if (pend && !['overflow', 'vote', 'voteCast', 'voteCancel'].includes(t)) {
       return fail(`先に、上限を超えた「${ITEM_NAMES[pend.k]}」をどうするか選んでください`);
     }
 
     if (t === 'overflow') {
-      if (!pend || pend.pid !== pid) return fail('選ぶ必要のあるアイテムはありません');
+      if (!pend) return fail('選ぶ必要のあるアイテムはありません');
       const drop = a.drop && typeof a.drop === 'object' ? a.drop : {};
       let total = 0;
       for (const k of Object.keys(drop)) {
@@ -639,7 +693,7 @@
       if (total > pend.n) return fail('入らない数より多くは入れ替えられません');
       for (const k of Object.keys(drop)) st.items[k] -= drop[k];
       st.items[pend.k] += total;
-      st.pending.shift();
+      st.pending.splice(st.pending.indexOf(pend), 1);
       const lost = pend.n - total;
       st.stats.team.discarded += total + lost;
       const parts = Object.keys(drop).filter(k => drop[k] > 0).map(k => `${ITEM_NAMES[k]}${drop[k]}個`);
@@ -656,7 +710,7 @@
       if (r.ok) r.msg = '道を空けた：' + r.msg;
     }
     else if (t === 'draw' || t === 'erase') {
-      if (mine) return fail('お絵かきは自分の手番以外で使えます');
+      if (mine) return fail(simul(st) ? 'お絵かきは、行動を終えたあとで使えます' : 'お絵かきは自分の手番以外で使えます');
       if (t === 'draw') {
         if (a.c !== 'a' && a.c !== 'b') return fail('不正な色です');
         r = drawStroke(st, a.c, a.pts) ? { ok: true, msg: '' } : fail('そこには描けません');
@@ -684,7 +738,7 @@
       st.vote = null;
       r = { ok: true, msg: '投票を取り下げました' };
     } else {
-      if (!mine) return fail('自分の手番ではありません');
+      if (!mine) return fail(simul(st) ? 'このラウンドの行動は終えています' : '自分の手番ではありません');
       if (p.down === 2 && !RECOVER_OK.includes(t)) return fail('復帰中の手番は「温まる」「食べる」だけできます');
       const b0 = { ap: p.ap, temp: p.temp, food: p.food };
       r = doTurnAction(st, p, a);
@@ -737,7 +791,8 @@
     let e;
     switch (a.type) {
       case 'end':
-        endTurn(st);
+        if (simul(st)) { p.done = true; if (st.players.every(q => q.done)) endRoundAll(st); }
+        else endTurn(st);
         return { ok: true, msg: '' };
       case 'warm': {
         if ((e = needAp(ap.warm))) return fail(e);
@@ -749,12 +804,14 @@
       case 'stoke': {
         if (it.firewood < 1 && it.wood < 1) return fail('薪も木材もありません');
         if ((e = needAp(ap.stoke))) return fail(e);
-        if (!nearFire(st, p)) return fail('焚き火の上か、すぐ隣に移動してください');
-        if (st.fire >= RULES.fireMax) return fail(`火力は最大（${RULES.fireMax}）です`);
+        const fb = fires(st).filter(b => fireGap(b, p) <= 1);
+        if (!fb.length) return fail('焚き火の上か、すぐ隣に移動してください');
+        const tgt = fb.find(b => b.fire < RULES.fireMax);
+        if (!tgt) return fail(`火力は最大（${RULES.fireMax}）です`);
         p.ap -= ap.stoke;
         const used = it.firewood > 0 ? 'firewood' : 'wood';      // 薪は建物に使えないので、先に使う
-        it[used]--; st.fire++;
-        return { ok: true, msg: `焚べる：${ITEM_NAMES[used]}1 → 火力 ${st.fire - 1} → ${st.fire}` };
+        it[used]--; tgt.fire++;
+        return { ok: true, msg: `焚べる：${ITEM_NAMES[used]}1 → 火力 ${tgt.fire - 1} → ${tgt.fire}` };
       }
       case 'eat': {
         const k = a.k;
@@ -909,16 +966,17 @@
     const p = pl(st, pid);
     if (!p) return null;
     const w = where(st, p), loss = tempLoss(st, p);
-    const fireLoss = 1 + (st.weather === 'rain' ? 1 : 0);
+    const fireLoss = RULES.fireDrain + (st.weather === 'rain' ? 1 : 0);
+    const fb = nearestFire(st, p) || fireOf(st);
     const out = {
       place: w.kind, loss, hunger: RULES.hunger, fireLoss,
       temp0: p.temp, temp: Math.max(0, p.temp - loss), food0: p.food, food: Math.max(0, p.food - RULES.hunger),
-      fire0: st.fire, fire: Math.max(0, st.fire - fireLoss),
+      fire0: fb.fire, fire: Math.max(0, fb.fire - fireLoss),
     };
     out.collapse = out.temp <= 0 || out.food <= 0;
     // 焚き火が消えたまま手番を終えると、敗北に近づく
     out.fireOut = st.fireOut;
-    out.fireOutNext = st.fire <= 0 ? st.fireOut + 1 : 0;
+    out.fireOutNext = allFiresOut(st) ? st.fireOut + 1 : 0;
     out.fireLose = out.fireOutNext >= RULES.fireOutLimit;
     return out;
   }
@@ -935,9 +993,9 @@
       out.need = st.players.length * RULES.finalRounds * RULES.hunger;
     } else {
       st.players.forEach((p, i) => {
-        const left = (TOTAL_ROUNDS - st.round) + (i >= st.turn ? 1 : 0);
+        const left = (TOTAL_ROUNDS - st.round) + ((simul(st) ? !p.done : i >= st.turn) ? 1 : 0);
         out.need += Math.max(0, left * RULES.hunger + 1 - p.food);
-        if (i === st.turn) out.turns = left;
+        if (i === (simul(st) ? 0 : st.turn)) out.turns = left;
       });
     }
     out.short = Math.max(0, out.need - out.have);
@@ -945,7 +1003,7 @@
   }
 
   return {
-    repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

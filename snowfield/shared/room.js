@@ -48,6 +48,7 @@
       this.mem = {};          // CPU ごとの覚え書き
       this.cpuActs = 0;
       this.voteCool = 0;
+      this.settings = { simul: true };     // 同時に動くか（false なら、順番に動く）
       this.closed = false;
     }
 
@@ -75,11 +76,11 @@
     addPlayer({ token, name, cpu }) {
       let n = name, i = 2;
       while (this.players.some(p => p.name === n)) n = name + (i++);
-      const p = {
-        id: 'p' + (++this.seq), token, name: n, connected: true, cpu,
-        color: COLORS.find(c => !this.players.some(x => x.color === c)),
-        shape: SHAPES.find(sh => !this.players.some(x => x.shape === sh)) || SHAPES[0],
-      };
+      const free = (c, sh) => !this.players.some(x => x.color === c && x.shape === sh);
+      // 形と色の組み合わせが、ほかの人と重ならないように割り当てる（まず色を、使い切ったら形を変える）
+      let color = COLORS[0], shape = SHAPES[0];
+      outer: for (const sh of SHAPES) for (const c of COLORS) if (free(c, sh)) { color = c; shape = sh; break outer; }
+      const p = { id: 'p' + (++this.seq), token, name: n, connected: true, cpu, color, shape };
       this.players.push(p);
       return p;
     }
@@ -110,7 +111,7 @@
     view() {
       return {
         turnLeft: this.turnEndsAt ? Math.max(0, this.turnEndsAt - this.now()) : null,
-        version: E.VERSION, code: this.code, phase: this.phase, hostId: this.hostId, min: E.RULES.minPlayers, max: E.RULES.maxPlayers,
+        version: E.VERSION, settings: this.settings, code: this.code, phase: this.phase, hostId: this.hostId, min: E.RULES.minPlayers, max: E.RULES.maxPlayers,
         players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, shape: p.shape, cpu: p.cpu, connected: p.connected })),
       };
     }
@@ -124,17 +125,20 @@
     }
     changed() { this.syncTurnTimer(); this.broadcast(); this.schedule(); }
 
-    // 人間のプレイヤーの手番には制限時間がある（切れたら、自動で手番を終える）
+    // 制限時間：順番に動くときは、人間の手番ごと。同時に動くときは、ラウンドごと（人間がいるとき）。切れたら、自動で終える
     syncTurnTimer() {
       const g = this.game;
-      const c = this.phase === 'game' && g && g.phase === 'play' ? E.cur(g) : null;
-      const key = c ? g.round + ':' + g.turn : '';
+      const live = this.phase === 'game' && g && g.phase === 'play';
+      const simul = live && E.simul(g);
+      const c = live && !simul ? E.cur(g) : null;
+      const key = !live ? '' : simul ? 'r' + g.round : g.round + ':' + g.turn;
       if (key === this.turnKey) return;
       this.turnKey = key;
       if (this.turnTimer) { this.clearTimer(this.turnTimer); this.turnTimer = null; }
       this.turnEndsAt = 0;
-      if (c && !c.cpu && !c.away && !this.tutorial) {
-        const ms = E.RULES.turnLimitMs;
+      const ms = simul ? E.RULES.roundLimitMs : E.RULES.turnLimitMs;
+      const timed = simul ? g.players.some(p => !p.cpu && !p.away) : (c && !c.cpu && !c.away);
+      if (live && timed && !this.tutorial) {
         this.turnEndsAt = this.now() + ms;
         this.turnTimer = this.setTimer(() => this.turnTimeout(key), ms);
       }
@@ -143,11 +147,22 @@
       this.turnTimer = null;
       const g = this.game;
       if (this.closed || this.phase !== 'game' || !g || g.phase !== 'play' || key !== this.turnKey) return;
+      if (E.simul(g)) {
+        this.note('ラウンドの制限時間が切れた');
+        for (const p of g.players) this.finishPending(p.id);
+        E.forceEndRound(g);
+        return this.changed();
+      }
       const c = E.cur(g);
       this.note(`${c.name}：手番の制限時間が切れた`);
-      const pd = g.pending && g.pending[0];
-      if (pd && pd.pid === c.id) this.doAct(c.id, { type: 'overflow', drop: {} });
+      this.finishPending(c.id);
       this.doAct(c.id, { type: 'end' });
+    }
+    // 上限を超えたアイテムの選択が残っていたら、「捨てる」にして閉じる
+    finishPending(pid) {
+      const g = this.game;
+      let guard = 0;
+      while (g.pending.some(q => q.pid === pid) && guard++ < 20) E.act(g, pid, { type: 'overflow', drop: {} });
     }
     human(id) { const p = this.players.find(x => x.id === id); return !!p && !p.cpu; }
     toast(id, text, tone, sfx) { if (this.human(id)) this.sendFn(id, { type: 'toast', text, tone: tone || '', sfx: sfx || '' }); }
@@ -172,14 +187,17 @@
           if (p) { this.players = this.players.filter(x => x !== p); this.changed(); }
           return;
         }
+        case 'settings': {   // ホストが、ゲームの設定を変える（ロビーで）
+          if (!host || this.phase !== 'lobby') return;
+          if (typeof msg.simul === 'boolean') this.settings.simul = msg.simul;
+          return this.changed();
+        }
         case 'style': {      // 自分の駒の形と色（ロビーで）
           if (this.phase !== 'lobby') return;
-          if (SHAPES.includes(msg.shape)) me.shape = msg.shape;
-          if (msg.color !== undefined) {
-            if (!COLORS.includes(msg.color)) return;
-            if (this.players.some(p => p !== me && p.color === msg.color)) return this.error(id, 'ほかの人が使っている色です');
-            me.color = msg.color;
-          }
+          const shape = msg.shape !== undefined ? msg.shape : me.shape, color = msg.color !== undefined ? msg.color : me.color;
+          if (!SHAPES.includes(shape) || !COLORS.includes(color)) return;
+          if (this.players.some(p => p !== me && p.color === color && p.shape === shape)) return this.error(id, 'ほかの人と、形も色も同じです。どちらかを変えてください');
+          me.shape = shape; me.color = color;
           return this.changed();
         }
         case 'start': {
@@ -191,6 +209,7 @@
           this.game = E.createGame({
             seed: Math.floor(this.rng() * 4294967296),
             players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color, shape: p.shape, cpu: p.cpu })),
+            simul: this.settings.simul,
           });
           for (const p of this.players) if (!p.cpu && !p.connected) E.pl(this.game, p.id).away = true;
           return this.changed();
@@ -261,12 +280,18 @@
 
     // ---------- CPU・切断中の人の手番 ----------
     clearCpuTimer() { if (this.timer) { this.clearTimer(this.timer); this.timer = null; } }
+    // 動かす必要のある CPU・切断中の人がいるか（1：CPU、2：切断中の人だけ）
     cpuWork() {
       const g = this.game;
       if (this.phase !== 'game' || !g || g.phase !== 'play') return 0;
-      const c = E.cur(g);
-      if (c.cpu) return 1;
-      if (c.away) return 2;
+      if (E.simul(g)) {
+        if (g.players.some(p => p.cpu && !p.done)) return 1;
+        if (g.players.some(p => p.away && !p.done)) return 2;
+      } else {
+        const c = E.cur(g);
+        if (c.cpu) return 1;
+        if (c.away) return 2;
+      }
       for (const p of g.players) if (p.cpu && this.voteFor(p.id)) return 1;
       return 0;
     }
@@ -285,7 +310,6 @@
     cpuStep() {
       const g = this.game;
       if (this.closed || this.phase !== 'game' || !g || g.phase !== 'play') return;
-      const c = E.cur(g);
       // 投票は手番に関係なく、CPU が1票ずつ入れる
       for (const p of g.players) {
         if (!p.cpu) continue;
@@ -296,6 +320,27 @@
           return;
         }
       }
+      if (E.simul(g)) {
+        // 同時に動く：CPU が1人1回ずつ行動する（切断中の人は、すぐに行動を終える）
+        const key = 'r' + g.round;
+        if (this.cpuKey !== key) { this.cpuKey = key; this.cpuCount = {}; }
+        for (const p of g.players.slice()) {
+          if (g.phase !== 'play' || p.done) continue;
+          if (p.cpu) {
+            const mem = this.mem[p.id] || (this.mem[p.id] = {});
+            const n = this.cpuCount[p.id] = (this.cpuCount[p.id] || 0) + 1;
+            const a = n > CPU_ACTION_LIMIT ? { type: 'end' } : CPU.decide(g, p.id, mem);
+            const r = this.doAct(p.id, a);
+            if (!r.ok && a.type !== 'end') this.doAct(p.id, { type: 'end' });
+          } else if (p.away) {
+            this.finishPending(p.id);
+            this.doAct(p.id, { type: 'end' });
+          }
+        }
+        this.schedule();
+        return;
+      }
+      const c = E.cur(g);
       if (c.cpu) {
         const mem = this.mem[c.id] || (this.mem[c.id] = {});
         const key = g.round + ':' + g.turn;
@@ -304,8 +349,8 @@
         let r = this.doAct(c.id, a);
         if (!r.ok && a.type !== 'end') r = this.doAct(c.id, { type: 'end' });   // できなかったら手番を終える
       } else if (c.away) {
-        const pd = g.pending && g.pending[0];
-        this.doAct(c.id, pd && pd.pid === c.id ? { type: 'overflow', drop: {} } : { type: 'end' });
+        this.finishPending(c.id);
+        this.doAct(c.id, { type: 'end' });
       }
       this.schedule();
     }
