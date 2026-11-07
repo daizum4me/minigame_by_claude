@@ -60,3 +60,16 @@ test('パーティクル：出して、時間がたつと消える。種類ご�
   board.draw();
   assert.strictEqual(s.parts.length, 0);
 });
+
+test('すべてのアイテムに、両方のテーマの色と、アイコンがある（持ち物の表示が止まらない）', () => {
+  const st = E.createGame({ seed: 4, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue' })) });
+  makeBoard(st);
+  const B = global.window.SnowBoard;
+  for (const theme of Object.keys(B.THEMES)) {
+    for (const k of E.ITEMS) {
+      const c = B.THEMES[theme].item[k];
+      assert.ok(Array.isArray(c) && c.length >= 2, `${theme}：${k} の色がない`);
+      assert.ok(B.ICONS[B.ITEM_ICON[k] || k], `${k} のアイコンがない`);
+    }
+  }
+});
