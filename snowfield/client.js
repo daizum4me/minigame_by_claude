@@ -389,9 +389,9 @@
     const roundChanged = app.annRound !== g.round;
     app.turnKey = key; app.annRound = g.round;
     if (roundChanged) {
-      const fin = g.round > R.prepRounds, storm = g.weather === 'storm';
-      banner(fin ? `最終猛吹雪 ${g.round - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${g.round}`,
-        `${fin ? '' : `準備期間 ${g.round} / ${R.prepRounds}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
+      const fin = g.round > g.prep, storm = g.weather === 'storm';
+      banner(fin ? `最終猛吹雪 ${g.round - g.prep} / ${g.fin}` : `ラウンド ${g.round}`,
+        `${fin ? '' : `準備期間 ${g.round} / ${g.prep}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
     }
     if (!E.simul(g) && E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
   }
@@ -458,14 +458,12 @@
 
   // 上限を超えたアイテム：既存の物を捨てて持つか、新しい物をあきらめるかを選ぶ
   function renderOverflow(g, th) {
-    const el = $('#overflow'), pd = (g.pending || []).find(q => q.pid === app.me) || (g.pending && g.pending[0]);
+    const el = $('#overflow'), note = $('#ovr-note');
+    const pd = (g.pending || []).find(q => q.pid === app.me);        // 選ぶ必要があるのは、持ち主だけ（ほかの人は、そのまま行動できる）
+    const others = (g.pending || []).filter(q => q.pid !== app.me).map(q => (g.players.find(p => p.id === q.pid) || {}).name).filter(Boolean);
+    note.hidden = !others.length || !!pd;
+    if (others.length) note.textContent = `${others.length > 2 ? others.slice(0, 2).join('・') + `ほか${others.length - 2}人` : others.join('・')}が、持ち物の入れ替えを選んでいます`;
     if (!pd) { el.hidden = true; app.ovrKey = null; return; }
-    const who = g.players.find(p => p.id === pd.pid);
-    if (pd.pid !== app.me) {
-      el.hidden = false;
-      el.innerHTML = `<div class="card ovr-card"><b>${esc(who ? who.name : '')}が、持ち物の入れ替えを選んでいます…</b></div>`;
-      return;
-    }
     const key = pd.k + ':' + pd.n + ':' + g.pending.length;
     if (app.ovrKey !== key) { app.ovrKey = key; app.ovrDrop = {}; }
     const drop = app.ovrDrop, total = Object.values(drop).reduce((a, b) => a + b, 0);
@@ -493,7 +491,7 @@
     if (g.phase !== 'play') { el.hidden = true; return; }
     el.hidden = false;
     const meats = Math.ceil(f.short / R.eat.meat);
-    const what = f.final ? `残り${f.turns}回の手番の終わりごとに−${R.hunger}。いまの満腹度を引いた分` : `${g.players.length}人 × ${R.finalRounds}ラウンド × −${R.hunger}`;
+    const what = f.final ? `残り${f.turns}回の手番の終わりごとに−${R.hunger}。いまの満腹度を引いた分` : `${g.players.length}人 × ${g.fin}ラウンド × −${R.hunger}`;
     el.innerHTML = `<b>最終猛吹雪を生き延びるのに必要な食料</b><div><b>${f.need}</b>（満腹度ぶん。${what}）</div>
       <div>持ち物の食料：<b>${f.have}</b>　${f.short > 0 ? `<span style="color:var(--redFg);font-weight:700">不足 ${f.short}（肉なら約${meats}個）</span>` : '<span style="color:var(--ok);font-weight:700">足りています</span>'}</div>`;
   }
@@ -656,9 +654,9 @@
   }
 
   function renderBar(g) {
-    const r = g.round, fin = r > R.prepRounds;
-    $('#chip-round').textContent = fin ? `最終猛吹雪 ${r - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${r} / ${R.prepRounds}（準備）`;
-    $('#chip-final').textContent = fin ? `あと${E.TOTAL_ROUNDS - r + 1}ラウンドで クリア` : `猛吹雪まで あと${R.prepRounds - r + 1}ラウンド`;
+    const r = g.round, fin = r > g.prep;
+    $('#chip-round').textContent = fin ? `最終猛吹雪 ${r - g.prep} / ${g.fin}` : `ラウンド ${r} / ${g.prep}（準備）`;
+    $('#chip-final').textContent = fin ? `あと${g.total - r + 1}ラウンドで クリア` : `猛吹雪まで あと${g.prep - r + 1}ラウンド`;
     const fore = $('#chip-fore');
     fore.hidden = !E.hasTower(g);
     fore.textContent = g.next ? `予報：次は${E.WEATHER_NAMES[g.next]}` : '予報：最後のラウンド';
@@ -925,14 +923,14 @@
     if (g.phase === 'play' || app.resultHidden) { el.hidden = true; return; }
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
-    $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の${E.TOTAL_ROUNDS}ラウンドを乗り越えました。' : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
+    $('#result-sub').textContent = won ? `みんなで協力して、準備期間と最終猛吹雪の${g.total}ラウンドを乗り越えました。` : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
     const S = g.stats, cols = [['ap', '行動力', '使った行動力'], ['collect', '集めた', '集めた回数'], ['kills', '狩り', '倒した動物'], ['built', '建てた', '建てた建物'], ['crafted', '作った', '作った回数'], ['stoked', '焚べた', '焚べた回数'], ['planted', '植えた', '植えた苗'], ['repaired', '直した', '直した回数'], ['eaten', '食べた', '食べて増えた満腹度'], ['warmed', '温まり', '温まって増えた体温'], ['downs', '行動不能', '行動不能になった回数']];
     const top = {};
     cols.forEach(([k]) => { const m = Math.max(...g.players.map(p => S.players[p.id][k])); top[k] = k === 'downs' ? -1 : m; });
     const rows = g.players.map(p => `<tr><td style="white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:4px">${pawnIco(p, 18)}${esc(p.name)}</span></td>${cols.map(([k]) => { const v = S.players[p.id][k]; return `<td class="${v > 0 && v === top[k] ? 'top' : ''}">${v}</td>`; }).join('')}</tr>`).join('');
     const gained = S.team.gained, gtxt = E.ITEMS.filter(k => gained[k]).map(k => `${E.ITEM_NAMES[k]}${gained[k]}`).join('　') || 'なし';
     $('#result-players').innerHTML = `<div class="team-stats">
-        <div>生き延びたラウンド<b>${g.over.round} / ${E.TOTAL_ROUNDS}</b></div><div>建てた建物<b>${S.team.built}</b></div><div>壊れた建物<b>${S.team.destroyed}</b></div><div>捨てた物<b>${S.team.discarded}</b></div></div>
+        <div>生き延びたラウンド<b>${g.over.round} / ${g.total}</b></div><div>建てた建物<b>${S.team.built}</b></div><div>壊れた建物<b>${S.team.destroyed}</b></div><div>捨てた物<b>${S.team.discarded}</b></div></div>
       <div class="small muted">手に入れた物：${gtxt}</div>
       <div style="overflow:auto"><table class="stat-table"><thead><tr><th>プレイヤー</th>${cols.map(c => `<th title="${c[2]}">${c[1]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
       <div class="small muted">濃い色は、その項目でいちばん多い人（行動不能は数えません）</div>`;

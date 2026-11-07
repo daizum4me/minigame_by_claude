@@ -15,9 +15,10 @@
 
   const RULES = {
     minPlayers: 3, maxPlayers: 16,
-    prepRounds: 6, finalRounds: 2,
+    prepBase: 12, prepDiv: 3,          // 準備期間のラウンド数 = prepBase −（人数 ÷ prepDiv の切り上げ）
+    finalBy: [[4, 5], [8, 4], [12, 3], [16, 2]],   // 最終猛吹雪のラウンド数：[人数の上限, ラウンド数]
     maxTemp: 10, maxFood: 10, maxAp: 7,
-    hunger: 4,                         // 手番（ラウンド）の終わりの満腹度の減少
+    hunger: 3,                         // 手番（ラウンド）の終わりの満腹度の減少
     fireInit: 3, fireMax: 5,
     fireDrain: 3,                      // 焚き火の火力は、ラウンドの終わりに、この数だけ減る（雨ならさらに-1）
     stormDmg: 2,                       // 猛吹雪のラウンドの始めに、建物のHPがこの数だけ減る
@@ -62,7 +63,10 @@
     // 開始時、焚き火から移動できる範囲に最低これだけの資源を置く（範囲内に資源が無いと雪も手に入らず詰むため）
     startReach: { tree: 2, stone: 1, veg: 1 },
   };
-  const TOTAL_ROUNDS = RULES.prepRounds + RULES.finalRounds;
+  // ラウンド数は人数で決まる（準備期間 = 12 −（人数÷3の切り上げ）、最終猛吹雪 = 1〜4人:5、5〜8人:4、9〜12人:3、13〜16人:2）
+  const prepRoundsOf = n => RULES.prepBase - Math.ceil(n / RULES.prepDiv);
+  const finalRoundsOf = n => (RULES.finalBy.find(([m]) => n <= m) || RULES.finalBy[RULES.finalBy.length - 1])[1];
+  const totalRoundsOf = n => prepRoundsOf(n) + finalRoundsOf(n);
 
   const BUILD = {
     road: { name: '道', size: 1, ap: 1, cost: { snow: 1 } },
@@ -156,7 +160,7 @@
   const total = st => ITEMS.reduce((s, k) => s + st.items[k], 0) + (st.gear ? st.gear.length : 0);
   const room = st => Math.max(0, cap(st) - total(st));
   const hasTower = st => st.b.some(b => b.t === 'tower');
-  const phaseOf = round => (round > RULES.prepRounds ? 'final' : 'prep');
+  const phaseOf = (st, round) => (round > st.prep ? 'final' : 'prep');
 
   function log(st, text) {
     st.log.push({ n: st.ln = (st.ln || 0) + 1, r: st.round, t: text });
@@ -195,7 +199,7 @@
 
   // ---------- 天候 ----------
   function rollWeather(st, round) {
-    if (round > RULES.prepRounds) return 'storm';
+    if (round > st.prep) return 'storm';
     const w = RULES.weights;
     let r = rnd(st) * Object.keys(w).reduce((s, k) => s + w[k], 0);
     for (const k of Object.keys(w)) { r -= w[k]; if (r < 0) return k; }
@@ -307,6 +311,7 @@
     const n = opts.players.length;
     const st = {
       v: 0, seed, rs: seed ^ 0x5bd1e995, round: 1, turn: 0, phase: 'play', over: null, n,
+      prep: prepRoundsOf(n), fin: finalRoundsOf(n), total: totalRoundsOf(n),
       mode: { simul: opts.simul !== false },          // 同時に動く（既定）か、順番に動くか
       weather: 'clear', next: 'clear', fireOut: 0,
       items: Object.assign({ wood: 0, firewood: 0, stone: 0, veg: 0, meat: 0, fish: 0, fur: 0, steak: 0, grilled: 0, soup: 0, snow: 0, sapling: 0 }, RULES.startItems),
@@ -351,7 +356,7 @@
   function startRound(st, r) {
     st.round = r;
     st.weather = st.next;
-    st.next = r + 1 <= TOTAL_ROUNDS ? rollWeather(st, r + 1) : null;
+    st.next = r + 1 <= st.total ? rollWeather(st, r + 1) : null;
     const keep = [];
     for (const p of st.plants) {
       if (--p.left > 0) { keep.push(p); continue; }
@@ -362,7 +367,7 @@
       }
     }
     st.plants = keep;
-    log(st, `ラウンド${r}（${phaseOf(r) === 'final' ? '最終猛吹雪' : '準備期間'}）：天候は${WEATHER_NAMES[st.weather]}`);
+    log(st, `ラウンド${r}（${phaseOf(st, r) === 'final' ? '最終猛吹雪' : '準備期間'}）：天候は${WEATHER_NAMES[st.weather]}`);
     if (st.weather === 'storm') {                       // 猛吹雪：ラウンドの始めに、建物のHPが減る
       const gone = [];
       for (const b of st.b) if (b.hp !== null) { b.hp -= RULES.stormDmg; if (b.hp <= 0) gone.push(b); }
@@ -434,7 +439,7 @@
       log(st, `焚き火が消えたまま${RULES.fireOutLimit}ラウンドが過ぎた…ゲームオーバー`);
       return false;
     }
-    if (st.round >= TOTAL_ROUNDS) {
+    if (st.round >= st.total) {
       st.phase = 'won'; st.over = { result: 'won', round: st.round };
       log(st, '最終猛吹雪を生き延びた！ クリア');
       return false;
@@ -989,15 +994,15 @@
   //  ・準備期間：最終猛吹雪の手番の終わりの回数ぶん（人数×3ラウンド×3）。そのときの満腹度は見込まない
   //  ・最終猛吹雪の中：これから迎える手番の終わりごとに、最後に1以上残るぶん（いまの満腹度を引く）
   function foodNeed(st) {
-    const out = { need: 0, have: 0, short: 0, turns: 0, final: st.round > RULES.prepRounds };
+    const out = { need: 0, have: 0, short: 0, turns: 0, final: st.round > st.prep };
     if (st.phase !== 'play') return out;
     out.have = Object.keys(RULES.eat).reduce((x, k) => x + st.items[k] * RULES.eat[k], 0);
     if (!out.final) {
-      out.turns = RULES.finalRounds;
-      out.need = st.players.length * RULES.finalRounds * RULES.hunger;
+      out.turns = st.fin;
+      out.need = st.players.length * st.fin * RULES.hunger;
     } else {
       st.players.forEach((p, i) => {
-        const left = (TOTAL_ROUNDS - st.round) + ((simul(st) ? !p.done : i >= st.turn) ? 1 : 0);
+        const left = (st.total - st.round) + ((simul(st) ? !p.done : i >= st.turn) ? 1 : 0);
         out.need += Math.max(0, left * RULES.hunger + 1 - p.food);
         if (i === (simul(st) ? 0 : st.turn)) out.turns = left;
       });
@@ -1007,7 +1012,7 @@
   }
 
   return {
-    repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    prepRoundsOf, finalRoundsOf, totalRoundsOf, repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

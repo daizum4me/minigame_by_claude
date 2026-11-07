@@ -33,7 +33,7 @@
 
   const surplus = (st, k) => st.items[k] > SURPLUS[k];
   const foodStock = st => Object.keys(E.RULES.eat).reduce((x, k) => x + st.items[k] * E.RULES.eat[k], 0);
-  const last = st => st.round > E.RULES.prepRounds;
+  const last = st => st.round > st.prep;
   // 薪の貯まり具合（木材ぶんに換算。作業場があれば、木材1が薪2になるので、薪は木材の半分）
   const woodEq = (st, cnt) => (cnt || st.items).wood + (cnt || st.items).firewood * (st.b.some(b => b.t === 'workshop') ? 0.5 : 1);
   const fuelOf = st => st.items.wood + st.items.firewood;
@@ -45,7 +45,7 @@
     return {
       food: (fin ? 6 : (st.round >= 8 ? 5 : 3)) * nP,                                    // 食料（満腹度ぶん）
       wood: Math.min(cap - 4, 2 + st.round + Math.max(0, nP - 3)), // 薪：最終猛吹雪に向けて増やす
-      fire: fin ? E.RULES.fireMax : (st.round >= E.RULES.prepRounds ? 4 : 0),
+      fire: fin ? E.RULES.fireMax : (st.round >= st.prep ? 4 : 0),
     };
   }
 
@@ -290,8 +290,8 @@
     };
     const hasBow = !!(p.tool && p.tool.k === 'bow'), hasRod = !!(p.tool && p.tool.k === 'rod');
     const wantMeat = foodStock(st) < T.food;
-    const farmVeg = it.veg >= VEG_MIN && foodStock(st) >= T.food * VEG_FOOD && st.round <= R.prepRounds - VEG_LATE;
-    const farmTree = it.sapling > 0 && st.round <= R.prepRounds + 1;
+    const farmVeg = it.veg >= VEG_MIN && foodStock(st) >= T.food * VEG_FOOD && st.round <= st.prep - VEG_LATE;
+    const farmTree = it.sapling > 0 && st.round <= st.prep + 1;
 
     // いまの場所でできる仕事（集める・攻撃・植える）
     const workHere = () => {

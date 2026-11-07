@@ -511,22 +511,29 @@ test('両方0なら両方3・全員が同時に行動不能でゲームオーバ
   assert.strictEqual(st.over.result, 'lost');
 });
 
-test('最終ラウンドを終えるとクリア・最終猛吹雪は最後の2ラウンド・予報は1ラウンド先', () => {
+test('最終ラウンドを終えるとクリア・最終猛吹雪は最後の数ラウンド・予報は1ラウンド先', () => {
   const st = mk();
-  const R = E.RULES, seen = [];
-  for (let i = 0; i < 200 && st.phase === 'play'; i++) {
+  const seen = [];
+  for (let i = 0; i < 400 && st.phase === 'play'; i++) {
     for (const p of st.players) { p.temp = 10; p.food = 10; }
     st.fire = 5;
     seen[st.round] = st.weather;
-    if (st.round < E.TOTAL_ROUNDS) assert.ok(st.next);
+    if (st.round < st.total) assert.ok(st.next);
     doIt(st, { type: 'end' });
   }
   assert.strictEqual(st.phase, 'won');
   assert.strictEqual(st.next, null);
-  assert.strictEqual(E.TOTAL_ROUNDS, R.prepRounds + R.finalRounds);
-  assert.deepStrictEqual([R.prepRounds, R.finalRounds], [6, 2]);
-  for (let r = R.prepRounds + 1; r <= E.TOTAL_ROUNDS; r++) assert.strictEqual(seen[r], 'storm');
-  for (let r = 1; r <= R.prepRounds; r++) assert.notStrictEqual(seen[r], 'storm');
+  assert.strictEqual(st.total, st.prep + st.fin);
+  for (let r = st.prep + 1; r <= st.total; r++) assert.strictEqual(seen[r], 'storm');
+  for (let r = 1; r <= st.prep; r++) assert.notStrictEqual(seen[r], 'storm');
+});
+
+test('ラウンド数は人数で決まる：準備期間＝12−（人数÷3の切り上げ）、最終猛吹雪＝1〜4人:5・5〜8人:4・9〜12人:3・13〜16人:2', () => {
+  const want = { 3: [11, 5], 4: [10, 5], 5: [10, 4], 6: [10, 4], 7: [9, 4], 8: [9, 4], 9: [9, 3], 10: [8, 3], 12: [8, 3], 13: [7, 2], 15: [7, 2], 16: [6, 2] };
+  for (const n of Object.keys(want)) assert.deepStrictEqual([E.prepRoundsOf(+n), E.finalRoundsOf(+n)], want[n], `${n}人`);
+  const st = mkN(16);
+  assert.deepStrictEqual([st.prep, st.fin, st.total], [6, 2, 8]);
+  assert.deepStrictEqual([mk().prep, mk().fin], [11, 5]);
 });
 
 test('天候の出現比率（晴れ3：雪2：吹雪1：雨2）・準備期間に猛吹雪は出ない・最終猛吹雪は必ず猛吹雪', () => {
@@ -537,12 +544,12 @@ test('天候の出現比率（晴れ3：雪2：吹雪1：雨2）・準備期間�
     return n;
   };
   const tot = 20000;
-  for (const round of [2, 4, E.RULES.prepRounds]) {
+  for (const round of [2, 4, st.prep]) {
     const a = count(round);
     assert.strictEqual(a.storm, 0, `ラウンド${round}`);
     [['clear', 3], ['snow', 2], ['blizzard', 1], ['rain', 2]].forEach(([k, w]) => assert.ok(Math.abs(a[k] / tot - w / 8) < 0.02, k));
   }
-  assert.strictEqual(count(E.RULES.prepRounds + 1).storm, tot);
+  assert.strictEqual(count(st.prep + 1).storm, tot);
 });
 
 test('焚き火の大きさ：一辺は 人数÷1.5 の切り上げ', () => {
@@ -610,7 +617,7 @@ test('お絵かき：手番外だけ・マスをまたぐ線は分割して保�
 
 test('猛吹雪を生き延びるのに必要な食料', () => {
   const st = mk();
-  const R = E.RULES.finalRounds;
+  const R = st.fin;
   const H = E.RULES.hunger;
   // 準備期間：最終猛吹雪のラウンド数 × 3人 × 満腹度の減少
   assert.deepStrictEqual([E.foodNeed(st).need, E.foodNeed(st).short, E.foodNeed(st).turns], [3 * R * H, 3 * R * H, R]);
@@ -618,7 +625,7 @@ test('猛吹雪を生き延びるのに必要な食料', () => {
   assert.strictEqual(E.foodNeed(st).have, 10);
   assert.strictEqual(E.foodNeed(st).short, 3 * R * H - 10);
   // 最終猛吹雪の中：残りのラウンドの終わりごとに3、最後に1以上残す
-  st.round = E.RULES.prepRounds + 1;
+  st.round = st.prep + 1;
   for (const p of st.players) p.food = 4;
   const n = E.foodNeed(st);
   assert.strictEqual(n.final, true);
@@ -662,7 +669,7 @@ test('作業場：建てる（木材3）・木材1→薪2・薪を先に焚べ�
   assert.match(doIt(st, { type: 'craft', recipe: 'firewood' }).why, /いっぱい/);
   // 猛吹雪で壊れる（HPがある）
   st.weather = 'storm'; st.next = 'storm';
-  for (let i = 0; i < 30 && st.b.some(b => b.t === 'workshop') && st.phase === 'play'; i++) { for (const q of st.players) { q.temp = 10; q.food = 10; } st.fire = 5; doIt(st, { type: 'end' }, me(st).id); }
+  for (let i = 0; i < 30 && st.b.some(b => b.t === 'workshop') && st.phase === 'play'; i++) { for (const q of st.players) { q.temp = 10; q.food = 10; } st.fire = 5; st.next = 'storm'; doIt(st, { type: 'end' }, me(st).id); }
   assert.ok(!st.b.some(b => b.t === 'workshop'));
 });
 
