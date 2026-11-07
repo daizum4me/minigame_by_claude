@@ -15,10 +15,9 @@
 
   const RULES = {
     minPlayers: 3, maxPlayers: 16,
-    prepBase: 12, prepDiv: 3,          // 準備期間のラウンド数 = prepBase −（人数 ÷ prepDiv の切り上げ）
-    finalBy: [[4, 5], [8, 4], [12, 3], [16, 2]],   // 最終猛吹雪のラウンド数：[人数の上限, ラウンド数]
+    prepRounds: 6, finalRounds: 4,     // 準備期間と最終猛吹雪のラウンド数（人数によらず固定）
     maxTemp: 10, maxFood: 10, maxAp: 7,
-    hunger: 3,                         // 手番（ラウンド）の終わりの満腹度の減少
+    hunger: 4,                         // 手番（ラウンド）の終わりの満腹度の減少
     fireInit: 3, fireMaxMin: 5,        // 焚き火の火力の上限 = その焚き火で始まる人数（最低 fireMaxMin）
     fireDrainDiv: 2,                   // 焚き火の火力は、ラウンドの終わりに、「その焚き火で始まる人数 ÷ fireDrainDiv の切り上げ」だけ減る（雨ならさらに-1）
     stormDmg: 2,                       // 猛吹雪のラウンドの始めに、建物のHPがこの数だけ減る
@@ -51,7 +50,9 @@
     sapChance: 0.5,
     fishPerPlayer: 1, fishHpMin: 1, fishHpMax: 3, fishMin: 1, fishMax: 3, fishRange: 3,   // 魚：川にいる。数 = 人数×fishPerPlayer
     riverPeriod: 40, riverWidth: 2, riverWobble: 1.6, riverWave: 40, riverClear: 4,   // 川：雪原にはない・橋がないと移動も建設もできない（焚き火の周り riverClear マスは川にならない）
-    animalsExtra: 2, animalHpMin: 3,   // 動物の数 = 人数 + animalsExtra
+    // 動物の数 = 人数 + animalsExtraBy（少人数ほど多めに足す。大人数は人数だけで十分に狩れるので、足さない）
+    animalsExtraBy: [[3, 9], [4, 7], [6, 4], [10, 5], [12, 3], [14, 0], [16, -2]],   // [人数の上限, 足す数]
+    animalHpMin: 3,
      animalHpMax: 5, meatMin: 1, meatMax: 7,
     eat: { meat: 3, fish: 3, veg: 2, steak: 5, grilled: 5, soup: 2 },
     furMin: 1, furMax: 5,               // 動物が落とす毛皮
@@ -66,9 +67,10 @@
     // 開始時、焚き火から移動できる範囲に最低これだけの資源を置く（範囲内に資源が無いと雪も手に入らず詰むため）
     startReach: { tree: 2, stone: 1, veg: 1 },
   };
-  // ラウンド数は人数で決まる（準備期間 = 12 −（人数÷3の切り上げ）、最終猛吹雪 = 1〜4人:5、5〜8人:4、9〜12人:3、13〜16人:2）
-  const prepRoundsOf = n => RULES.prepBase - Math.ceil(n / RULES.prepDiv);
-  const finalRoundsOf = n => (RULES.finalBy.find(([m]) => n <= m) || RULES.finalBy[RULES.finalBy.length - 1])[1];
+  // ラウンド数は固定（準備期間6、最終猛吹雪4）
+  const prepRoundsOf = () => RULES.prepRounds;
+  const finalRoundsOf = () => RULES.finalRounds;
+  const animalsExtraOf = n => (RULES.animalsExtraBy.find(([m]) => n <= m) || RULES.animalsExtraBy[RULES.animalsExtraBy.length - 1])[1];
   const totalRoundsOf = n => prepRoundsOf(n) + finalRoundsOf(n);
 
   const BUILD = {
@@ -357,7 +359,7 @@
         x: sp[0], y: sp[1], temp: RULES.maxTemp, food: RULES.maxFood, ap: 0, down: 0, gear: null, tool: null,
       });
     });
-    for (let i = 0; i < opts.players.length + RULES.animalsExtra; i++) spawnAnimal(st);
+    for (let i = 0; i < n + animalsExtraOf(n); i++) spawnAnimal(st);
     for (let i = 0; i < fishTarget(st); i++) if (!spawnFish(st)) break;
     st.weather = rollWeather(st, 1);
     st.next = rollWeather(st, 2);
@@ -1027,7 +1029,7 @@
   }
 
   return {
-    prepRoundsOf, finalRoundsOf, totalRoundsOf, repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS,
+    prepRoundsOf, finalRoundsOf, totalRoundsOf, animalsExtraOf, repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect, iglooOk, covered, coldOn,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,

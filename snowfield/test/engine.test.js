@@ -22,12 +22,12 @@ function freeSpot(st) {
   return f;
 }
 
-test('ゲーム開始：動物は人数+2体・資源・初期値', () => {
+test('ゲーム開始：動物は人数＋足す数・資源・初期値', () => {
   const st = mk();
   const f = E.fireOf(st);
   assert.deepStrictEqual([f.w, f.h, f.hp], [3, 3, null]);   // mk は fireDiv=1
   assert.strictEqual(st.fire, 3);
-  assert.strictEqual(st.animals.length, 5);   // 人数+2
+  assert.strictEqual(st.animals.length, 3 + E.animalsExtraOf(3));   // 人数 + 足す数
   assert.ok(Object.keys(st.res).length > 20);
   assert.ok(st.players.every(p => p.temp === 10 && p.food === 10));
   assert.strictEqual(me(st).ap, 7);
@@ -418,7 +418,7 @@ test('大人数：8人以上は焚き火が2つになり、プレイヤーが分
   const st9 = mkN(9);
   assert.deepStrictEqual(E.fires(st9).map(f => f.w).sort(), [E.fireSize(4), E.fireSize(5)]);
   // 焚き火の周りは川にならず、動物・魚・資源・配布が人数に比例して増える
-  assert.strictEqual(st.animals.length, 16 + E.RULES.animalsExtra);
+  assert.strictEqual(st.animals.length, 16 + E.animalsExtraOf(16));
   assert.ok(st.items.veg === 16 && st.items.firewood === 16 && st.items.snow === 8);
   assert.ok(E.total(st) <= E.cap(st));                                   // 最初に配られる物が、上限を超えない
   assert.ok(Object.keys(st.res).length > Object.keys(mkN(3).res).length * 2);
@@ -595,12 +595,15 @@ test('最終ラウンドを終えるとクリア・最終猛吹雪は最後の�
   for (let r = 1; r <= st.prep; r++) assert.notStrictEqual(seen[r], 'storm');
 });
 
-test('ラウンド数は人数で決まる：準備期間＝12−（人数÷3の切り上げ）、最終猛吹雪＝1〜4人:5・5〜8人:4・9〜12人:3・13〜16人:2', () => {
-  const want = { 3: [11, 5], 4: [10, 5], 5: [10, 4], 6: [10, 4], 7: [9, 4], 8: [9, 4], 9: [9, 3], 10: [8, 3], 12: [8, 3], 13: [7, 2], 15: [7, 2], 16: [6, 2] };
-  for (const n of Object.keys(want)) assert.deepStrictEqual([E.prepRoundsOf(+n), E.finalRoundsOf(+n)], want[n], `${n}人`);
+test('ラウンド数は人数によらず固定（準備6・最終猛吹雪4）。動物の数は、少人数ほど多めに足す', () => {
+  for (const n of [3, 5, 8, 16]) assert.deepStrictEqual([E.prepRoundsOf(n), E.finalRoundsOf(n), E.totalRoundsOf(n)], [6, 4, 10], `${n}人`);
   const st = mkN(16);
-  assert.deepStrictEqual([st.prep, st.fin, st.total], [6, 2, 8]);
-  assert.deepStrictEqual([mk().prep, mk().fin], [11, 5]);
+  assert.deepStrictEqual([st.prep, st.fin, st.total], [6, 4, 10]);
+  assert.deepStrictEqual([mk().prep, mk().fin], [6, 4]);
+  // 動物の数 = 人数 + 足す数（少人数ほど多い）。表は、人数が増えるほど、足す数が減る方向
+  const extra = [3, 4, 5, 8, 12, 16].map(E.animalsExtraOf);
+  assert.ok(extra[0] >= extra[extra.length - 1]);
+  assert.strictEqual(mk().animals.length, 3 + E.animalsExtraOf(3));
 });
 
 test('天候の出現比率（晴れ3：雪2：吹雪1：雨2）・準備期間に猛吹雪は出ない・最終猛吹雪は必ず猛吹雪', () => {
