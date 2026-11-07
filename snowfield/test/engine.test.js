@@ -56,7 +56,7 @@ test('手番終了：満腹度-3・次の手番。ラウンドの終わりに、
   const a = me(st);
   const before = JSON.stringify(st.animals);
   assert.ok(doIt(st, { type: 'end' }).ok);
-  assert.strictEqual(a.food, 7);
+  assert.strictEqual(a.food, 10 - E.RULES.hunger);
   assert.strictEqual(st.fire, 3);                            // 火力は、ラウンドの終わりまで減らない
   assert.strictEqual(JSON.stringify(st.animals), before);
   assert.strictEqual(me(st).id, 'p2');
@@ -172,7 +172,7 @@ test('植える：苗→1〜3ラウンド後に資源へ', () => {
   assert.ok(doIt(st, { type: 'plant', kind: 'veg' }).ok);
   assert.strictEqual(st.items.veg, 0);
   assert.match(doIt(st, { type: 'plant', kind: 'tree' }).why, /ここには植えられません/);
-  for (let i = 0; i < 3 * 3; i++) { st.fire = 5; doIt(st, { type: 'end' }, me(st).id); }   // 焚き火が消えたまま続くと負けるので、火を保つ
+  for (let i = 0; i < 3 * 3 && st.plants.length; i++) { for (const q of st.players) { q.temp = 10; q.food = 10; } st.fire = 5; doIt(st, { type: 'end' }, me(st).id); }   // 焚き火が消えたまま続くと負けるので、火を保つ
   assert.strictEqual(st.plants.length, 0);
   assert.strictEqual(E.resAt(st, x, y).t, 'veg');
   assert.ok(E.resAt(st, x, y).hp >= 3 && E.resAt(st, x, y).hp <= 7);
@@ -483,7 +483,7 @@ test('行動不能：焚き火へ強制移動・3に回復・次の手番は温�
   doIt(st, { type: 'end' });                      // 体温 1-2 → 0
   assert.strictEqual(a.down, 1);
   assert.strictEqual(a.temp, 3);
-  assert.strictEqual(a.food, 5);
+  assert.strictEqual(a.food, 8 - E.RULES.hunger);
   assert.ok(E.bAt(st, a.x, a.y).t === 'fire');
   doIt(st, { type: 'end' }); doIt(st, { type: 'end' });   // 他の2人
   assert.strictEqual(me(st).id, a.id);
@@ -491,6 +491,7 @@ test('行動不能：焚き火へ強制移動・3に回復・次の手番は温�
   assert.match(doIt(st, { type: 'stoke' }).why, /復帰中/);
   assert.match(doIt(st, { type: 'move', x: 2, y: 1 }).why, /行動不能/);
   assert.ok(doIt(st, { type: 'warm' }).ok);
+  a.food = 10; a.temp = 10;
   doIt(st, { type: 'end' });
   assert.strictEqual(a.down, 0);
 });
@@ -609,20 +610,21 @@ test('お絵かき：手番外だけ・マスをまたぐ線は分割して保�
 test('猛吹雪を生き延びるのに必要な食料', () => {
   const st = mk();
   const R = E.RULES.finalRounds;
-  // 準備期間：最終猛吹雪のラウンド数 × 3人 × 3
-  assert.deepStrictEqual([E.foodNeed(st).need, E.foodNeed(st).short, E.foodNeed(st).turns], [3 * R * 3, 3 * R * 3, R]);
+  const H = E.RULES.hunger;
+  // 準備期間：最終猛吹雪のラウンド数 × 3人 × 満腹度の減少
+  assert.deepStrictEqual([E.foodNeed(st).need, E.foodNeed(st).short, E.foodNeed(st).turns], [3 * R * H, 3 * R * H, R]);
   st.items.meat = 2; st.items.veg = 2;
   assert.strictEqual(E.foodNeed(st).have, 10);
-  assert.strictEqual(E.foodNeed(st).short, 3 * R * 3 - 10);
+  assert.strictEqual(E.foodNeed(st).short, 3 * R * H - 10);
   // 最終猛吹雪の中：残りのラウンドの終わりごとに3、最後に1以上残す
   st.round = E.RULES.prepRounds + 1;
   for (const p of st.players) p.food = 4;
   const n = E.foodNeed(st);
   assert.strictEqual(n.final, true);
   assert.strictEqual(n.turns, R);
-  assert.strictEqual(n.need, 3 * Math.max(0, R * 3 + 1 - 4));
+  assert.strictEqual(n.need, 3 * Math.max(0, R * H + 1 - 4));
   st.players[0].food = 2;
-  assert.strictEqual(E.foodNeed(st).need, Math.max(0, R * 3 + 1 - 2) + 2 * Math.max(0, R * 3 + 1 - 4));
+  assert.strictEqual(E.foodNeed(st).need, Math.max(0, R * H + 1 - 2) + 2 * Math.max(0, R * H + 1 - 4));
 });
 
 test('ゲーム開始：人数ぶんの野菜と薪、雪3個が配られる', () => {
@@ -783,13 +785,13 @@ test('手番を終えたときの予測', () => {
   const st = mk(); st.weather = 'snow';
   const p = me(st);
   let e = E.endProjection(st, p.id);
-  assert.deepStrictEqual([e.food, e.temp, e.fire, e.place, e.collapse], [7, 9, 3 - E.RULES.fireDrain, 'fire', false]);
+  assert.deepStrictEqual([e.food, e.temp, e.fire, e.place, e.collapse], [10 - E.RULES.hunger, 9, Math.max(0, 3 - E.RULES.fireDrain), 'fire', false]);
   const [x, y] = freeSpot(st);
   p.x = x; p.y = y; p.temp = 3; p.food = 3;
   e = E.endProjection(st, p.id);
   assert.deepStrictEqual([e.food, e.temp, e.collapse, e.loss], [0, 0, true, 3]);
   st.weather = 'rain';
-  assert.strictEqual(E.endProjection(st, p.id).fire, 3 - E.RULES.fireDrain - 1);
+  assert.strictEqual(E.endProjection(st, p.id).fire, Math.max(0, 3 - E.RULES.fireDrain - 1));
 });
 
 test('結果画面の統計：行動の集計', () => {

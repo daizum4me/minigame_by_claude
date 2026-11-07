@@ -17,10 +17,11 @@
     minPlayers: 3, maxPlayers: 16,
     prepRounds: 6, finalRounds: 2,
     maxTemp: 10, maxFood: 10, maxAp: 7,
-    hunger: 3,                         // 手番（ラウンド）の終わりの満腹度の減少
+    hunger: 4,                         // 手番（ラウンド）の終わりの満腹度の減少
     fireInit: 3, fireMax: 5,
-    fireDrain: 2,                      // 焚き火の火力は、ラウンドの終わりに、この数だけ減る（雨ならさらに-1）
+    fireDrain: 3,                      // 焚き火の火力は、ラウンドの終わりに、この数だけ減る（雨ならさらに-1）
     stormDmg: 2,                       // 猛吹雪のラウンドの始めに、建物のHPがこの数だけ減る
+    downLoseRatio: 0.5,                // 大人数（twoFiresFrom 人以上）では、行動不能の人がこの割合以上になると敗北
     twoFiresFrom: 8,                   // この人数以上のときは、焚き火が2つになり、プレイヤーが分かれて始まる
     fireGap: 4,                        // 焚き火どうしの間のマス数
     animalSteps: 2, fishSteps: 2,      // 動物・魚が、ラウンドの終わりに動く回数
@@ -409,10 +410,13 @@
       log(st, `${p.name}：${what}が0になり行動不能。焚き火へ運ばれた`);
     }
   }
+  // 行動不能の人がこの人数以上になると敗北（少人数は全員。大人数は半数）
+  const downLimit = n => (n >= RULES.twoFiresFrom ? Math.ceil(n * RULES.downLoseRatio) : n);
   function checkAllDown(st) {
-    if (!st.players.every(q => q.down > 0)) return false;
+    const need = downLimit(st.players.length), downs = st.players.filter(q => q.down > 0).length;
+    if (downs < need) return false;
     st.phase = 'lost'; st.over = { result: 'lost', round: st.round, reason: 'down' };
-    log(st, '全員が行動不能になった…ゲームオーバー');
+    log(st, need >= st.players.length ? '全員が行動不能になった…ゲームオーバー' : `行動不能の人が${downs}人（半数以上）になった…ゲームオーバー`);
     return true;
   }
   // ラウンドの終わり：動物・魚が動き、焚き火の火力が減る。すべての焚き火が消えたまま3ラウンドで敗北。最終ラウンドを終えればクリア
@@ -1003,7 +1007,7 @@
   }
 
   return {
-    repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
+    repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS, TOTAL_ROUNDS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
     cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,
