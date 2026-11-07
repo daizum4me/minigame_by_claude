@@ -106,7 +106,19 @@
     }
     deliver(pid, msg) {
       if (pid === this.id) { setTimeout(() => onMessage(msg), 0); return; }
-      for (const [conn, info] of this.conns) if (info.id === pid) safeSend(conn, msg);
+      for (const [conn, info] of this.conns) {
+        if (info.id !== pid) continue;
+        if (msg.type === 'state') {
+          // ゲームの状態は、前に送った内容との差分だけを送る（人数が多いほど、通信量が大きくなるため）
+          if (!msg.game || msg.resync) info.sent = null;
+          else {
+            const d = window.SnowRoom.Delta.make(info.sent, msg.game);
+            info.sent = d.parts;
+            if (!d.full) msg = { type: 'state', you: msg.you, room: msg.room, gamePatch: d.patch };
+          }
+        }
+        safeSend(conn, msg);
+      }
     }
     onConnection(conn) {
       conn.on('data', msg => {
@@ -313,6 +325,10 @@
     if (msg.type !== 'state') return;
     if (!app.conn || !app.conn.isHost && !app.conn.isLocal) {
       if (msg.room.version !== E.VERSION) { leaveRoom(`この部屋は v${msg.room.version || '不明（古い版）'} です（あなたは v${E.VERSION}）。ページを再読み込みして、最新版にしてください`); return; }
+    }
+    if (msg.gamePatch) {                                  // 差分：手元の状態に重ねる（手元の状態がなければ、全体を求める）
+      if (!app.game) { send({ type: 'resync' }); return; }
+      msg.game = window.SnowRoom.Delta.apply(app.game, msg.gamePatch);
     }
     app.me = msg.you;
     app.room = msg.room;

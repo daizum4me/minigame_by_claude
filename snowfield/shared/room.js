@@ -259,6 +259,11 @@
           if (r.ok) this.changed();
           return;
         }
+        case 'resync': {      // 状態の差分が合わなくなった人に、全体を送り直す
+          const p = this.players.find(x => x.id === id);
+          if (p && !p.cpu && p.connected) this.sendFn(id, { type: 'state', you: id, room: this.view(), game: this.game, resync: true });
+          return;
+        }
         case 'act': {
           if (this.phase !== 'game' || !this.game) return;
           return this.doAct(id, msg.a);
@@ -267,14 +272,15 @@
       }
     }
 
-    doAct(id, a) {
+    // quiet：状態の配信をしない（まとめて動かすときに使う。あとで、changed() を1回呼ぶ）
+    doAct(id, a, quiet) {
       const g = this.game;
       const had = !!g.vote;
       const r = E.act(g, id, a);
       if (!r.ok) { this.error(id, r.why); return r; }
       if (r.msg || r.sfx) this.toast(id, r.msg, r.good === false ? 'bad' : '', r.sfx);
       if (had && !g.vote) this.voteCool = this.now() + VOTE_COOL_MS;
-      this.changed();
+      if (!quiet) this.changed();
       return r;
     }
 
@@ -330,14 +336,14 @@
             const mem = this.mem[p.id] || (this.mem[p.id] = {});
             const n = this.cpuCount[p.id] = (this.cpuCount[p.id] || 0) + 1;
             const a = n > CPU_ACTION_LIMIT ? { type: 'end' } : CPU.decide(g, p.id, mem);
-            const r = this.doAct(p.id, a);
-            if (!r.ok && a.type !== 'end') this.doAct(p.id, { type: 'end' });
+            const r = this.doAct(p.id, a, true);
+            if (!r.ok && a.type !== 'end') this.doAct(p.id, { type: 'end' }, true);
           } else if (p.away) {
             this.finishPending(p.id);
-            this.doAct(p.id, { type: 'end' });
+            this.doAct(p.id, { type: 'end' }, true);
           }
         }
-        this.schedule();
+        this.changed();                      // 全員ぶんの行動を、1回の配信にまとめる（通信量を減らす）
         return;
       }
       const c = E.cur(g);
@@ -362,5 +368,57 @@
     }
   }
 
-  return { Room, COLORS, SHAPES, CPU_MS, AWAY_MS, VOTE_COOL_MS };
+  // 状態の差分：ゲームの状態は項目（round・items・res・players…）ごと、さらに中身（資源1つ・プレイヤー1人…）ごとに、
+  // 前に送った内容と比べ、変わったところだけを送る。差分の印は _d:1（ゲームの状態には、この名前の項目はない）
+  const Delta = {
+    split(g) {
+      const o = {};
+      for (const k of Object.keys(g)) {
+        const v = g[k], whole = JSON.stringify(v);
+        if (v && typeof v === 'object') {
+          const subs = {};
+          for (const sk of Object.keys(v)) subs[sk] = JSON.stringify(v[sk]);
+          o[k] = { whole, arr: Array.isArray(v), subs };
+        } else o[k] = { whole };
+      }
+      return o;
+    },
+    // prev：前に送ったときの split の結果。戻り値 { full, patch, parts }。別のゲーム・初めてのときは full（全体を送る）
+    make(prev, g) {
+      const parts = Delta.split(g);
+      if (!prev || !prev.seed || prev.seed.whole !== parts.seed.whole) return { full: true, patch: null, parts };
+      const patch = {};
+      for (const k of Object.keys(g)) {
+        const cur = parts[k], old = prev[k];
+        if (old && cur.whole === old.whole) continue;
+        if (!old || !cur.subs || !old.subs || cur.arr !== old.arr) { patch[k] = g[k]; continue; }
+        const set = {}, del = [];
+        for (const sk of Object.keys(cur.subs)) if (cur.subs[sk] !== old.subs[sk]) set[sk] = g[k][sk];
+        for (const sk of Object.keys(old.subs)) if (!(sk in cur.subs)) del.push(sk);
+        patch[k] = { _d: 1, set, del, len: cur.arr ? g[k].length : undefined };
+      }
+      return { full: false, patch, parts };
+    },
+    apply(base, patch) {
+      const out = Object.assign({}, base);
+      for (const k of Object.keys(patch)) {
+        const p = patch[k];
+        if (!(p && p._d)) { out[k] = p; continue; }
+        if (p.len !== undefined) {                          // 配列：指定の位置を入れ替え、長さをそろえる
+          const arr = (base[k] || []).slice();
+          for (const i of Object.keys(p.set)) arr[+i] = p.set[i];
+          arr.length = p.len;
+          out[k] = arr;
+        } else {                                            // オブジェクト：項目を入れ替え・消す
+          const o = Object.assign({}, base[k]);
+          for (const i of Object.keys(p.set)) o[i] = p.set[i];
+          for (const i of p.del) delete o[i];
+          out[k] = o;
+        }
+      }
+      return out;
+    },
+  };
+
+  return { Room, Delta, COLORS, SHAPES, CPU_MS, AWAY_MS, VOTE_COOL_MS };
 });

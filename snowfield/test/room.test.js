@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const E = require('../shared/engine');
 const CPU = require('../shared/cpu');
-const { Room } = require('../shared/room');
+const { Room, Delta } = require('../shared/room');
 
 // タイマーと時計は手で進める
 function makeRoom(seed, o) {
@@ -312,4 +312,42 @@ test('同時に動く：切断中の人は、すぐに行動を終える', () =>
   room.disconnect(h); room.disconnect(g);
   for (let i = 0; i < 20 && step(); i++);
   assert.ok(room.game.round > 1);
+});
+
+test('状態の差分：差分を重ねていくと、いつも、全体と同じになる（CPUだけの16人の対戦で、最後まで確かめる）', () => {
+  const players = Array.from({ length: 16 }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true }));
+  const st = E.createGame({ seed: 5, players });
+  const mem = {};
+  let sent = null, mirror = null, patches = 0, fulls = 0, bytesFull = 0, bytesPatch = 0;
+  for (let k = 0; k < 400 && st.phase === 'play'; k++) {
+    for (const p of st.players.slice()) {
+      if (st.phase !== 'play' || p.done) continue;
+      const a = CPU.decide(st, p.id, mem[p.id] || (mem[p.id] = {}));
+      if (!E.act(st, p.id, a).ok) E.act(st, p.id, { type: 'end' });
+    }
+    const d = Delta.make(sent, st);
+    sent = d.parts;
+    const whole = JSON.stringify(st);
+    if (d.full) { mirror = JSON.parse(whole); fulls++; bytesFull += whole.length; }
+    else { mirror = Delta.apply(mirror, JSON.parse(JSON.stringify(d.patch))); patches++; bytesPatch += JSON.stringify(d.patch).length; }
+    assert.deepStrictEqual(mirror, JSON.parse(whole), `${k}回目の差分が、全体と合わない`);
+  }
+  assert.ok(patches > 20 && fulls === 1);
+  assert.ok(bytesPatch / patches < (bytesFull / fulls) * 0.6, '差分は、全体より十分に小さい');
+  // 別のゲーム（シードが違う）になったら、全体を送り直す
+  assert.strictEqual(Delta.make(sent, E.createGame({ seed: 6, players })).full, true);
+});
+
+test('通信量：同時に動くとき、CPUの行動は1回の配信にまとめる（人間の数ぶんだけ配信される）', () => {
+  const { room, inbox, timers, clock } = makeRoom(9, { simul: true });
+  const h = room.join('t1', 'A').id;
+  room.join('t2', 'B');
+  for (let i = 0; i < 12; i++) room.handle(h, { type: 'addCpu' });             // 人間2人 + CPU12人
+  room.handle(h, { type: 'start' });
+  const count = () => Object.values(inbox).reduce((n, a) => n + a.filter(m => m.type === 'state').length, 0);
+  const idx = timers.findIndex(t => t.ms < 2000);
+  assert.ok(idx >= 0);
+  const before = count();
+  const t = timers.splice(idx, 1)[0]; clock.t += t.ms; t.fn();                 // CPUが動く1回ぶん
+  assert.strictEqual(count() - before, 2);                                     // 12人のCPUが動いても、人間2人に1回ずつ
 });
