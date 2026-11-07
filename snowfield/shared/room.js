@@ -395,7 +395,7 @@
         const set = {}, del = [];
         for (const sk of Object.keys(cur.subs)) if (cur.subs[sk] !== old.subs[sk]) set[sk] = g[k][sk];
         for (const sk of Object.keys(old.subs)) if (!(sk in cur.subs)) del.push(sk);
-        patch[k] = { _d: 1, set, del, len: cur.arr ? g[k].length : undefined };
+        patch[k] = { _d: 1, set, del, arr: cur.arr, len: cur.arr ? g[k].length : 0 };   // 通信では undefined が null に変わるので、配列かどうかは arr で示す
       }
       return { full: false, patch, parts };
     },
@@ -404,7 +404,7 @@
       for (const k of Object.keys(patch)) {
         const p = patch[k];
         if (!(p && p._d)) { out[k] = p; continue; }
-        if (p.len !== undefined) {                          // 配列：指定の位置を入れ替え、長さをそろえる
+        if (p.arr) {                                        // 配列：指定の位置を入れ替え、長さをそろえる
           const arr = (base[k] || []).slice();
           for (const i of Object.keys(p.set)) arr[+i] = p.set[i];
           arr.length = p.len;

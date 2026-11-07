@@ -329,7 +329,10 @@ test('状態の差分：差分を重ねていくと、いつも、全体と同�
     sent = d.parts;
     const whole = JSON.stringify(st);
     if (d.full) { mirror = JSON.parse(whole); fulls++; bytesFull += whole.length; }
-    else { mirror = Delta.apply(mirror, JSON.parse(JSON.stringify(d.patch))); patches++; bytesPatch += JSON.stringify(d.patch).length; }
+    else {                                                       // 通信では undefined が null になる（PeerJS と同じ）
+      mirror = Delta.apply(mirror, JSON.parse(JSON.stringify(d.patch, (k, v) => (v === undefined ? null : v))));
+      patches++; bytesPatch += JSON.stringify(d.patch).length;
+    }
     assert.deepStrictEqual(mirror, JSON.parse(whole), `${k}回目の差分が、全体と合わない`);
   }
   assert.ok(patches > 20 && fulls === 1);
