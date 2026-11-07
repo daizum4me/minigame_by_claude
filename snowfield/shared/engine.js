@@ -21,7 +21,7 @@
     fireInit: 3, fireMaxMin: 5,        // 焚き火の火力の上限 = その焚き火で始まる人数（最低 fireMaxMin）
     fireDrainDiv: 2,                   // 焚き火の火力は、ラウンドの終わりに、「その焚き火で始まる人数 ÷ fireDrainDiv の切り上げ」だけ減る（雨ならさらに-1）
     stormDmg: 2,                       // 猛吹雪のラウンドの始めに、建物のHPがこの数だけ減る
-    downLoseRatio: 0.5,                // 大人数（twoFiresFrom 人以上）では、行動不能の人がこの割合以上になると敗北
+    downLoseRatio: 0.3, downFrom: 7,   // downFrom 人以上では、行動不能の人がこの割合以上（最低2人）になると敗北。それより少ない人数は、全員が行動不能になると敗北
     twoFiresFrom: 8,                   // この人数以上のときは、焚き火が2つになり、プレイヤーが分かれて始まる
     fireGap: 4,                        // 焚き火どうしの間のマス数
     animalSteps: 2, fishSteps: 2,      // 動物・魚が、ラウンドの終わりに動く回数
@@ -51,7 +51,7 @@
     fishPerPlayer: 1, fishHpMin: 1, fishHpMax: 3, fishMin: 1, fishMax: 3, fishRange: 3,   // 魚：川にいる。数 = 人数×fishPerPlayer
     riverPeriod: 40, riverWidth: 2, riverWobble: 1.6, riverWave: 40, riverClear: 4,   // 川：雪原にはない・橋がないと移動も建設もできない（焚き火の周り riverClear マスは川にならない）
     // 動物の数 = 人数 + animalsExtraBy（少人数ほど多めに足す。大人数は人数だけで十分に狩れるので、足さない）
-    animalsExtraBy: [[3, 9], [4, 7], [6, 4], [10, 5], [12, 3], [14, 0], [16, -2]],   // [人数の上限, 足す数]
+    animalsExtraBy: [[3, 11], [4, 7], [5, 5], [6, -1], [7, 0], [8, 5], [10, 9], [12, 3], [14, 0], [16, -2]],   // [人数の上限, 足す数]
     animalHpMin: 3,
      animalHpMax: 5, meatMin: 1, meatMax: 7,
     eat: { meat: 3, fish: 3, veg: 2, steak: 5, grilled: 5, soup: 2 },
@@ -432,7 +432,7 @@
     }
   }
   // 行動不能の人がこの人数以上になると敗北（少人数は全員。大人数は半数）
-  const downLimit = n => (n >= RULES.twoFiresFrom ? Math.ceil(n * RULES.downLoseRatio) : n);
+  const downLimit = n => (n >= RULES.downFrom ? Math.max(2, Math.ceil(n * RULES.downLoseRatio)) : n);
   function checkAllDown(st) {
     const need = downLimit(st.players.length), downs = st.players.filter(q => q.down > 0).length;
     if (downs < need) return false;

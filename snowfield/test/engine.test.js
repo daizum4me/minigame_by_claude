@@ -910,6 +910,7 @@ test('焚き火が消えたまま3ラウンドが続くと敗北（火力1以上
 
 test('道をふさぐ駒：駒を無視すれば通れる道と、ふさいでいる駒がわかる。どいてもらう移動は、その道を避ける', () => {
   const st = mk(); st.weather = 'clear'; st.next = 'clear';
+  st.animals = [];                                                         // 動物が道にいると、ふさがれるので、いなくする
   const a = me(st), b = E.pl(st, 'p2');
   // 道を作る（焚き火の右に一直線）。aは焚き火の端、bは道の途中にいる
   const f = E.fireOf(st);
