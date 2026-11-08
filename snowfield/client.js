@@ -253,7 +253,7 @@
       this.room = new window.SnowRoom.Room({ code: '', send: (pid, msg) => { if (pid === this.id) { const m = clone(msg); setTimeout(() => onMessage(m), 0); } } });
       this.id = this.room.join(token(), name).id;
       for (let i = 0; i < R.minPlayers - 1; i++) this.room.handle(this.id, { type: 'addCpu' });
-      if (opts && opts.tutorial) { this.room.tutorial = true; this.room.settings.simul = false; this.room.handle(this.id, { type: 'start' }); }   // チュートリアルは、すぐに始める
+      if (opts && opts.tutorial) { this.room.tutorial = true; this.room.handle(this.id, { type: 'start' }); }   // チュートリアルは、すぐに始める
     }
     send(msg) { setTimeout(() => { if (!this.room.closed) this.room.handle(this.id, msg); }, 0); }
     close() { this.room.close(); }
@@ -809,7 +809,8 @@
       const can = p.id === app.me && !x;
       return `<div class="vr"><span class="n">${esc(p.name)}</span><b style="color:${col}">${st}</b>${can ? '<button data-vote="1">賛成</button><button data-vote="-1">反対</button>' : ''}</div>`;
     }).join('');
-    el.innerHTML = `<b style="font-size:13px">「${E.ITEM_NAMES[v.k]}」を1個捨てる投票</b>${rows}
+    const over = v.auto ? `<div class="small" style="color:var(--redFg);font-weight:700">持ち物が上限を超えています（あと${Math.max(0, E.total(g) - E.cap(g))}個）。超えた分を捨てる投票です</div>` : '';
+    el.innerHTML = `<b style="font-size:13px">「${E.ITEM_NAMES[v.k]}」を1個捨てる投票</b>${over}${rows}
       <div class="vr"><span class="n small muted">過半数の賛成で捨てます。反対が半数以上で否決。</span>${v.by === app.me ? '<button data-vote-cancel>取り下げ</button>' : ''}</div>`;
   }
 

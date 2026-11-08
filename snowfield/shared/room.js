@@ -291,6 +291,8 @@
       const g = this.game;
       if (this.phase !== 'game' || !g || g.phase !== 'play') return 0;
       if (E.simul(g)) {
+        // チュートリアルでは、人間が行動を終えるまで、CPU は待つ（操作の説明の途中で、資源や持ち物を使わないように）
+        if (this.tutorial && g.players.some(p => !p.cpu && !p.done)) return 0;
         if (g.players.some(p => p.cpu && !p.done)) return 1;
         if (g.players.some(p => p.away && !p.done)) return 2;
       } else {

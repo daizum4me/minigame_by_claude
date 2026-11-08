@@ -391,6 +391,7 @@
         st.b = st.b.filter(b => !gone.includes(b));
         st.stats.team.destroyed += gone.length;
         for (const b of gone) log(st, `猛吹雪で${BUILD[b.t].name}が壊れた`);
+        checkExcess(st);                                  // 倉庫が壊れて、持ち物が上限を超えたら、捨てる投票
       }
     }
   }
@@ -681,10 +682,25 @@
       if (st.items[v.k] > 0) { st.items[v.k]--; st.stats.team.discarded++; }
       st.vote = null;
       log(st, `投票で可決：${ITEM_NAMES[v.k]}を1個捨てた`);
+      if (total(st) <= cap(st)) st.exSkip = [];
+      checkExcess(st);
     } else if (no * 2 >= n) {
       st.vote = null;
       log(st, `投票で否決：${ITEM_NAMES[v.k]}は捨てない`);
+      if (v.auto) (st.exSkip = st.exSkip || []).push(v.k);       // 上限を超えているときは、次の候補で、また投票する
+      checkExcess(st);
     }
+  }
+  // 倉庫が壊れるなどで、持ち物が上限を超えたら、超えた分を捨てる投票を、自動で始める（いちばん多い物から。否決されたら、次に多い物）
+  function checkExcess(st) {
+    if (st.phase !== 'play' || st.vote) return;
+    if (total(st) <= cap(st)) { st.exSkip = []; return; }
+    const skip = st.exSkip || [];
+    let cand = ITEMS.filter(k => st.items[k] > 0 && !skip.includes(k)).sort((a, b) => st.items[b] - st.items[a] || ITEMS.indexOf(a) - ITEMS.indexOf(b));
+    if (!cand.length) { st.exSkip = []; cand = ITEMS.filter(k => st.items[k] > 0).sort((a, b) => st.items[b] - st.items[a] || ITEMS.indexOf(a) - ITEMS.indexOf(b)); }
+    if (!cand.length) return;                                   // 道具だけで上限を超えている場合は、捨てる物がない
+    st.vote = { k: cand[0], by: null, auto: true, v: {} };
+    log(st, `持ち物が上限を超えました（あと${total(st) - cap(st)}個）：${ITEM_NAMES[cand[0]]}を1個捨てる投票が始まりました`);
   }
 
   // ---------- 行動 ----------
@@ -1031,7 +1047,7 @@
   return {
     prepRoundsOf, finalRoundsOf, totalRoundsOf, animalsExtraOf, repairStone, isRiver, isPath, bridgeAt, fishAt, VERSION, RULES, BUILD, RECIPES, GEAR, STATION_NAMES, downLimit, fireSize, fires, nearFireB, nearestFire, allFiresOut, simul, beginPlayer, endRoundAll, forceEndRound, gain, foodNeed, endProjection, nearStation, rangeOf, ITEMS, ITEM_NAMES, WEATHER_NAMES, RES_ITEM, DIRS,
     key, parseKey, createGame, act, rollWeather, log, endTurn, resolveVote,
-    cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect, iglooOk, covered, coldOn,
+    cur, pl, isTurn, bAt, resAt, animalAt, plantAt, playerAt, inGen, reach, insul, fireOf, nearFire, nearB, rectGap, inRect, checkExcess, iglooOk, covered, coldOn,
     count, cap, total, room, hasTower, phaseOf, where, tempLoss, warmAmount,
     moveMap, moveCost, moveWhy, buildWhy, lacking, genCells, pathBlockers, moveAsideTile,
   };

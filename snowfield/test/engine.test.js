@@ -543,6 +543,26 @@ test('夜の寒さ：ラウンドの終わりに、全員同時に決める（�
   assert.deepStrictEqual([a.temp, b.temp, c.temp], [8 - 1, 4, 6]);
 });
 
+test('倉庫が壊れて持ち物が上限を超えたら、超えた分を捨てる投票が自動で始まる（否決されたら次に多い物。上限に収まるまで続く）', () => {
+  const st = mk(); st.weather = 'storm'; st.next = 'storm';
+  st.b.push({ id: 80, t: 'storage', x: 20, y: 20, w: 4, h: 4, hp: 2, max: 8 });          // 次のラウンドの猛吹雪で壊れる
+  st.items.wood = 10; st.items.stone = 6; st.items.snow = 4;                              // 合計20（上限は 6+10+10＝26 → 壊れると16）
+  assert.strictEqual(E.cap(st), 26);
+  for (const p of st.players) { p.temp = 10; p.food = 10; }
+  for (let i = 0; i < 3; i++) doIt(st, { type: 'end' });                                    // ラウンドが進む
+  assert.ok(!st.b.some(b => b.id === 80));
+  assert.strictEqual(E.cap(st), 16);
+  assert.ok(st.vote && st.vote.auto && st.vote.k === 'wood', '木材（いちばん多い）を捨てる投票が始まる');
+  // 反対多数で否決 → 次に多い物（石材）で、また投票
+  for (const p of st.players) E.act(st, p.id, { type: 'voteCast', val: -1 });
+  assert.ok(st.vote && st.vote.k === 'stone');
+  // 賛成で可決 → 上限に収まるまで、続けて投票
+  let guard = 0;
+  while (st.vote && guard++ < 20) for (const p of st.players) if (st.vote && !st.vote.v[p.id]) E.act(st, p.id, { type: 'voteCast', val: 1 });
+  assert.ok(E.total(st) <= E.cap(st));
+  assert.strictEqual(st.vote, null);
+});
+
 test('行動不能：焚き火へ強制移動・3に回復・次の手番は温まる/食べるだけ', () => {
   const st = mk(); st.weather = 'clear';
   const a = me(st);

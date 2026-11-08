@@ -437,7 +437,7 @@
   function voteIntent(st, pid) {
     if (st.vote) {
       if (st.vote.v[pid]) return null;
-      return { type: 'voteCast', val: surplus(st, st.vote.k) ? 1 : -1 };
+      return { type: 'voteCast', val: st.vote.auto || surplus(st, st.vote.k) ? 1 : -1 };   // 上限を超えて自動で始まった投票は、賛成
     }
     if (E.room(st) > 2) return null;
     const k = Object.keys(SURPLUS).find(x => st.items[x] > SURPLUS[x]);
