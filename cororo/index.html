@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cororo オンライン</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+:root{--bg:#f4f5f6;--panel:#fff;--ink:#23262d;--mute:#6c717b;--line:#e4e6e9;--chip:#eceef0;--btn:#f0f1f3;--boardbg:#eceef0;--grid:#cdd0d5;--gdot:#b9bdc4;--me:#2457f5;--cpu:#f2623f;--acc:#2a2d34;--accfg:#fff;--mk:#9ca1aa;--push:#c58a42;--ovl:rgba(24,26,32,.5);--shadow:0 1px 2px rgba(24,26,32,.06),0 4px 14px rgba(24,26,32,.06);--shadow2:0 1px 2px rgba(24,26,32,.06),0 10px 30px rgba(24,26,32,.1);
+--step:clamp(36px,min(calc((100vh - 240px)/6.2),calc((100vw - 780px)/6.2)),84px);--pad:calc(var(--step)*.55)}
+[data-theme=dark]{color-scheme:dark;--bg:#121316;--panel:#1b1d22;--ink:#e6e8ec;--mute:#9a9fa9;--line:#2b2e35;--chip:#23262c;--btn:#24272e;--boardbg:#22252b;--grid:#3b3f48;--gdot:#4b505b;--me:#6b8cff;--cpu:#ff7f5e;--acc:#e6e8ec;--accfg:#121316;--mk:#848a95;--push:#d9b26a;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.25);--shadow2:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.4)}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{min-height:100vh;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,'Noto Sans JP',system-ui,-apple-system,'Hiragino Sans','Yu Gothic',sans-serif}
+[hidden]{display:none!important}
+button{font:inherit;cursor:pointer;color:var(--ink);border:0;background:var(--btn);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:not(:disabled):hover{filter:brightness(.96)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.primary{background:var(--acc);color:var(--accfg)}
+button.big{padding:13px 18px;font-size:15px;border-radius:14px;width:100%}
+button.pill[aria-pressed=true]{background:var(--acc);color:var(--accfg)}
+input[type=text]{font:inherit;color:var(--ink);background:var(--btn);border:1px solid transparent;border-radius:12px;padding:10px 12px;min-width:0}
+.muted{color:var(--mute)}.small{font-size:12px;line-height:1.6}
+.card{background:var(--panel);border-radius:20px;padding:24px;box-shadow:var(--shadow2);display:flex;flex-direction:column;gap:12px}
+.center{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.narrow{width:min(440px,100%)}
+.logo{width:36px;height:36px;display:inline-block;flex:none;vertical-align:middle}
+.logo svg{display:block;width:100%;height:100%}
+.title{margin:0;font-size:28px;font-weight:700;display:flex;align-items:center;gap:10px}
+.title small{font-size:13px;font-weight:500;color:var(--mute)}
+h2{margin:0;font-size:20px}h3{margin:8px 0 0;font-size:14px}
+.lead{margin:0;color:var(--mute);font-size:13px;line-height:1.8}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)}
+.row{display:flex;gap:8px;align-items:stretch}.grow{flex:1 1 0;min-width:0}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.srow{display:flex;flex-direction:column;gap:6px}
+.crow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.crow input[type=color]{width:38px;height:34px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:pointer}.crow input[type=text]{width:92px;height:34px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;font-family:ui-monospace,Menlo,monospace}.cprev{width:26px;height:26px;border-radius:50%;display:inline-block;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line)}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}.sw{position:relative;display:inline-block}.swb{width:30px;height:30px;border-radius:50%;padding:0;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line)}.swx{position:absolute;right:-6px;top:-6px;width:16px;height:16px;padding:0;border-radius:50%;font-size:11px;line-height:1;background:var(--panel);border:1px solid var(--line);color:var(--mute)}
+.plist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.plist li{display:flex;align-items:center;gap:10px;background:var(--btn);border-radius:12px;padding:9px 12px}
+.plist .name{flex:1;font-weight:700;min-width:0}
+.tag{font-size:11px;font-weight:600;background:var(--chip);color:var(--mute);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.dot{width:14px;height:14px;border-radius:50%;display:block;flex:none}
+.c0{background:var(--me)}.c1{background:var(--cpu)}
+
+/* 対局画面 */
+#game{min-height:100vh;display:flex;flex-direction:column}
+.bar{min-height:64px;flex:none;background:var(--panel);box-shadow:0 1px 0 var(--line);display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 20px}
+.brand{font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px}
+.brand small{font-size:12px;font-weight:500;color:var(--mute)}
+.chip{font-size:12px;font-weight:600;background:var(--chip);color:var(--mute);border-radius:999px;padding:5px 12px;white-space:nowrap}
+.chip.acc{background:var(--acc);color:var(--accfg)}
+.body{flex:1;min-height:0;padding:20px;display:flex;gap:20px}
+.left{width:272px;flex:none;display:flex;flex-direction:column;gap:12px}
+.right{width:296px;flex:none;display:flex;flex-direction:column;gap:12px}
+.mapcol{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;position:relative}
+.panel{background:var(--panel);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;flex:none;box-shadow:var(--shadow)}
+.lab{font-size:12px;font-weight:700;color:var(--mute);letter-spacing:.04em}
+.pcard{background:var(--panel);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;flex:none;box-shadow:var(--shadow);outline:2px solid transparent;outline-offset:-2px}
+.pcard.cur{outline-color:var(--acc)}
+.phead{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}.phead .pn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms{display:flex;align-items:center;gap:10px;font-size:12px}.ms .k{color:var(--mute);width:64px;flex:none}.ms b{min-width:28px;text-align:right}
+.segs{flex:1;display:flex;gap:3px}.segs i{flex:1;height:8px;border-radius:4px;background:var(--line);display:block}.segs i.on{background:var(--acc)}
+.steps{display:flex;flex-direction:column;gap:10px}
+.step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mute)}
+.step.cur{color:var(--ink);font-weight:700}
+.sn{width:24px;height:24px;border-radius:50%;background:var(--line);color:var(--mute);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.step.cur .sn{background:var(--acc);color:var(--accfg)}.step.done .sn{background:var(--me);color:#fff}
+.hint{position:absolute;left:0;top:0;background:var(--panel);border-radius:999px;font-size:12px;font-weight:600;padding:6px 14px;box-shadow:var(--shadow);max-width:100%}
+.mid{display:flex;flex-direction:column;gap:12px;margin-top:20px}
+.bar2{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--mute)}
+.bar2 .who{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:var(--ink)}
+.bwrap{background:transparent;border-radius:24px;padding:14px}
+.board{position:relative;width:calc(var(--step)*5 + var(--pad)*2);height:calc(var(--step)*5 + var(--pad)*2);background:transparent;filter:drop-shadow(0 2px 6px rgba(24,26,32,.14));border-radius:14px;touch-action:none;user-select:none;-webkit-user-select:none}
+.ln{position:absolute;background:var(--grid);border-radius:1px;pointer-events:none}
+.ln.h{height:2px;left:var(--pad);width:calc(var(--step)*5);margin-top:-1px}
+.ln.v{width:2px;top:var(--pad);height:calc(var(--step)*5);margin-left:-1px}
+.gd{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--gdot);pointer-events:none}
+.at{left:calc(var(--pad) + var(--c)*var(--step));top:calc(var(--pad) + var(--r)*var(--step))}
+.pc{position:absolute;padding:0;border-radius:50%;transform:translate(-50%,-50%);left:calc(var(--pad) + var(--c)*var(--step));top:calc(var(--pad) + var(--r)*var(--step));transition:left .24s ease,top .24s ease,opacity .35s ease,box-shadow .15s;box-shadow:0 2px 6px rgba(24,26,32,.28);z-index:2}
+.pc.k0{width:calc(var(--step)*.34);height:calc(var(--step)*.34)}
+.pc.k1{width:calc(var(--step)*.34);height:calc(var(--step)*.34);border-radius:18%}
+.pc.k2{width:calc(var(--step)*.68);height:calc(var(--step)*.68)}
+.pc.s0{background:var(--me)}.pc.s1{background:var(--cpu)}
+.pc.sel{box-shadow:0 0 0 3px var(--panel),0 0 0 6px var(--acc);z-index:4}
+.pc.pvc{box-shadow:0 0 0 3px var(--panel),0 0 0 6px var(--push);z-index:4}
+.pc.pvf{box-shadow:0 0 0 3px var(--panel),0 0 0 6px #bf5a55;opacity:.55;z-index:4}
+.tile{position:absolute;background:var(--boardbg);z-index:0;pointer-events:none;transform-origin:50% 50%}
+.tile .th{position:absolute;height:2px;margin-top:-1px;background:var(--grid);border-radius:1px}
+.tile .tv{position:absolute;width:2px;margin-left:-1px;background:var(--grid);border-radius:1px}
+.tile .td{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--gdot)}
+.tile.pend::after{content:'';position:absolute;inset:0;border-radius:inherit;background:rgba(191,90,85,.4);animation:pendp 1.4s ease-in-out infinite}
+.tile.pend.soon::after{animation-duration:.6s;background:rgba(191,90,85,.42)}
+@keyframes pendp{50%{opacity:.15}}
+.tile.tfall{animation:tfall 1s cubic-bezier(.5,0,.9,.5) forwards;z-index:-1}
+@keyframes tfall{0%{transform:translateY(0) rotate(0) scale(1);opacity:1}15%{transform:translateY(-3px) rotate(-1deg) scale(1.01);opacity:1}100%{transform:translateY(90px) rotate(7deg) scale(.7);opacity:0}}
+.tut .tt{font-size:16px;margin:4px 0 6px}
+.tut .tx{font-size:13px;line-height:1.75;margin:6px 0 10px}
+.tut .tl{margin:0;padding-left:18px}.tut .tl li{margin:4px 0}
+.tut .task{background:var(--chip);border-radius:12px;padding:10px 12px;font-weight:600;font-size:13px;line-height:1.6;margin:8px 0 12px}
+.tut .task.ok{background:#e4ece6;color:#365a43}
+[data-theme=dark] .tut .task.ok{background:#1f2a23;color:#a3c9b0}
+.tutbtn{flex-wrap:wrap;gap:8px}
+.chip.warn{background:#bf5a55;color:#fff}
+.dot.cx{background:var(--mute)}
+@media (prefers-reduced-motion:reduce){.tile.pend::after{animation:none}.tile.tfall{animation-duration:.01s}}
+.pc.fall{opacity:0;z-index:1;pointer-events:none;transition:left .6s cubic-bezier(.5,0,.9,.6),top .6s cubic-bezier(.5,0,.9,.6),opacity .55s ease .15s}
+.pc.fall.spin{animation:pcfall .7s ease-in forwards}
+@keyframes pcfall{0%{transform:translate(-50%,-50%) scale(1) rotate(0)}25%{transform:translate(-50%,-50%) scale(1.25) rotate(40deg)}100%{transform:translate(-50%,-50%) scale(.2) rotate(420deg)}}
+.ring{position:absolute;left:calc(var(--pad) + var(--c)*var(--step));top:calc(var(--pad) + var(--r)*var(--step));width:calc(var(--step)*.3);height:calc(var(--step)*.3);border-radius:50%;transform:translate(-50%,-50%) scale(.3);border:3px solid var(--cpu);opacity:.9;pointer-events:none;z-index:5;animation:ringout .6s ease-out forwards}
+.ring.s0{border-color:var(--me)}.ring.big{border-width:5px;animation-duration:.8s}
+@keyframes ringout{to{transform:translate(-50%,-50%) scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){.pc.fall.spin,.ring{animation:none}}
+.pc.last{outline:2px dashed var(--mute);outline-offset:4px}
+.pc[disabled]{opacity:1;cursor:default}
+.pc.can{cursor:pointer}
+.mk{position:absolute;transform:translate(-50%,-50%);left:calc(var(--pad) + var(--c)*var(--step));top:calc(var(--pad) + var(--r)*var(--step));width:calc(var(--step)*.9);height:calc(var(--step)*.9);padding:0;background:transparent;border-radius:50%;z-index:3}
+.mk::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%}
+.mk.dot::after{width:calc(var(--step)*.2);height:calc(var(--step)*.2);background:var(--mk)}
+.mk.push::after{width:calc(var(--step)*.82);height:calc(var(--step)*.82);border:3px solid var(--push);background:transparent}
+.mk.push{z-index:5}
+.mk.dot:hover::after{background:var(--ink)}
+.legend-ico{position:relative;width:48px;height:48px;border-radius:12px;background:var(--chip);flex:none}
+.legend-ico i{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;background:var(--me)}
+.irow{display:flex;align-items:center;gap:12px}.irow>div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.irow b{font-size:14px}.irow span{font-size:12px;color:var(--mute);line-height:1.5}
+.logbox{flex:1 1 0;min-height:120px}
+.log{display:flex;flex-direction:column;gap:9px;overflow:auto;font-size:12px;line-height:1.5;max-height:340px}
+.log div{display:flex;gap:10px;align-items:flex-start}.log .dot{margin-top:4px}
+/* 重ね表示 */
+.overlay{position:fixed;inset:0;z-index:50;background:var(--ovl);display:flex;align-items:center;justify-content:center;padding:16px}
+.result-card{width:min(460px,100%)}
+.rules-card{width:min(940px,100%);height:min(86vh,720px);padding:20px 22px;gap:10px}
+.rules-head{display:flex;align-items:center;justify-content:space-between}
+button.x{width:30px;height:30px;padding:0;border-radius:50%;font-size:14px}
+.rules-layout{display:flex;gap:16px;flex:1;min-height:0}
+.rules-nav{width:170px;flex:none;display:flex;flex-direction:column;gap:4px;overflow:auto}
+.rules-nav button{text-align:left;border-radius:10px;background:transparent;font-weight:500}
+.rules-nav button.on{background:var(--acc);color:var(--accfg);font-weight:700}
+.rules-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.rules-body{flex:1;overflow:auto;font-size:13px;line-height:1.8;padding-right:6px}
+.rules-body h3{margin:0 0 6px;font-size:18px}.rules-body h4{margin:14px 0 4px;font-size:14px}
+.rules-body p{margin:4px 0}.rules-body ul,.rules-body ol{margin:4px 0;padding-left:20px}
+.rules-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px}
+.gnote{background:var(--chip);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:12px}
+.dgs{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
+.dg{display:flex;flex-direction:column;gap:6px;align-items:flex-start;font-size:12px;color:var(--mute)}
+.dgb{position:relative;background:var(--boardbg);border-radius:10px}
+.dgb .ln{background:var(--grid)}
+.dgp{position:absolute;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(24,26,32,.3)}
+.dgp.s0{background:var(--me)}.dgp.s1{background:var(--cpu)}
+.dgm{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--mk)}
+.dgx{position:absolute;transform:translate(-50%,-50%);font-weight:700;font-size:11px}
+.leg{display:flex;flex-direction:column;gap:12px;margin:10px 0}.leg>div{display:flex;align-items:center;gap:12px}
+.rtitle.win{color:#16a34a}.rtitle.lose{color:#bf5a55}
+.result-players{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.result-players li{display:flex;align-items:center;gap:8px;font-size:13px}.result-players .nm{flex:1;font-weight:700}
+#snd{position:fixed;right:12px;bottom:56px;z-index:40;box-shadow:var(--shadow2);background:var(--panel)}
+#theme{position:fixed;right:12px;bottom:12px;z-index:40;box-shadow:var(--shadow2);background:var(--panel)}
+@media (max-width:1100px){
+ :root{--step:clamp(34px,calc((100vw - 90px)/6.4),84px)}
+ .body{flex-wrap:wrap}.left,.right{width:100%}.mapcol{order:-1;flex:1 1 100%;padding-top:44px}
+ .hint{max-width:100%}.rules-layout{flex-direction:column}.rules-nav{width:auto;flex-direction:row;flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+<main class="center" id="top" hidden></main>
+<main class="center" id="lobby" hidden></main>
+<main id="game" hidden>
+  <header class="bar" id="bar"></header>
+  <div class="body">
+    <aside class="left" id="left"></aside>
+    <section class="mapcol"><div class="hint" id="hint" aria-live="polite"></div>
+      <div class="mid">
+        <div class="bar2" id="bar-top"></div>
+        <div class="bwrap"><div class="board" id="board"></div></div>
+        <div class="bar2" id="bar-bot"></div>
+      </div></section>
+    <aside class="right" id="right"></aside>
+  </div>
+</main>
+<div class="overlay" id="rules" role="dialog" aria-modal="true" aria-label="ルール" hidden></div>
+<div class="overlay" id="result" role="dialog" aria-modal="true" aria-label="結果" hidden></div>
+<button type="button" id="snd" data-act="snd"></button>
+<button type="button" id="theme" data-act="theme"></button>
+<script>
+const Engine = (function () {
+  const N = 6, SZ = 36, WIN = 100000;
+  // コード: 0=空 / 側0（あなた・青）: 1小 3大 / 側1（CPU・橙）: 4小 6大（2・5は使わない）
+  const side = function (c) { return c >= 4 ? 1 : 0; };
+  const kind = function (c) { return (c - 1) % 3; };      // 0小 1中 2大
+  const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+  const DEFAULT_LAYOUT = [[0, 2, 1], [0, 5, 1], [1, 3, 1], [1, 4, 2], [2, 4, 1], [3, 5, 1]];   // [行, 列, 1小/2大]（上側）
+  function initBoard() {
+    const b = new Int8Array(SZ);
+    // 上（側1・CPU）を基準に、下（側0・あなた）は180度回転した配置
+    const top = RULE.layout || DEFAULT_LAYOUT;
+    top.forEach(function (p) {
+      const r = p[0], c = p[1], dai = p[2] === 2;
+      b[r * N + c] = dai ? 6 : 4;
+      b[(N - 1 - r) * N + (N - 1 - c)] = dai ? 3 : 1;
+    });
+    // 試験用：駒を増やす（extra=1：+1枚ずつ、2：+2枚ずつ）
+    const ex = [[0, 3, 5, 2], [1, 5, 4, 0]];
+    for (let q = 0; q < RULE.extra && q < ex.length; q++) { b[ex[q][0] * N + ex[q][1]] = 4; b[ex[q][2] * N + ex[q][3]] = 1; }
+    return b;
+  }
+
+  const EXPERT_MS = { v: 1200 };
+  const RULE = { ge: false, extra: 0, daiJoin: false, geDai: true, ownDai: true, layout: null, repMat: true };   // true：枚数が同じでも押せる（試験用）
+  // 外周が落ちる仕組み：落ちたマス（hole）は盤の外と同じ扱い。pend＝次に落ちるマス、dropIn＝あと何手で落ちるか
+  const ST = { hole: new Uint8Array(SZ), pend: new Uint8Array(SZ), dropIn: 99, nh: 0 };
+  function inb(r, c) { return r >= 0 && r < N && c >= 0 && c < N && !ST.hole[r * N + c]; }
+  function setState(hole, pend, dropIn) { ST.hole = hole; ST.pend = pend; ST.dropIn = dropIn; let n = 0; for (let i = 0; i < SZ; i++) n += hole[i]; ST.nh = n; }
+  // 外周20マスを、180度回転で対応する2マスずつの10組にして、ランダムな順に並べる
+  function dropPairs() {
+    const seen = {}, pairs = [];
+    for (let i = 0; i < SZ; i++) {
+      const r = (i / N) | 0, c = i % N;
+      if (r !== 0 && r !== N - 1 && c !== 0 && c !== N - 1) continue;
+      if (seen[i]) continue;
+      const j = SZ - 1 - i; seen[i] = seen[j] = 1; pairs.push([i, j]);
+    }
+    for (let i = pairs.length - 1; i > 0; i--) { const k = (Math.random() * (i + 1)) | 0, t = pairs[i]; pairs[i] = pairs[k]; pairs[k] = t; }
+    return pairs;
+  }
+
+  // 合法手：{f:選んだ列の一番後ろ, n:選んだ枚数, d:向き, t:列の前のマス（押すときは押される連なりの先頭）, push:押される連なりの数（0なら1歩動くだけ）}
+  // 選べるのは、隣り合って一直線に並んだ味方の小（1枚〜複数枚）。選んだ枚数が、押される連なりの数より多いときだけ押せる
+  function gen(b, s) {
+    const out = [];
+    for (let i = 0; i < SZ; i++) {
+      const code = b[i];
+      if (!code || side(code) !== s || (kind(code) === 2 && !RULE.daiJoin)) continue;   // 大は選べない
+      const r = (i / N) | 0, c = i % N;
+      for (let d = 0; d < 4; d++) {
+        const dr = DIRS[d][0], dc = DIRS[d][1];
+        for (let n = 1; ; n++) {
+          const gr = r + dr * (n - 1), gc = c + dc * (n - 1);
+          if (!inb(gr, gc)) break;
+          const gi = gr * N + gc, gcode = b[gi];
+          if (!gcode || side(gcode) !== s || (kind(gcode) === 2 && !RULE.daiJoin)) break;   // 列に入れるのは味方の小だけ
+          if (n === 1 && kind(gcode) === 2) continue;
+          const tr = gr + dr, tc = gc + dc;
+          if (!inb(tr, tc)) break;
+          const t = tr * N + tc;
+          if (b[t] === 0) { out.push({ f: i, n: n, d: d, t: t, push: 0 }); continue; }   // 空きなら、列ごと1マス進む
+          let m = 0, pr = tr, pc = tc;
+          while (inb(pr, pc) && b[pr * N + pc]) { m++; pr += dr; pc += dc; }
+          let ok = RULE.ge ? n >= m : n > m;
+          if (!ok && n === m && (RULE.geDai || RULE.ownDai)) { let q2 = tr, q3 = tc; while (inb(q2, q3) && b[q2 * N + q3]) { const cc = b[q2 * N + q3]; if (kind(cc) === 2 && ((side(cc) !== s && RULE.geDai) || (side(cc) === s && RULE.ownDai))) ok = true; q2 += dr; q3 += dc; } }
+          if (ok) out.push({ f: i, n: n, d: d, t: t, push: m });
+        }
+      }
+    }
+    return out;
+  }
+
+  // 手を指す：新しい盤、駒の動き（to=-1は盤外）、落ちた駒のコードを返す
+  function apply(b, m) {
+    const nb = b.slice(), mv = [], removed = [];
+    const dr = DIRS[m.d][0], dc = DIRS[m.d][1], step = dr * N + dc;
+    function shift(idx) {
+      const rr = ((idx / N) | 0) + dr, cc = (idx % N) + dc;
+      if (!inb(rr, cc)) { removed.push(nb[idx]); mv.push({ from: idx, to: -1 }); nb[idx] = 0; }
+      else { const to = rr * N + cc; nb[to] = nb[idx]; nb[idx] = 0; mv.push({ from: idx, to: to }); }
+    }
+    if (m.push) {
+      const cells = [];
+      let r = (m.t / N) | 0, c = m.t % N;
+      while (inb(r, c) && b[r * N + c]) { cells.push(r * N + c); r += dr; c += dc; }
+      for (let k = cells.length - 1; k >= 0; k--) shift(cells[k]);
+    }
+    for (let k = m.n - 1; k >= 0; k--) shift(m.f + k * step);
+    return { b: nb, mv: mv, removed: removed, dir: [dr, dc] };
+  }
+
+  // 押す前の確認用：押される連なりと、先頭が落ちるか
+  function preview(b, m) {
+    const dr = DIRS[m.d][0], dc = DIRS[m.d][1], chain = [];
+    let r = (m.t / N) | 0, c = m.t % N;
+    while (inb(r, c) && b[r * N + c]) { chain.push(r * N + c); r += dr; c += dc; }
+    return { chain: chain, falls: !inb(r, c) };
+  }
+
+  // 駒の数（側 s）
+  function pieceCount(b, s) { let n = 0; for (let i = 0; i < SZ; i++) if (b[i] && side(b[i]) === s) n++; return n; }
+  // 千日手（同一局面3回）の結果：駒が多い側の勝ち。1=s の勝ち -1=負け 0=引き分け
+  function repResult(b, s) { if (!RULE.repMat) return 0; const d = pieceCount(b, s) - pieceCount(b, 1 - s); return d > 0 ? 1 : d < 0 ? -1 : 0; }
+
+  // 終局の判定（指した側 s から見て）：1=勝ち -1=負け 0=引き分け null=続行
+  function outcome(removed, s) {
+    const l0 = removed.indexOf(3) >= 0, l1 = removed.indexOf(6) >= 0;
+    if (!l0 && !l1) return null;
+    if (l0 && l1) return 0;
+    return (l0 ? 0 : 1) === s ? -1 : 1;
+  }
+
+  /* ---------- 評価 ---------- */
+  function edge(r, c) { let m = 9; for (let d = 0; d < 4; d++) { let k = 0, rr = r, cc = c; do { rr += DIRS[d][0]; cc += DIRS[d][1]; k++; } while (inb(rr, cc)); if (k - 1 < m) m = k - 1; } return m; }
+  function score(b) {
+    const v = [0, 0], dai = [-1, -1], cnt = [0, 0];
+    for (let i = 0; i < SZ; i++) {
+      const code = b[i]; if (!code) continue;
+      const s = side(code), k = kind(code), r = (i / N) | 0, c = i % N;
+      if (k === 2) { dai[s] = i; if (ST.dropIn <= 4 && ST.pend[i]) v[s] -= 40; continue; }
+      if (ST.dropIn <= 4 && ST.pend[i]) v[s] -= 1.2;
+      v[s] += 1 + 0.2 * edge(r, c); cnt[s]++;
+    }
+    for (let s = 0; s < 2; s++) {
+      if (dai[s] < 0) { v[s] -= 1000; continue; }
+      const r = (dai[s] / N) | 0, c = dai[s] % N, e = edge(r, c);
+      v[s] += 0.9 * e;
+      for (let d = 0; d < 4; d++) {
+        const rr = r + DIRS[d][0], cc = c + DIRS[d][1];
+        if (!inb(rr, cc)) { v[s] -= 0.5; continue; }
+        const q = b[rr * N + cc];
+        if (q) v[s] += side(q) === s ? 0.3 : -0.3;
+      }
+      // 相手の大を狙う
+      const o = 1 - s;
+      if (dai[o] >= 0) {
+        const orr = (dai[o] / N) | 0, occ = dai[o] % N;
+        v[s] += (3 - edge(orr, occ)) * 0.5;
+        for (let i = 0; i < SZ; i++) {
+          const q = b[i];
+          if (!q || side(q) !== s || kind(q) === 2) continue;
+          const dist = Math.abs(((i / N) | 0) - orr) + Math.abs((i % N) - occ);
+          if (dist <= 3) v[s] += 0.12;
+        }
+      }
+    }
+    return v;
+  }
+  function evalFor(b, s) { const v = score(b); return v[s] - v[1 - s]; }
+
+  function negamax(b, s, depth, alpha, beta, ply) {
+    const ms = gen(b, s);
+    if (!ms.length) return -(WIN - ply);
+    if (depth === 0) return evalFor(b, s);
+    const kids = [];
+    for (let n = 0; n < ms.length; n++) {
+      const a = apply(b, ms[n]);
+      const o = outcome(a.removed, s);
+      if (o === 1) return WIN - ply - 1;
+      kids.push({ a: a, o: o, k: o === null ? evalFor(a.b, s) : (o === 0 ? 0 : -WIN) });
+    }
+    kids.sort(function (x, y) { return y.k - x.k; });
+    let best = -Infinity;
+    for (let n = 0; n < kids.length; n++) {
+      let v;
+      if (kids[n].o !== null) v = kids[n].o === 0 ? 0 : -(WIN - ply - 1);
+      else v = -negamax(kids[n].a.b, 1 - s, depth - 1, -beta, -alpha, ply + 1);
+      if (v > best) best = v;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+
+  function keyOf(b, turn) { return turn + ':' + ST.nh + ':' + Array.prototype.join.call(b, ''); }
+
+  // 3回目の同一局面になる手は、その場で終局（駒が多い側の勝ち）。指す側 s から見た値に置き換える
+  function repAdjust(v, hist, key, nb, s) {
+    const c = hist ? (hist[key] || 0) : 0;
+    if (c >= 2) { const r = repResult(nb, s); return r > 0 ? WIN / 2 : r < 0 ? -WIN / 2 : 0; }
+    if (c === 1 && v > 0 && repResult(nb, s) <= 0) return v - Math.min(1.2, 0.2 + v * 0.15);
+    return v;
+  }
+
+  /* ---------- 最強：反復深化＋置換表（時間制限つき） ---------- */
+  function searchExpert(b, s, hist, budgetMs) {
+    const tt = new Map(), t0 = Date.now(); let nodes = 0, timeout = false;
+    function leafWin(bb, ss) {
+      const ms = gen(bb, ss);
+      for (let n = 0; n < ms.length; n++) { if (!ms[n].push) continue; if (outcome(apply(bb, ms[n]).removed, ss) === 1) return true; }
+      return false;
+    }
+    function nm(bb, ss, depth, alpha, beta, ply) {
+      if ((++nodes & 255) === 0 && Date.now() - t0 > budgetMs) timeout = true;
+      if (timeout) return 0;
+      const key = keyOf(bb, ss), ent = tt.get(key), a0 = alpha;
+      if (ent && ent.d >= depth) {
+        if (ent.f === 0) return ent.v;
+        if (ent.f === 1 && ent.v > alpha) alpha = ent.v; else if (ent.f === 2 && ent.v < beta) beta = ent.v;
+        if (alpha >= beta) return ent.v;
+      }
+      const ms = gen(bb, ss);
+      if (!ms.length) return -(WIN - ply);
+      if (depth <= 0) { if (leafWin(bb, ss)) return WIN - ply - 1; return evalFor(bb, ss); }
+      const kids = [];
+      for (let n = 0; n < ms.length; n++) {
+        const a = apply(bb, ms[n]), o = outcome(a.removed, ss);
+        if (o === 1) return WIN - ply - 1;
+        kids.push({ m: ms[n], a: a, o: o, k: o === null ? evalFor(a.b, ss) + (ent && ent.m === n ? 1e4 : 0) : (o === 0 ? 0 : -WIN) });
+        kids[n].idx = n;
+      }
+      kids.sort(function (x, y) { return y.k - x.k; });
+      let best = -Infinity, bi = 0;
+      for (let n = 0; n < kids.length; n++) {
+        const kd = kids[n]; let v;
+        if (kd.o !== null) v = kd.o === 0 ? 0 : -(WIN - ply - 1);
+        else v = -nm(kd.a.b, 1 - ss, depth - 1 + (ms.length === 1 ? 1 : 0), -beta, -alpha, ply + 1);
+        if (timeout) return 0;
+        if (v > best) { best = v; bi = kd.idx; }
+        if (best > alpha) alpha = best;
+        if (alpha >= beta) break;
+      }
+      tt.set(key, { d: depth, v: best, f: best <= a0 ? 2 : best >= beta ? 1 : 0, m: bi });
+      return best;
+    }
+    const ms = gen(b, s); if (!ms.length) return null;
+    const root = ms.map(function (m) { const a = apply(b, m), o = outcome(a.removed, s); return { m: m, a: a, o: o, v: o === 1 ? WIN : o === 0 ? 0 : o === -1 ? -WIN : evalFor(a.b, s) }; });
+    root.sort(function (x, y) { return y.v - x.v; });
+    if (root[0].o === 1) return { m: root[0].m, depth: 0, vals: root };
+    let done = null;
+    for (let depth = 1; depth <= 14; depth++) {
+      const cur = [];
+      for (let n = 0; n < root.length; n++) {
+        const r = root[n]; let v;
+        if (r.o !== null) v = r.o === 0 ? 0 : -WIN;
+        else { v = -nm(r.a.b, 1 - s, depth - 1, -Infinity, Infinity, 1); }
+        if (timeout) break;
+        cur.push({ m: r.m, a: r.a, o: r.o, v: v });
+      }
+      if (timeout) break;
+      cur.sort(function (x, y) { return y.v - x.v; });
+      root.length = 0; cur.forEach(function (x) { root.push(x); });
+      done = { depth: depth, vals: cur };
+      if (Math.abs(cur[0].v) > WIN - 200) break;     // 詰みが見えたら終了
+    }
+    if (!done) return { m: root[0].m, depth: 0, vals: root };
+    return { m: done.vals[0].m, depth: done.depth, vals: done.vals };
+  }
+
+  // level: easy / normal / hard / expert
+  function choose(b, s, level, hist) {
+    const ms = gen(b, s);
+    if (!ms.length) return null;
+    if (level === 'expert') {
+      const r = searchExpert(b, s, hist, EXPERT_MS.v);
+      const adj = r.vals.map(function (cd) { return { cd: cd, v: repAdjust(cd.v, hist, keyOf(cd.a.b, 1 - s), cd.a.b, s) }; });
+      let top = -Infinity; adj.forEach(function (x) { if (x.v > top) top = x.v; });
+      let best = adj[0].cd.m, bv = -Infinity;
+      adj.forEach(function (x) {
+        if (x.v < top - 0.3 && top < WIN - 300 && x.v > -WIN + 300) return;
+        const v = x.v + Math.random() * 0.05;
+        if (v > bv) { bv = v; best = x.cd.m; }
+      });
+      return best;
+    }
+    const depth = level === 'hard' ? 4 : level === 'normal' ? 2 : 1;
+    const noise = level === 'easy' ? 1.4 : level === 'normal' ? 0.15 : 0.05;
+    const cand = [];
+    for (let n = 0; n < ms.length; n++) {
+      const a = apply(b, ms[n]);
+      const o = outcome(a.removed, s);
+      if (o === 1) return ms[n];
+      cand.push({ m: ms[n], a: a, o: o, k: o === null ? evalFor(a.b, s) : (o === 0 ? 0 : -WIN) });
+    }
+    cand.sort(function (x, y) { return y.k - x.k; });
+    let best = cand[0].m, bv = -Infinity;
+    for (let n = 0; n < cand.length; n++) {
+      const cd = cand[n];
+      let v;
+      if (cd.o !== null) v = cd.o === 0 ? 0 : -WIN;
+      else if (depth === 1) v = cd.k;
+      else v = -negamax(cd.a.b, 1 - s, depth - 1, -Infinity, Infinity, 1);
+      v += Math.random() * noise;
+      v = repAdjust(v, hist, keyOf(cd.a.b, 1 - s), cd.a.b, s);
+      if (v > bv) { bv = v; best = cd.m; }
+    }
+    return best;
+  }
+
+  return { pieceCount: pieceCount, repResult: repResult, EXPERT_MS: EXPERT_MS, RULE: RULE, N: N, SZ: SZ, WIN: WIN, DIRS: DIRS, side: side, kind: kind, initBoard: initBoard, gen: gen, apply: apply, preview: preview, outcome: outcome, choose: choose, keyOf: keyOf, evalFor: evalFor, setState: setState, dropPairs: dropPairs };
+})();
+if (typeof module !== 'undefined') module.exports = Engine;
+(function () {
+  var E = Engine;
+  var KN = ['粒', '中', '玉'];
+  var NN = Engine.N, SZ = Engine.SZ;
+  var SET = { color: '', ccolor: '', level: 'normal', playerFirst: true, name: '', mode: 'cpu', wLevel: 'normal', nLevel: 'normal', speed: 'normal' };
+  var SPEED = { slow: 1400, normal: 700, fast: 150 };
+  var LEVEL = { easy: 'かんたん', normal: 'ふつう', hard: 'つよい', expert: '最強' };
+  var MAXPLY = 300, DROP_START = 15, DROP_EVERY = 5;
+  var S = null, VIEW = 'top', RP = 0, GEN = 0;
+  var NET = { peer: null, conn: null, role: '', code: '', status: '', err: '', oppName: '', myRe: false, oppRe: false, hostFirst: true, gone: false };
+  var TURN_SEC = 120, VERSION = 'v1.0';
+  var P2P = { src: 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js', prefix: 'cororo-', opts: {} };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function nm(i) { return 'abcdefg'.charAt(i % NN) + (NN - ((i / NN) | 0)); }
+  function pname() { return SET.name || 'ゲスト'; }
+  function watching() { return !!S && S.watch; }
+  function sideName(s) { if (S && S.online) return s === 0 ? pname() : (NET.oppName || '相手'); return S && S.watch ? (s === 0 ? 'CPU（先手）' : 'CPU（後手）') : (s === 0 ? pname() : 'CPU'); }
+  function orderOf(s) { return S && S.watch ? (s === 0 ? '先手' : '後手') : (s === S.first ? '先手' : '後手'); }
+  function levelOf(s) { return S && S.watch ? (s === 0 ? SET.wLevel : SET.nLevel) : SET.level; }
+  function codeLabel(code) { var s = E.side(code); return (S && S.watch ? (s === 0 ? '先手' : '後手') : (s === 0 ? 'あなた' : (S && S.online ? '相手' : 'CPU'))) + 'の' + KN[E.kind(code)]; }
+  /* 外周が落ちる：15手目から5手ごとに、点対称の2マスずつ */
+  function nextAt() { return S.nd < S.pairs.length ? DROP_START + S.nd * DROP_EVERY : 1e9; }
+  function dropIn() { return nextAt() - S.ply; }
+  function pendArr() { var a = new Uint8Array(SZ); if (S.nd < S.pairs.length) { a[S.pairs[S.nd][0]] = 1; a[S.pairs[S.nd][1]] = 1; } return a; }
+  function sync() { E.setState(S.hole, pendArr(), dropIn()); }
+  function stepOf(m) { return E.DIRS[m.d][0] * NN + E.DIRS[m.d][1]; }
+  function cellsOf(m) { var a = []; for (var k = 0; k < m.n; k++) a.push(m.f + k * stepOf(m)); return a; }
+  function keyOfCells(a) { return a.slice().sort(function (x, y) { return x - y; }).join(','); }
+  function selKey() { return S.sel && S.sel.length ? keyOfCells(S.sel) : null; }
+  function selMoves() { var k = selKey(); return k === null ? [] : S.legal.filter(function (m) { return keyOfCells(cellsOf(m)) === k; }); }
+  function count(s) { var n = 0; for (var i = 0; i < SZ; i++) if (S.b[i] && E.side(S.b[i]) === s) n++; return n; }
+
+  /* ---------- 効果音（WebAudioで合成。プラスチックの駒を意識） ---------- */
+  var AC = null, MUTED = false;
+  try { MUTED = localStorage.getItem('oshi-mute') === '1'; } catch (e0) {}
+
+  /* ---------- あなたの駒の色 ---------- */
+  var DEFAULT_ME = '#2457f5', DEFAULT_CPU = '#f2623f', OPP_HUE = 12, PALETTE = [];
+  function normHex(s) {
+    s = String(s || '').trim().toLowerCase().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/.test(s)) s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
+    return /^[0-9a-f]{6}$/.test(s) ? '#' + s : null;
+  }
+  function hex2hsl(h) {
+    var r = parseInt(h.substr(1, 2), 16) / 255, g = parseInt(h.substr(3, 2), 16) / 255, b = parseInt(h.substr(5, 2), 16) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn, hh = 0, s = 0;
+    if (d > 0) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      if (mx === r) hh = ((g - b) / d) % 6; else if (mx === g) hh = (b - r) / d + 2; else hh = (r - g) / d + 4;
+      hh *= 60; if (hh < 0) hh += 360;
+    }
+    return { h: hh, s: s, l: l };
+  }
+  function hsl2hex(o) {
+    var h = ((o.h % 360) + 360) % 360, s = o.s, l = o.l, c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2, r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    function t(v) { var n = Math.round((v + m) * 255).toString(16); return n.length < 2 ? '0' + n : n; }
+    return '#' + t(r) + t(g) + t(b);
+  }
+  // 極端な色（明るすぎ・暗すぎ・くすみすぎ・ぎらつき・相手のオレンジに近い）を補正する
+  function fixColor(hex, dark, avoid) {
+    var c = hex2hsl(hex), notes = [], lo = dark ? 0.40 : 0.22, hi = dark ? 0.85 : 0.72;
+    if (c.s < 0.04) c.h = 220;
+    if (c.l < lo) { c.l = lo; notes.push('暗すぎる'); } else if (c.l > hi) { c.l = hi; notes.push('明るすぎる'); }
+    if (c.s < 0.15) { c.s = 0.15; notes.push('くすみすぎ'); } else if (c.s > 1) { c.s = 1; notes.push('ぎらつきすぎ'); }
+    var av = avoid == null ? OPP_HUE : avoid, diff = ((c.h - av + 540) % 360) - 180;
+    if (Math.abs(diff) < 18) { c.h = av + (diff >= 0 ? 18 : -18); notes.push('相手の駒の色に近すぎる'); }
+    var out = hsl2hex(c);
+    return { hex: out, changed: out !== hex, notes: notes };
+  }
+  function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+  function hueOf(h) { return hex2hsl(h).h; }
+  // 色の設定：key 'me'（下側・あなた）／'cpu'（上側・相手）。相手側の色の色相から離すように補正する
+  function colorOf(key) { return key === 'me' ? SET.color : SET.ccolor; }
+  function applyColor() {
+    var st = document.documentElement.style, out = {};
+    if (SET.color) { out.me = fixColor(SET.color, isDark(), hueOf(SET.ccolor || DEFAULT_CPU)); st.setProperty('--me', out.me.hex); } else st.removeProperty('--me');
+    if (SET.ccolor) { out.cpu = fixColor(SET.ccolor, isDark(), hueOf(SET.color || DEFAULT_ME)); st.setProperty('--cpu', out.cpu.hex); } else st.removeProperty('--cpu');
+    return out;
+  }
+  function saveColorPrefs() { try { localStorage.setItem('oshi-color', SET.color || ''); localStorage.setItem('oshi-ccolor', SET.ccolor || ''); localStorage.setItem('oshi-palette', JSON.stringify(PALETTE)); } catch (e) {} }
+  function colorNote() {
+    var o = applyColor();
+    [['me', 'cprev', 'cnote', DEFAULT_ME], ['cpu', 'ccprev', 'ccnote', DEFAULT_CPU]].forEach(function (k) {
+      var pv = $(k[1]), nt = $(k[2]); if (!nt) return;
+      var raw = colorOf(k[0]) || k[3], f = o[k[0]], fx = f || fixColor(raw, isDark(), hueOf(k[0] === 'me' ? (SET.ccolor || DEFAULT_CPU) : (SET.color || DEFAULT_ME)));
+      if (pv) pv.style.background = f ? fx.hex : raw;
+      nt.textContent = !colorOf(k[0]) ? '初期色です。' : fx.changed ? '見やすさのため、' + raw + ' を ' + fx.hex + ' に補正しました（' + fx.notes.join('、') + '）。' : '補正なしで使っています（' + fx.hex + '）。';
+    });
+  }
+
+  function ac() {
+    if (MUTED) return null;
+    try {
+      if (!AC) { var C = window.AudioContext || window.webkitAudioContext; if (!C) return null; AC = new C(); }
+      if (AC.state === 'suspended') AC.resume();
+      return AC;
+    } catch (e) { return null; }
+  }
+  function burst(dur, vol, freq, q, at, freq2) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + (at || 0), n = Math.max(1, Math.floor(c.sampleRate * dur));
+    var buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (var i = 0; i < n; i++) { var e = 1 - i / n; d[i] = (Math.random() * 2 - 1) * e * e; }
+    var src = c.createBufferSource(); src.buffer = buf;
+    var f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = q; f.frequency.setValueAtTime(freq, t);
+    if (freq2) f.frequency.exponentialRampToValueAtTime(freq2, t + dur);
+    var g = c.createGain(); g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(c.destination); src.start(t);
+  }
+  function tok(f0, f1, dur, vol, at) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + (at || 0), o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  // 硬くて軽い、プラスチックの「カツッ」。pitchが高いほど軽い駒
+  function plastic(vol, pitch, at) {
+    pitch = pitch * (0.95 + Math.random() * 0.1);
+    burst(0.012, 0.8 * vol, 4300 * pitch, 1.4, at);
+    burst(0.05, 0.28 * vol, 1900 * pitch, 1.1, at);
+    tok(1550 * pitch, 1000 * pitch, 0.045, 0.22 * vol, at);
+    tok(2700 * pitch, 2350 * pitch, 0.03, 0.07 * vol, at);
+    tok(520 * pitch, 380 * pitch, 0.08, 0.13 * vol, at);
+  }
+  var PITCH = [1.25, 1.05, 0.8];
+  function sfx(name, o) {
+    if (MUTED) return;
+    o = o || {};
+    var p = PITCH[o.kind === undefined ? 0 : o.kind];
+    if (name === 'select') plastic(0.35, 1.5 * (p / 1.25));
+    else if (name === 'move') { burst(0.05, 0.1, 2800, 0.8, 0, 1400); plastic(0.8, p, 0.19); }
+    else if (name === 'push') {
+      burst(0.05, 0.1, 2800, 0.8, 0, 1400); plastic(0.9, p, 0.19);
+      for (var k = 1; k <= (o.n || 1); k++) plastic(Math.max(0.35, 0.75 - 0.12 * k), p * (1 + 0.04 * k), 0.19 + 0.06 * k);
+    }
+    else if (name === 'fall') {
+      var base = 0.3;
+      plastic(0.6, 1.35, base); plastic(0.4, 1.15, base + 0.1); plastic(0.25, 0.98, base + 0.19); plastic(0.14, 0.9, base + 0.26);
+      burst(0.12, 0.12, 6500, 0.9, base + 0.02, 3500);
+    }
+    else if (name === 'win') { plastic(0.7, 1.0); plastic(0.7, 1.25, 0.15); plastic(0.8, 1.55, 0.3); }
+    else if (name === 'lose') { plastic(0.7, 1.0); plastic(0.6, 0.85, 0.2); plastic(0.6, 0.7, 0.4); }
+    else if (name === 'draw') { plastic(0.6, 1.0); plastic(0.6, 1.0, 0.22); }
+  }
+  function applySnd() { var b = $('snd'); if (b) b.textContent = MUTED ? '🔇 効果音オフ' : '🔊 効果音オン'; }
+
+  function show(v) { VIEW = v; $('top').hidden = v !== 'top'; $('lobby').hidden = v !== 'lobby'; $('game').hidden = v !== 'game'; }
+  function seg(key, opts, cur) {
+    return '<div class="seg" role="group">' + opts.map(function (o) {
+      return '<button type="button" class="pill" data-set="' + key + '" data-val="' + o[0] + '" aria-pressed="' + (String(o[0]) === String(cur)) + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /* ---------- トップ・ロビー ---------- */
+  function renderTop() {
+    $('top').innerHTML = '<div class="card narrow"><h1 class="title"><span class="logo" aria-hidden="true"><svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="12" width="22" height="22" rx="7" style="fill:var(--acc)"/><path d="M17 7 C 21 1, 30 1, 34 8" fill="none" style="stroke:var(--mk)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.5 4.5"/><circle cx="26" cy="19" r="9" style="fill:var(--me)"/><circle cx="11" cy="24" r="5" style="fill:var(--cpu)"/></svg></span>Cororo</h1>' +
+      '<p class="lead">' + VERSION + '　駒を取らずに、押して盤の外へ落とす2人対戦ゲーム。相手の「玉」を盤の外へ押し出せば勝ちです。</p>' +
+      '<label class="field"><span>なまえ（12文字まで）</span><input id="in-name" type="text" maxlength="12" autocomplete="nickname" placeholder="ゲスト"></label>' +
+      '<button type="button" class="big" data-act="tutorial">はじめての方へ：チュートリアル</button>' +
+      '<button type="button" class="primary big" data-act="create">部屋を作ってオンライン対戦</button>' +
+      '<div class="row"><input id="in-code" type="text" class="grow" maxlength="6" placeholder="部屋ID" autocapitalize="characters" autocomplete="off" spellcheck="false" style="text-transform:uppercase"><button type="button" data-act="join">参加する</button></div>' +
+      (NET.err ? '<div class="small" style="color:#bf5a55">' + esc(NET.err) + '</div>' : '') +
+      '<button type="button" class="big" data-act="cpu">CPUと遊ぶ（ひとりで・通信なし）</button>' +
+      '<button type="button" class="big" data-act="watch">CPU同士の対戦を観る</button>' +
+      '<button type="button" class="big" data-act="rules">ルールと駒の動き</button></div>';
+    $('in-name').value = SET.name;
+    var q = ''; try { q = new URLSearchParams(location.search).get('room') || ''; } catch (e) {}
+    if (NET.joinCode || q) $('in-code').value = (NET.joinCode || q).toUpperCase();
+  }
+  function renderLobby() {
+    var watch = SET.mode === 'watch', first = SET.playerFirst;
+    var lv3 = [['easy', 'かんたん'], ['normal', 'ふつう'], ['hard', 'つよい'], ['expert', '最強']];
+    var people, setting;
+    if (watch) {
+      people = '<h3>対局者</h3><ul class="plist"><li><i class="dot c0"></i><span class="name">CPU（先手）</span><span class="tag">' + LEVEL[SET.wLevel] + '</span><span class="tag">先手</span></li>' +
+        '<li><i class="dot c1"></i><span class="name">CPU（後手）</span><span class="tag">' + LEVEL[SET.nLevel] + '</span><span class="tag">後手</span></li></ul>';
+      setting = '<div class="srow"><div class="small muted">先手CPUの強さ</div>' + seg('wlevel', lv3, SET.wLevel) + '</div>' +
+        '<div class="srow"><div class="small muted">後手CPUの強さ</div>' + seg('nlevel', lv3, SET.nLevel) + '</div>' +
+        '<div class="srow"><div class="small muted">進む速さ</div>' + seg('speed', [['slow', '遅い'], ['normal', 'ふつう'], ['fast', '速い']], SET.speed) + '</div>';
+    } else {
+      people = '<h3>参加者</h3><ul class="plist"><li><i class="dot c0"></i><span class="name">' + esc(pname()) + '</span><span class="tag">あなた（下）</span><span class="tag">' + (first ? '先手' : '後手') + '</span></li>' +
+        '<li><i class="dot c1"></i><span class="name">CPU</span><span class="tag">' + LEVEL[SET.level] + '</span><span class="tag">' + (first ? '後手' : '先手') + '</span></li></ul>';
+      setting = '<div class="srow"><div class="small muted">CPUの強さ</div>' + seg('level', lv3, SET.level) + '</div>' +
+        '<div class="srow"><div class="small muted">先手・後手</div>' + seg('first', [['1', 'あなたが先手'], ['0', 'あなたが後手']], first ? '1' : '0') + '</div>';
+    }
+    function colorPanel(key, label) {
+      var me = key === 'me', p = me ? '' : 'c', raw = colorOf(key) || (me ? DEFAULT_ME : DEFAULT_CPU), sfx2 = me ? '' : 'c';
+      return '<div class="srow"><div class="small muted">' + label + '</div><div class="crow"><input type="color" id="in-' + p + 'color" value="' + raw + '" aria-label="色を選ぶ"><input type="text" id="in-' + p + 'hex" maxlength="7" value="' + raw + '" placeholder="' + (me ? '#2457f5' : '#f2623f') + '" aria-label="カラーコード"><span class="cprev" id="' + p + 'cprev"></span>' +
+        '<button type="button" data-act="save-' + sfx2 + 'color">保存</button><button type="button" data-act="reset-' + sfx2 + 'color">初期色</button></div><div class="small muted" id="' + p + 'cnote"></div>' +
+        '<div class="swatches">' + PALETTE.map(function (h) { return '<span class="sw"><button type="button" class="swb" data-act="pick-' + sfx2 + 'color" data-hex="' + h + '" style="background:' + h + '" aria-label="' + h + ' を使う"></button>' + (me ? '<button type="button" class="swx" data-act="del-color" data-hex="' + h + '" aria-label="' + h + ' を消す">×</button>' : '') + '</span>'; }).join('') + '</div></div>';
+    }
+    setting += colorPanel('me', watch ? '下側（先手）の駒の色' : '下側（あなた）の駒の色') + colorPanel('cpu', watch ? '上側（後手）の駒の色' : '上側（相手）の駒の色');
+    if (SET.mode === 'online') {
+      var host = NET.role === 'host', st = NET.status, conn = st === 'connected';
+      var inv = host && NET.code ? location.origin + location.pathname + '?room=' + NET.code : '';
+      var info = st === 'error' ? '<p class="lead" style="color:#bf5a55">' + esc(NET.err) + '</p>' :
+        host ? (NET.code ? '<div class="field"><span>部屋ID</span><b style="font-size:26px;letter-spacing:.15em;color:var(--ink)">' + NET.code + '</b></div><div class="row"><input id="invite-url" type="text" class="grow" readonly value="' + esc(inv) + '"><button type="button" data-act="copy">コピー</button></div><p class="small muted">部屋IDか招待URLを相手に送ってください。対局が終わるまで、このページを閉じないでください。</p>' : '<p class="lead">部屋を作っています…</p>') :
+        (conn ? '<p class="lead">接続しました。ホストが開始するのを待っています。</p>' : '<p class="lead">部屋 ' + esc(NET.code) + ' に接続しています…</p>');
+      var ppl = '<h3>参加者</h3><ul class="plist"><li><i class="dot c0"></i><span class="name">' + esc(pname()) + '</span><span class="tag">あなた（下）</span></li><li><i class="dot c1"></i><span class="name">' + (conn ? esc(NET.oppName || '相手') : '参加待ち…') + '</span>' + (conn ? '<span class="tag">接続中</span>' : '') + '</li></ul>';
+      var set2 = host ? '<h3>設定</h3><div class="srow"><div class="small muted">先手・後手</div>' + seg('first', [['1', 'あなたが先手'], ['0', 'あなたが後手']], first ? '1' : '0') + '</div>' : '';
+      set2 += colorPanel('me', '自分（下側）の駒の色') + colorPanel('cpu', '相手（上側）の駒の色（自分の画面だけ）');
+      $('lobby').innerHTML = '<div class="card narrow"><h2>オンライン対戦</h2>' + info + ppl + set2 +
+        (host ? '<div class="row"><button type="button" class="primary big grow" data-act="net-start"' + (conn ? '' : ' disabled') + '>対局を始める</button></div>' : '') +
+        '<div class="row"><button type="button" class="grow" data-act="rules">ルール</button><button type="button" class="grow" data-act="leave">退室する</button></div></div>';
+      colorNote(); return;
+    }
+    $('lobby').innerHTML = '<div class="card narrow"><h2>' + (watch ? 'CPU同士の観戦' : 'ロビー') + '</h2>' +
+      '<p class="lead">' + (watch ? 'CPU同士が対戦します。あなたは観戦者です。' : 'CPUと遊びます（通信なし）。') + '</p>' + people + '<h3>設定</h3>' + setting +
+      '<div class="row"><button type="button" class="primary big grow" data-act="start">' + (watch ? '観戦を始める' : '対局を始める') + '</button></div>' +
+      '<div class="row"><button type="button" class="grow" data-act="rules">ルール</button><button type="button" class="grow" data-act="back">戻る</button></div></div>';
+    colorNote();
+  }
+
+  /* ---------- ルール ---------- */
+  function dg(w, h, items, cap) {
+    var st = 30, pad = 20, W = pad * 2 + (w - 1) * st, H = pad * 2 + (h - 1) * st, i, j;
+    var o = '<div class="dg"><div class="dgb" style="width:' + W + 'px;height:' + H + 'px">';
+    for (i = 0; i < h; i++) o += '<i class="ln" style="left:' + pad + 'px;top:' + (pad + i * st) + 'px;width:' + ((w - 1) * st) + 'px;height:2px;margin-top:-1px"></i>';
+    for (j = 0; j < w; j++) o += '<i class="ln" style="top:' + pad + 'px;left:' + (pad + j * st) + 'px;width:2px;height:' + ((h - 1) * st) + 'px;margin-left:-1px"></i>';
+    items.forEach(function (it) {
+      var x = pad + it.c * st, y = pad + it.r * st;
+      if (it.t === 'm') o += '<i class="dgm" style="left:' + x + 'px;top:' + y + 'px"></i>';
+      else {
+        var sz = it.k === 2 ? 24 : 14;
+        o += '<i class="dgp s' + it.s + '" style="left:' + x + 'px;top:' + y + 'px;width:' + sz + 'px;height:' + sz + 'px;border-radius:' + (it.k === 1 ? '3px' : '50%') + (it.fade ? ';opacity:.35' : '') + '"></i>';
+      }
+    });
+    return o + '</div>' + (cap ? '<span>' + cap + '</span>' : '') + '</div>';
+  }
+  function P(r, c, k, s, fade) { return { t: 'p', r: r, c: c, k: k, s: s, fade: fade }; }
+  function M(r, c) { return { t: 'm', r: r, c: c }; }
+  function rulesPages() {
+    var b0 = E.initBoard(), init = [];
+    for (var i = 0; i < SZ; i++) if (b0[i]) init.push(P((i / NN) | 0, i % NN, E.kind(b0[i]), E.side(b0[i])));
+    var mv1 = dg(5, 5, [P(2, 2, 0, 0), M(1, 2), M(3, 2), M(2, 1), M(2, 3)], '粒：縦横に1マス');
+    var p0a = dg(5, 1, [P(0, 0, 0, 0), P(0, 1, 0, 0), P(0, 2, 0, 0), M(0, 3)], '3枚を選んで、右へ');
+    var p0b = dg(5, 1, [P(0, 1, 0, 0), P(0, 2, 0, 0), P(0, 3, 0, 0)], '列ごと1マス進む');
+    var p1 = dg(4, 1, [P(0, 0, 0, 0), P(0, 1, 0, 1)], '1枚で1枚（粒）：押せない');
+    var p1d = dg(4, 1, [P(0, 0, 0, 0), P(0, 1, 2, 1)], '1枚で相手の玉：押せる');
+    var p2a = dg(4, 1, [P(0, 0, 0, 0), P(0, 1, 0, 0), P(0, 2, 0, 1)], '2枚を選んで、右へ押す');
+    var p2b = dg(4, 1, [P(0, 1, 0, 0), P(0, 2, 0, 0), P(0, 3, 0, 1)], '押したあと：列ごと1マス進む');
+    var p2c = dg(6, 1, [P(0, 0, 0, 0), P(0, 1, 0, 0), P(0, 2, 0, 0), P(0, 3, 0, 1), P(0, 4, 0, 1)], '3枚で2枚：押せる');
+    var p2d = dg(6, 1, [P(0, 0, 0, 0), P(0, 1, 0, 0), P(0, 2, 0, 1), P(0, 3, 0, 1), P(0, 4, 0, 1)], '2枚で3枚：押せない');
+    var p3a = dg(4, 1, [P(0, 1, 0, 0), P(0, 2, 0, 0), P(0, 3, 0, 1)], '盤の端にいる相手を押すと…');
+    var p3b = dg(4, 1, [P(0, 2, 0, 0), P(0, 3, 0, 0), P(0, 3.55, 0, 1, true)], '盤の外へ落ちる');
+    var p4a = dg(3, 1, [P(0, 0, 0, 0), P(0, 1, 2, 0)], '粒玉：粒1枚で、味方の玉を押せる');
+    var legend = '<div class="leg">' +
+      '<div><span class="legend-ico"><i style="width:14px;height:14px;border-radius:50%"></i></span>灰色の点は、動かせるマス</div>' +
+      '<div><span class="legend-ico"><i style="width:30px;height:30px;border-radius:50%;background:transparent;border:3px solid var(--push)"></i></span>オレンジの輪は、押せる駒（そのマスへ動くと押します）</div>' +
+      '<div><span class="legend-ico"><i style="width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 3px var(--panel),0 0 0 6px var(--acc)"></i></span>黒い輪は、選んでいる駒</div></div>';
+    return [
+      { t: '遊び方', h: '<h3>遊び方</h3><p>2人で対戦します。あなたは盤の下側、相手は上側から始めます。先手・後手はロビーで選べます（観戦では、下側が先手です）。色は、設定で変えられます。</p>' +
+        '<h4>1手番でできること</h4><ol><li>動かす駒を選びます。一直線に隣り合って並んだ味方は、続けて選べます（1枚〜何枚でも）。</li><li>灰色の点のマスか、オレンジの輪のマス（押せる駒）へ動かします。</li></ol>' +
+        '<p>進む先に駒があると、その駒を押します。ただし、<b>玉は自分では動かせず、選べません</b>。玉を動かすには、味方の駒に押してもらいます。</p>' +
+        '<h4>勝ち・負け</h4><p>相手の「玉」を押して盤の外へ落としたら勝ちです。自分の玉が落ちたら（自分で押し出した場合も）負けです。両方の玉が同時に落ちたときは引き分けです。</p>' +
+        '<p>自分の番に動かせる駒が1つもないときは、負けです。</p>' +
+        '<h4>同じ局面が3回</h4><p>同じ局面が3回現れたら、そこで終わりです。<b>盤上の駒が多いほうの勝ち</b>で、駒の数が同じなら引き分けです。</p>' +
+        '<h4>引き分け</h4><p>' + MAXPLY + '手のうちに決着しなかったときも、引き分けです。</p>' },
+      { t: '駒の動き', h: '<h3>駒の動き</h3><p>駒は線の交点に置きます。駒は、粒と玉の2種類です。</p>' +
+        '<div class="dgs">' + mv1 + '</div>' +
+        '<ul><li><b>玉</b>（大きな丸）：自分では動かせません。落とされたら負けです。</li><li><b>粒</b>（小さな丸）：縦横に1マス。隣り合って一直線に並んだ味方の粒は、まとめて選べて、列ごと1マス進められます。</li></ul>' },
+      { t: '押し出し', h: '<h3>押し出し</h3>' +
+        '<p>一直線に並んだ味方の粒を選び、その列の向きに押します。進む先に駒があると、その駒を押します。押された駒は1マス動き、その先にも駒が連なっていれば、連なった駒がまとめて1マス動きます（色は関係ありません）。選んだ駒も、1マス進みます。</p>' +
+        '<h4>列ごと進む</h4><p>進む先が空きなら、押す相手がいなくても、選んだ列がそのまま1マス進みます。</p><div class="dgs">' + p0a + p0b + '</div>' +
+        '<h4>押せる条件</h4><p>選んだ駒の<b>枚数</b>が、押される連なりの<b>枚数</b>より多いときだけ押せます。味方の駒も、押す先にあれば、枚数に数えます。ただし、<b>押される連なりの中に玉（相手の玉も、自分の玉も）が入っているときは、同じ枚数でも押せます</b>。相手の玉は落とすため、自分の玉は動かして逃がすための例外です。</p>' +
+        '<div class="dgs">' + p1 + p1d + p2a + p2b + '</div><div class="dgs">' + p2c + p2d + '</div>' +
+        '<h4>盤の外へ</h4><p>盤の外へ出た駒は取り除かれ、戻りません。</p><div class="dgs">' + p3a + p3b + '</div>' +
+        '<h4>味方の玉を動かす</h4><p>味方の玉は自分では動かせませんが、<b>隣の粒1枚で押して動かせます</b>（玉が入っていれば、同じ枚数でも押せるため）。ピンチのときは、玉を押して逃がしましょう。ただし、押しすぎて自分の玉を盤の外へ出すと負けです。</p><div class="dgs">' + p4a + '</div>' },
+      { t: '外周が落ちる', h: '<h3>外周が落ちる</h3><p>引き分けになりにくくするため、<b>15手目から5手ごとに、盤の外周の2マスが落ちます</b>。落ちるのは、盤の中心について点対称の位置にある2マスです（たとえば左上の角と右下の角）。</p>' +
+        '<ul><li>落ちるマスは、直前の5手のあいだ、赤くまたたいて予告されます。</li><li>落ちたマスの駒は、盤の外へ落ちて取り除かれます。玉が落ちたら、その側の負けです（両方なら引き分け）。</li><li>落ちたマスは穴になり、元には戻りません。穴には動けず、押された駒は穴へ落ちます。</li><li>外周は全部で10組（20マス）あり、60手目にすべて落ちます。そのあとは、中の4×4で戦います。</li></ul><p>外周の駒は、落ちる前に内側へ動かしましょう。</p>' },
+      { t: '盤の見かた', h: '<h3>盤の見かた</h3>' + legend + '<p>最後に動いた駒には、点線の枠が付きます。押せる駒にカーソルを合わせると、押される連なり（オレンジ）と、落ちる駒（赤）が見えます。</p>' },
+      { t: '初期配置', h: '<h3>初期配置</h3><p>上が相手、下があなたです。180度回転した、対称の配置です。</p><div class="dgs">' + dg(NN, NN, init) + '</div>' }
+    ];
+  }
+  function renderRules() {
+    var pages = rulesPages();
+    if (RP < 0) RP = 0; if (RP > pages.length - 1) RP = pages.length - 1;
+    $('rules').innerHTML = '<div class="card rules-card"><div class="rules-head"><h2>ルール</h2><button type="button" class="x" data-act="close-rules" aria-label="閉じる">×</button></div>' +
+      '<div class="rules-layout"><nav class="rules-nav" aria-label="ルールの項目">' +
+      pages.map(function (p, i) { return '<button type="button" data-rp="' + i + '"' + (i === RP ? ' class="on" aria-current="page"' : '') + '>' + p.t + '</button>'; }).join('') + '</nav>' +
+      '<div class="rules-main"><div class="rules-body">' + pages[RP].h + '</div>' +
+      '<div class="rules-foot"><button type="button" data-act="rp-prev"' + (RP === 0 ? ' disabled' : '') + '>← 前へ</button><span class="muted">' + (RP + 1) + ' / ' + pages.length + '</span><button type="button" data-act="rp-next"' + (RP === pages.length - 1 ? ' disabled' : '') + '>次へ →</button></div></div></div></div>';
+    $('rules').hidden = false;
+  }
+  function closeOverlays() { $('rules').hidden = true; }
+
+  /* ---------- 盤 ---------- */
+  function setPos(el, idx) {
+    el.style.setProperty('--r', (idx / NN) | 0); el.style.setProperty('--c', idx % NN); el.dataset.i = idx;
+    var code = S.b[idx];
+    if (code) el.setAttribute('aria-label', nm(idx) + ' ' + codeLabel(code));
+  }
+  function buildBoard() {
+    var bd = $('board'), i, j, h = '';
+    // 盤は、交点ごとのタイル（落ちると消えて、背景が見える）でできている。線と点はタイルの中に描く
+    var L = NN - 1, edgeLo = '0px', edgeHi = 'calc(var(--pad)*2 + ' + L + '*var(--step))';
+    function lo(k) { return k === 0 ? edgeLo : 'calc(var(--pad) + ' + k + '*var(--step) - var(--step)*.5)'; }
+    function hi(k) { return k === L ? edgeHi : 'calc(var(--pad) + ' + k + '*var(--step) + var(--step)*.5)'; }
+    for (i = 0; i < NN; i++) for (j = 0; j < NN; j++) {
+      var rad = '', R = '14px';
+      if (i === 0 && j === 0) rad = R + ' 0 0 0'; else if (i === 0 && j === L) rad = '0 ' + R + ' 0 0'; else if (i === L && j === 0) rad = '0 0 0 ' + R; else if (i === L && j === L) rad = '0 0 ' + R + ' 0';
+      h += '<i class="tile" data-i="' + (i * NN + j) + '" style="left:' + lo(j) + ';top:' + lo(i) + ';width:calc((' + hi(j) + ') - (' + lo(j) + ') + 0.6px);height:calc((' + hi(i) + ') - (' + lo(i) + ') + 0.6px)' + (rad ? ';border-radius:' + rad : '') + '">' +
+        '<b class="th" style="left:' + (j === 0 ? 'var(--pad)' : '0') + ';right:' + (j === L ? 'var(--pad)' : '0') + ';top:' + (i === 0 ? 'var(--pad)' : 'calc(var(--step)*.5)') + '"></b>' +
+        '<b class="tv" style="top:' + (i === 0 ? 'var(--pad)' : '0') + ';bottom:' + (i === L ? 'var(--pad)' : '0') + ';left:' + (j === 0 ? 'var(--pad)' : 'calc(var(--step)*.5)') + '"></b>' +
+        '<b class="td" style="left:' + (j === 0 ? 'var(--pad)' : 'calc(var(--step)*.5)') + ';top:' + (i === 0 ? 'var(--pad)' : 'calc(var(--step)*.5)') + '"></b></i>';
+    }
+    bd.innerHTML = h;
+    S.els = {};
+    for (i = 0; i < SZ; i++) if (S.b[i]) {
+      var code = S.b[i], el = document.createElement('button');
+      el.type = 'button'; el.className = 'pc k' + E.kind(code) + ' s' + E.side(code);
+      S.els[i] = el; setPos(el, i); bd.appendChild(el);
+    }
+  }
+
+  function newGame(opt) {
+    GEN++;
+    var online = !!(opt && opt.online);
+    var watch = !online && SET.mode === 'watch';
+    var fst = online ? opt.first : ((watch || SET.playerFirst) ? 0 : 1);
+    S = { b: E.initBoard(), turn: fst, first: fst, online: online, turnStart: Date.now(), hole: new Uint8Array(SZ), pairs: online ? opt.pairs : E.dropPairs(), nd: 0, dropOver: null, ply: 0, watch: watch, paused: false, sel: null, legal: [], over: null, log: [], hist: {}, thinking: false, gen: GEN, els: {}, msg: '', last: -1, resultReady: false, viewing: false, animMs: 0 };
+    sync();
+    S.hist[E.keyOf(S.b, S.turn)] = 1;
+    buildBoard();
+    render();
+    if (cpuToMove()) cpuTurn();
+  }
+  function cpuToMove() { return !!S && !S.tut && !S.online && !S.over && (S.watch || S.turn === 1); }
+  function playable() { return !!S && !S.over && !S.watch && S.turn === 0 && !S.thinking; }
+
+  var LOGO_SVG = '<svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="12" width="22" height="22" rx="7" style="fill:var(--acc)"/><path d="M17 7 C 21 1, 30 1, 34 8" fill="none" style="stroke:var(--mk)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.5 4.5"/><circle cx="26" cy="19" r="9" style="fill:var(--me)"/><circle cx="11" cy="24" r="5" style="fill:var(--cpu)"/></svg>';
+
+  /* ---------- チュートリアル（説明と操作を交互に） ---------- */
+  function ix(r, c) { return r * NN + c; }
+  var TUT = [
+    { title: 'Cororoへようこそ', kind: 'next', init: true,
+      text: '駒を取らずに、<b>押して盤の外へ落とす</b>ゲームです。相手の<b>玉</b>を盤の外へ押し出せば勝ちです。あなたは<b>下側</b>の駒です。<br>駒は2種類。<b>玉</b>は大きな丸で、自分では動かせません。<b>粒</b>は小さな丸で、動かせる駒です。',
+      task: '盤を見たら、「次へ」を押してください。', ok: '' },
+    { title: '粒を動かす', kind: 'move',
+      pieces: [[4, 2, 1], [5, 4, 3], [0, 1, 6], [1, 3, 4]],
+      text: '粒は、タテヨコに1マス動かせます。動かせる駒は光り、動かせるマスには灰色の点が出ます。',
+      task: 'あなたの粒をタップして、灰色の点のマスへ動かしてみましょう。', ok: '動かせました！ 粒は1回に1つ、1マスずつ動きます。',
+      expect: function (m) { return m.n === 1 && m.f === ix(4, 2); } },
+    { title: '並んだ粒をまとめて動かす', kind: 'move',
+      pieces: [[4, 1, 1], [4, 2, 1], [4, 3, 1], [5, 5, 3], [0, 4, 6], [1, 2, 4]],
+      text: '一直線に並んだ粒は、<b>まとめて選んで動かせます</b>。ドラッグでなぞるか、順番にタップして選びます。まとめて動かすときは、並んでいる向きにだけ進めます。',
+      task: '3つの粒をなぞって（またはタップして）選び、灰色の点のマスへ動かしましょう。', ok: '3つ一緒に動きました！ 次は、まとめるとなぜ強いのかを見ます。',
+      expect: function (m) { return m.n === 3; } },
+    { title: '押す（枚数がだいじ）', kind: 'move',
+      pieces: [[5, 2, 1], [4, 2, 1], [3, 2, 4], [5, 5, 3], [0, 5, 6]],
+      text: '進む先に駒があると、その駒を<b>押せます</b>。ただし、押す側の枚数が、押される側の枚数より<b>多い</b>ときだけ。1枚で相手の粒1枚は押せませんが、<b>2枚なら押せます</b>。押せるマスは、オレンジの輪で表示されます。',
+      task: '2つの粒をなぞって選び、オレンジの輪（相手の粒）のマスを押しましょう。', ok: '押せました！ 押された粒は1マス下がりました。枚数が多いほど、たくさんの駒を押せます。',
+      expect: function (m) { return m.n === 2 && m.push === 1 && m.d === 0; } },
+    { title: '玉を押し出して勝つ', kind: 'move',
+      pieces: [[1, 3, 1], [5, 2, 3], [0, 3, 6], [1, 5, 4]],
+      text: '相手の<b>玉</b>を押して盤の外へ落とせば、勝ちです。玉は特別で、<b>同じ枚数（粒1枚）でも押せます</b>。',
+      task: 'あなたの粒で、相手の玉を上へ押し出しましょう。', ok: '玉が落ちました。これが勝ちです！ 相手の玉を落とすのが、このゲームの目的です。',
+      expect: function (m) { return m.n === 1 && m.push === 1 && m.d === 0; } },
+    { title: '玉を動かす（逃がす）', kind: 'move',
+      pieces: [[4, 3, 1], [3, 3, 3], [0, 1, 6], [1, 4, 4]],
+      text: '自分の玉は、自分では動かせません。<b>玉の隣の粒で、玉を押す</b>と、玉が動きます。玉は、粒1枚でも押せます（相手の玉も、自分の玉も）。',
+      task: '粒を選んで、玉を1マス前へ押しましょう。', ok: '玉が動きました。ピンチのときは、こうして玉を逃がします。ただし、自分の玉を盤の外へ押し出すと負けです。',
+      expect: function (m) { return m.n === 1 && m.push === 1 && m.d === 0 && m.f === ix(4, 3); } },
+    { title: '外周が落ちる', kind: 'drop', pairs: [[0, 35]], ply: 13,
+      pieces: [[5, 5, 1], [3, 2, 1], [4, 3, 3], [0, 0, 4], [0, 2, 6]],
+      text: '引き分けを減らすため、<b>15手目から5手ごとに、外周の2マス</b>が落ちます（盤の中心について点対称の2マス）。落ちるマスは、赤くまたたいて予告されます。そこにいる駒は一緒に落ちるので、落ちる前に内側へ逃がしましょう。',
+      task: '「落としてみる」ボタンを押してみましょう。', ok: '落ちたマスは消えて、元に戻りません。外周は全部で10組（20マス）が落ちていきます。' },
+    { title: 'おさらい', kind: 'final', init: true,
+      text: '<ul class="tl"><li>相手の玉を押し出したら勝ち（自分の玉が落ちたら負け）</li><li>一直線に並んだ粒は、まとめて動かせる</li><li>押せるのは、押す枚数が多いとき（玉が入っているときだけは同数でもOK）</li><li>15手目から5手ごとに、外周の2マスが落ちる</li><li>同じ局面が3回続いたら、駒が多いほうの勝ち</li></ul>',
+      task: '準備ができたら、CPUと対局しましょう。', ok: '' }
+  ];
+  function startTutorial() {
+    GEN++;
+    S = { b: E.initBoard(), turn: 0, first: 0, hole: new Uint8Array(SZ), pairs: [], nd: 0, dropOver: null, ply: 0, watch: false, paused: false, sel: null, legal: [], over: null, log: [], hist: {}, thinking: false, gen: GEN, els: {}, msg: '', last: -1, resultReady: false, viewing: false, animMs: 0, tut: { i: 0, done: false } };
+    $('result').hidden = true; show('game'); tutLoad(0);
+  }
+  function tutLoad(i) {
+    var st = TUT[i], b = new Int8Array(SZ);
+    if (st.init) b = E.initBoard(); else st.pieces.forEach(function (p) { b[ix(p[0], p[1])] = p[2]; });
+    S.gen = ++GEN; S.b = b; S.turn = 0; S.over = null; S.sel = null; S.msg = ''; S.last = -1; S.log = []; S.hist = {};
+    S.hole = new Uint8Array(SZ); S.pairs = st.pairs || []; S.nd = 0; S.ply = st.ply || 0; S.dropOver = null;
+    S.tut.i = i; S.tut.done = false;
+    sync(); buildBoard(); render();
+  }
+  function tutAllows(m) { var st = TUT[S.tut.i]; return !!st.expect && !S.tut.done && st.expect(m); }
+  function tutMoved() { S.turn = 0; S.tut.done = true; S.animMs = 380; sync(); render(); }
+  function renderTut() {
+    var t = S.tut, st = TUT[t.i], n = TUT.length, last = t.i === n - 1;
+    $('bar').innerHTML = '<div class="brand"><span class="logo" aria-hidden="true">' + LOGO_SVG + '</span>Cororo</div><div class="chip acc">チュートリアル ' + (t.i + 1) + ' / ' + n + '</div><div class="grow" style="flex:1"></div>' +
+      '<button type="button" data-act="rules">ルール</button><button type="button" data-act="undo"' + (playable() && S.sel ? '' : ' disabled') + '>選び直す</button><button type="button" data-act="tut-quit">やめる</button>';
+    S.legal = (playable() && st.expect && !t.done) ? E.gen(S.b, 0).filter(function (m) { return st.expect(m); }) : [];
+    var btns;
+    if (last) btns = '<button type="button" class="primary grow" data-act="tut-play">CPUと対局する</button><button type="button" data-act="tut-retry">もう一度</button>';
+    else {
+      btns = '<button type="button" data-act="tut-prev"' + (t.i === 0 ? ' disabled' : '') + '>← 前へ</button>' +
+        (st.kind === 'drop' ? '<button type="button" class="primary" data-act="tut-drop"' + (t.done ? ' disabled' : '') + '>落としてみる</button>' : '') +
+        (st.kind === 'move' ? '<button type="button" data-act="tut-retry">やり直す</button>' : '') +
+        '<button type="button" class="' + ((st.kind === 'next' || t.done) ? 'primary' : '') + '" data-act="tut-next"' + ((st.kind === 'next' || t.done) ? '' : ' disabled') + '>次へ →</button>';
+    }
+    $('left').innerHTML = '<div class="panel tut"><div class="lab">ステップ ' + (t.i + 1) + '</div><h3 class="tt">' + st.title + '</h3><div class="tx">' + st.text + '</div>' +
+      '<div class="task' + (t.done ? ' ok' : '') + '">' + (t.done ? '✓ ' + st.ok : '▶ ' + st.task) + '</div><div class="row tutbtn">' + btns + '</div></div>';
+    $('hint').textContent = S.msg || (t.done ? '✓ できました。「次へ」を押してください' : st.task);
+    $('bar-top').innerHTML = '<div class="who"><i class="dot c1"></i>相手</div><div>' + count(1) + '枚</div>';
+    $('bar-bot').innerHTML = '<div class="who"><i class="dot c0"></i>あなた</div><div>' + count(0) + '枚</div>';
+    $('right').innerHTML = '<div class="panel"><div class="lab">駒</div>' +
+      '<div class="irow"><span class="legend-ico"><i style="width:30px;height:30px;border-radius:50%"></i></span><div><b>玉</b><span>自分では動かせない。落とされたら負け</span></div></div>' +
+      '<div class="irow"><span class="legend-ico"><i style="width:15px;height:15px;border-radius:50%"></i></span><div><b>粒</b><span>縦横に1マス。一直線に並んだ味方をまとめて選ぶと、押す力が増える</span></div></div></div>' +
+      '<div class="panel"><div class="lab">盤の見かた</div><div class="small muted">灰色の点：動かせるマス<br>オレンジの輪：押せる駒（そのマスへ動くと押します）<br>黒い輪：選んでいる駒</div></div>';
+    renderHoles();
+    renderMarkers();
+    $('result').hidden = true;
+  }
+
+  function finishGame(winner, reason) { S.over = { winner: winner, reason: reason }; }
+
+  // 外周の2マスが落ちる。落ちたマスの駒は取り除かれる。玉が落ちたときは、その結果（1勝ち／-1負け／0引き分け）を返す
+  function doDrop(who) {
+    var pr = S.pairs[S.nd], gone = [], bd = $('board');
+    S.nd++;
+    pr.forEach(function (i) {
+      S.hole[i] = 1;
+      if (S.b[i]) {
+        gone.push(S.b[i]);
+        var el = S.els[i]; delete S.els[i]; S.b[i] = 0;
+        if (el) {
+          var big = el.classList.contains('k2');
+          var ring = document.createElement('i'); ring.className = 'ring' + (big ? ' big' : '') + (el.classList.contains('s0') ? ' s0' : ' s1');
+          ring.style.setProperty('--r', (i / NN) | 0); ring.style.setProperty('--c', i % NN);
+          if (bd) { bd.appendChild(ring); setTimeout(function () { if (ring.parentNode) ring.parentNode.removeChild(ring); }, 700); }
+          el.classList.add('fall', 'spin'); el.disabled = true;
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 800);
+        }
+      }
+    });
+    sync();
+    var txt = '外周の2マス（' + nm(pr[0]) + '・' + nm(pr[1]) + '）が落ちました' + (gone.length ? '（落ちた駒：' + gone.map(codeLabel).join('、') + '）' : '');
+    S.log.unshift({ side: -1, text: txt }); if (S.log.length > 60) S.log.pop();
+    sfx('fall');
+    var o = E.outcome(gone, who);
+    if (o !== null) S.dropOver = true;
+    return o;
+  }
+
+  function doMove(m) {
+    if (S.tut && !tutAllows(m)) return;
+    var who = S.turn, a = E.apply(S.b, m), pcode = S.b[m.f];
+    if (S.online && who === 0 && !S.tut) netSend({ t: 'move', m: { f: m.f, n: m.n, d: m.d, t: m.t, push: m.push } });
+    var pairs = a.mv.map(function (x) { return [S.els[x.from], x.to, x.from]; });
+    a.mv.forEach(function (x) { delete S.els[x.from]; });
+    S.b = a.b;
+    pairs.forEach(function (p) { if (p[1] >= 0) { S.els[p[1]] = p[0]; setPos(p[0], p[1]); } });
+    pairs.forEach(function (p) {
+      if (p[1] >= 0) return;
+      var el = p[0];
+      el.style.setProperty('--r', ((p[2] / NN) | 0) + a.dir[0]); el.style.setProperty('--c', (p[2] % NN) + a.dir[1]);
+      el.classList.add('fall'); el.disabled = true;
+      var big = el.classList.contains('k2');
+      var bd0 = $('board'), ring = document.createElement('i'); ring.className = 'ring' + (big ? ' big' : '') + (el.classList.contains('s0') ? ' s0' : ' s1');
+      ring.style.setProperty('--r', ((p[2] / NN) | 0) + a.dir[0] * 0.5); ring.style.setProperty('--c', (p[2] % NN) + a.dir[1] * 0.5);
+      if (bd0) { bd0.appendChild(ring); setTimeout(function () { if (ring.parentNode) ring.parentNode.removeChild(ring); }, 700); }
+      el.classList.add('spin');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 800);
+    });
+    var txt = sideName(who) + '：' + (m.n > 1 ? '粒' + m.n + '枚（' + nm(m.f) + '〜' + nm(m.t - stepOf(m)) + '）' + (m.push ? '' : 'が1マス進んだ') : '粒 ' + nm(m.f) + '→' + nm(m.t));
+    if (m.push) txt += '、' + m.push + '枚を押した';
+    if (a.removed.length) txt += '（盤の外へ：' + a.removed.map(codeLabel).join('、') + '）';
+    S.log.unshift({ side: who, text: txt }); if (S.log.length > 60) S.log.pop();
+    sfx(m.push ? 'push' : 'move', { kind: 0, n: Math.min(m.push ? m.n + m.push : 1, 3) }); if (a.removed.length) sfx('fall');
+    S.turnStart = Date.now();
+    S.last = m.t; S.sel = null; S.msg = ''; S.ply++; S.animMs = 380;
+    if (S.tut) { tutMoved(); return; }
+    var o = E.outcome(a.removed, who);
+    if (o === null && S.ply === nextAt()) o = doDrop(who);
+    if (o !== null) {
+      if (S.dropOver) {
+        if (o === 0) finishGame(-1, '外周が落ちて、両方の玉が同時に落ちました');
+        else if (o === 1) finishGame(who, '外周が落ちて、' + sideName(1 - who) + 'の玉が落ちました');
+        else finishGame(1 - who, '外周が落ちて、' + sideName(who) + 'の玉が落ちました');
+      }
+      else if (o === 0) finishGame(-1, '両方の玉が同時に落ちました');
+      else if (o === 1) finishGame(who, sideName(1 - who) + 'の玉を押し出しました');
+      else finishGame(1 - who, sideName(who) + 'が自分の玉を押し出してしまいました');
+    } else {
+      S.turn = 1 - who; sync();
+      var key = E.keyOf(S.b, S.turn); S.hist[key] = (S.hist[key] || 0) + 1;
+      if (!E.gen(S.b, S.turn).length) finishGame(who, sideName(S.turn) + 'は動かせる駒がなくなりました');
+      else if (S.hist[key] >= 3) {
+        var rr = E.repResult(S.b, who), nw = E.pieceCount(S.b, who), nl = E.pieceCount(S.b, 1 - who);
+        if (rr === 0) finishGame(-1, '同じ局面が3回現れました（駒の数が同じなので引き分け）');
+        else if (rr > 0) finishGame(who, '同じ局面が3回現れたので、駒が多い' + sideName(who) + 'の勝ちです（' + nw + '枚対' + nl + '枚）');
+        else finishGame(1 - who, '同じ局面が3回現れたので、駒が多い' + sideName(1 - who) + 'の勝ちです（' + nl + '枚対' + nw + '枚）');
+      }
+      else if (S.ply >= MAXPLY) finishGame(-1, MAXPLY + '手のうちに決着しませんでした');
+    }
+    render();
+    if (cpuToMove()) cpuTurn();
+  }
+
+  function cpuTurn() {
+    var g = S.gen, side = S.turn;
+    var wait = S.watch ? SPEED[SET.speed] : 500;
+    var step = function () {
+      if (!S || S.gen !== g || S.over) return;
+      if (S.paused) { setTimeout(step, 150); return; }
+      S.thinking = true; render();
+      setTimeout(function () {
+        if (!S || S.gen !== g) return;
+        var m = E.choose(S.b, side, levelOf(side), S.hist);
+        S.thinking = false;
+        if (!m) { finishGame(1 - side, sideName(side) + 'は動かせる駒がなくなりました'); render(); return; }
+        doMove(m);
+      }, 40);
+    };
+    setTimeout(step, wait);
+  }
+
+  /* ---------- 描画 ---------- */
+  function clearPreview() {
+    var els = document.querySelectorAll('.pvc,.pvf'); for (var i = 0; i < els.length; i++) els[i].classList.remove('pvc', 'pvf');
+  }
+  function renderMarkers() {
+    var bd = $('board'), old = bd.querySelectorAll('.mk'), i;
+    for (i = 0; i < old.length; i++) bd.removeChild(old[i]);
+    for (var k in S.els) {
+      var el = S.els[k]; el.classList.remove('sel', 'can', 'last');
+    }
+    if (S.els[S.last]) S.els[S.last].classList.add('last');
+    if (!playable()) return;
+    var from = {}; S.legal.forEach(function (m) { cellsOf(m).forEach(function (x) { from[x] = 1; }); });
+    for (var f in from) if (S.els[f]) S.els[f].classList.add('can');
+    if (!S.sel) return;
+    S.sel.forEach(function (x) { if (S.els[x]) S.els[x].classList.add('sel'); });
+    selMoves().forEach(function (m) {
+      var mk = document.createElement('button'); mk.type = 'button'; mk.className = 'mk ' + (m.push ? 'push' : 'dot'); mk.dataset.t = m.t; mk.dataset.d = m.d;
+      mk.style.setProperty('--r', (m.t / NN) | 0); mk.style.setProperty('--c', m.t % NN);
+      mk.setAttribute('aria-label', nm(m.t) + (m.push ? ' 押す' : ' 動かす'));
+      bd.appendChild(mk);
+    });
+  }
+
+  function pcard(side) {
+    var n = count(side), out = 6 - count(1 - side), cur = !S.over && S.turn === side;
+    var me = !S.watch && side === 0;
+    var segs = ''; for (var i = 0; i < 6; i++) segs += '<i class="' + (i < n ? 'on' : '') + '"></i>';
+    return '<div class="pcard' + (cur ? ' cur' : '') + '"><div class="phead"><i class="dot c' + side + '"></i><span class="pn">' + esc(sideName(side)) + '</span><span class="tag">' + (me ? 'あなた' : S.online ? '対戦相手' : LEVEL[levelOf(side)]) + '</span><span class="tag">' + orderOf(side) + '</span></div>' +
+      '<div class="ms"><span class="k">残りの駒</span><span class="segs">' + segs + '</span><b>' + n + '/6</b></div>' +
+      '<div class="ms"><span class="k">落とした数</span><b>' + out + '</b></div></div>';
+  }
+
+  function dropChip() {
+    if (S.nd >= S.pairs.length) return '<div class="chip">外周はすべて落ちました</div>';
+    var n = dropIn(); return '<div class="chip' + (n <= 2 ? ' warn' : '') + '">あと' + n + '手で外周2マスが落ちます</div>';
+  }
+  function renderHoles() {
+    var bd = $('board'), pend = S.nd < S.pairs.length && dropIn() <= DROP_EVERY ? S.pairs[S.nd] : [];
+    var tiles = bd.querySelectorAll('.tile'), k;
+    for (k = 0; k < tiles.length; k++) {
+      var t = tiles[k], i = +t.dataset.i;
+      if (S.hole[i]) { if (!t.classList.contains('tfall')) { t.classList.remove('pend', 'soon'); t.classList.add('tfall'); (function (tt) { setTimeout(function () { if (tt.parentNode) tt.parentNode.removeChild(tt); }, 1100); })(t); } continue; }
+      var p = pend.indexOf(i) >= 0;
+      t.classList.toggle('pend', p); t.classList.toggle('soon', p && dropIn() <= 2);
+    }
+  }
+  function render() {
+    sync();
+    if (S.tut) { renderTut(); return; }
+    var turnTxt;
+    if (S.over) turnTxt = '対局終了';
+    else if (S.watch) turnTxt = sideName(S.turn) + 'の番' + (S.paused ? '：一時停止中' : S.thinking ? '：考え中…' : '');
+    else if (S.turn === 1) turnTxt = (S.online ? '相手' : 'CPU') + 'の番' + (S.thinking ? '：考え中…' : '');
+    else turnTxt = 'あなたの番';
+    $('bar').innerHTML = '<div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="14" width="21" height="21" rx="7" style="fill:var(--grid)"/><path d="M15 9 C 19 3, 27 3, 31 9" fill="none" style="stroke:var(--mk)" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="1 4"/><circle cx="26" cy="19" r="8" style="fill:var(--me)"/><circle cx="12.5" cy="24.5" r="4.6" style="fill:var(--cpu)"/></svg></span>Cororo</div>' +
+      '<div class="chip">' + (S.ply + 1) + '手目</div>' + dropChip() + '<div class="chip acc">' + turnTxt + '</div>' +
+      (S.online ? '<div class="chip" id="tmr">' + tmrText() + '</div>' : '') + '<div class="chip">' + (S.online ? 'オンライン対戦' : S.watch ? '先手：' + LEVEL[SET.wLevel] + '　後手：' + LEVEL[SET.nLevel] : 'CPU：' + LEVEL[SET.level]) + '</div><div class="grow" style="flex:1"></div>' +
+      (S.watch ? '<button type="button" data-act="pause">' + (S.paused ? '再開' : '一時停止') + '</button>' +
+        [['slow', '遅い'], ['normal', 'ふつう'], ['fast', '速い']].map(function (o) { return '<button type="button" class="pill" data-act="speed" data-val="' + o[0] + '" aria-pressed="' + (SET.speed === o[0]) + '">' + o[1] + '</button>'; }).join('') : '') +
+      '<button type="button" data-act="rules">ルール</button>' + (S.online ? '' : '<button type="button" data-act="new">新しい対局</button>') + '<button type="button" data-act="' + (S.online ? 'leave-game' : 'lobby') + '">' + (S.online ? '退室する' : 'ロビーに戻る') + '</button>' +
+      (S.watch || S.online ? '' : '<button type="button" data-act="undo"' + (playable() && S.sel ? '' : ' disabled') + '>選び直す</button>');
+
+    if (playable()) S.legal = E.gen(S.b, 0); else S.legal = [];
+    // 手順
+    var st1 = 'step', st2 = 'step';
+    if (playable()) { if (!S.sel) st1 += ' cur'; else { st1 += ' done'; st2 += ' cur'; } }
+    $('left').innerHTML = pcard(1) + pcard(0) + (S.watch ? '<div class="panel"><div class="lab">観戦モード</div><div class="small muted">CPU同士の対戦を観ています。上のバーで、一時停止や速さの変更ができます。</div></div>' :
+      '<div class="panel"><div class="lab">手順</div><div class="steps"><div class="' + st1 + '"><span class="sn">' + (st1.indexOf('done') > 0 ? '✓' : '1') + '</span>動かす駒を選ぶ（一直線に並んだ味方は続けて選べる）</div>' +
+      '<div class="' + st2 + '"><span class="sn">2</span>点かオレンジの輪のマスへ動かす</div></div>' +
+      '<div class="small muted">選んだ枚数が、押される連なりより多いときに押せます（玉が入っていれば、同数でも押せます）。盤の外に出た駒は取り除かれます。</div></div>');
+
+    // ヒント
+    var hint;
+    if (S.over) hint = S.watch ? (S.over.winner === 0 ? '先手の勝ちです' : S.over.winner === 1 ? '後手の勝ちです' : '引き分けです') : S.over.winner === 0 ? 'あなたの勝ちです' : S.over.winner === 1 ? 'あなたの負けです' : '引き分けです';
+    else if (S.msg) hint = S.msg;
+    else if (S.watch) hint = '観戦中です';
+    else if (S.turn === 1) hint = '相手の番です';
+    else if (!S.sel) hint = S.legal.length ? '動かす駒を選んでください。隣り合って一直線に並んだ味方は、続けて選ぶと、まとめて押せます（玉は選べません）' : '動かせる駒がありません';
+    else { var sm = selMoves(); hint = S.sel.length + '枚を選んでいます。' + (sm.length ? (sm.some(function (m) { return !m.push; }) ? '灰色の点へ動かします。' : '') + (sm.some(function (m) { return m.push; }) ? 'オレンジの輪のマスを選ぶと、その駒を押します。' : '') : 'この選び方では、動かせるマスがありません。駒を足すか、選び直してください。'); }
+    $('hint').textContent = hint;
+
+    $('bar-top').innerHTML = '<div class="who"><i class="dot c1"></i>' + esc(sideName(1)) + '</div><div>' + count(1) + '枚</div>';
+    $('bar-bot').innerHTML = '<div class="who"><i class="dot c0"></i>' + esc(sideName(0)) + '</div><div>' + count(0) + '枚</div>';
+
+    $('right').innerHTML = '<div class="panel"><div class="lab">駒（押す力はどれも同じ）</div>' +
+      '<div class="irow"><span class="legend-ico"><i style="width:30px;height:30px;border-radius:50%"></i></span><div><b>玉</b><span>自分では動かせない。落とされたら負け</span></div></div>' +
+            '<div class="irow"><span class="legend-ico"><i style="width:15px;height:15px;border-radius:50%"></i></span><div><b>粒</b><span>縦横に1マス。一直線に並んだ味方をまとめて選ぶと、押す力が増える</span></div></div></div>' +
+      '<div class="panel logbox"><div class="lab">対局の記録</div><div class="log">' +
+      (S.log.length ? S.log.map(function (l) { return '<div><i class="dot c' + l.side + '"></i><span>' + esc(l.text) + '</span></div>'; }).join('') : '<div><span>まだ手がありません</span></div>') + '</div></div>';
+
+    renderHoles();
+    renderMarkers();
+
+    var res = $('result');
+    if (S.over && !S.resultReady && !S.resultWait) {
+      var gg = S.gen, ov = S.over; S.resultWait = true;
+      setTimeout(function () { if (!S || S.gen !== gg || S.over !== ov) return; S.resultReady = true; sfx(ov.winner < 0 ? 'draw' : (S.watch || ov.winner === 0) ? 'win' : 'lose'); render(); }, 700);
+      return;
+    }
+    if (S.over && S.resultReady && !S.viewing) {
+      var w = S.over.winner;
+      var ttl = S.watch ? (w === 0 ? '先手の勝ち' : w === 1 ? '後手の勝ち' : '引き分け') : (w === 0 ? 'あなたの勝ち' : w === 1 ? 'あなたの負け' : '引き分け');
+      res.innerHTML = '<div class="card result-card"><h2 class="rtitle ' + (!S.watch && w === 0 ? 'win' : !S.watch && w === 1 ? 'lose' : '') + '">' + ttl + '</h2>' +
+        '<p class="lead">' + esc(S.over.reason) + '（' + S.ply + '手）</p>' +
+        '<ul class="result-players"><li><i class="dot c0"></i><span class="nm">' + esc(sideName(0)) + '</span><span>残り' + count(0) + '枚</span></li>' +
+        '<li><i class="dot c1"></i><span class="nm">' + esc(sideName(1)) + '</span><span>残り' + count(1) + '枚</span></li></ul>' +
+        (S.online ? '<p class="small muted">' + (NET.gone ? '相手は退室しました。' : NET.myRe ? '再戦を申し込みました。相手の返事を待っています…' : NET.oppRe ? '相手が再戦を希望しています。' : '') + '</p>' : '') +
+        '<div class="row"><button type="button" class="primary grow" data-act="new"' + (S.online && (NET.gone || NET.myRe) ? ' disabled' : '') + '>' + (S.online ? '再戦する（先手後手を交代）' : 'もう一度（同じ設定）') + '</button><button type="button" data-act="' + (S.online ? 'leave-game' : 'lobby') + '">' + (S.online ? '退室する' : 'ロビーに戻る') + '</button><button type="button" data-act="view">盤面を見る</button></div></div>';
+      res.hidden = false;
+    } else res.hidden = true;
+  }
+
+  /* ---------- 入力 ---------- */
+  function onPiece(el) {
+    if (!playable()) return;
+    var i = +el.dataset.i, code = S.b[i];
+    if (!code || E.side(code) !== 0) return;
+    S.msg = '';
+    if (E.kind(code) === 2) { S.sel = null; S.msg = '玉は自分では動かせません。味方の駒に押してもらいます'; render(); return; }
+    var sel = S.sel, usable = S.legal.some(function (m) { return cellsOf(m).indexOf(i) >= 0; });
+    if (sel && sel.indexOf(i) >= 0) {
+      var mn = Math.min.apply(null, sel), mx = Math.max.apply(null, sel);
+      if (sel.length === 1) S.sel = null;
+      else if (i === mn || i === mx) S.sel = sel.filter(function (x) { return x !== i; });
+      else S.sel = [i];
+      render(); return;
+    }
+    if (sel) {
+      var ext = null, sorted = sel.slice().sort(function (x, y) { return x - y; });
+      if (sel.length === 1) { var dd = i - sel[0]; if ((dd === 1 && i % NN !== 0) || (dd === -1 && i % NN !== NN - 1) || dd === NN || dd === -NN) ext = sorted.concat([i]); }
+      else { var st = sorted[1] - sorted[0]; if (i === sorted[0] - st || i === sorted[sorted.length - 1] + st) ext = sorted.concat([i]); }
+      if (ext) { S.sel = ext; sfx('select', { kind: 0 }); render(); return; }
+    }
+    if (!usable) { S.sel = null; S.msg = 'その駒は今は動かせません'; render(); return; }
+    S.sel = [i]; sfx('select', { kind: 0 }); render();
+  }
+  function findMove(mk) {
+    var t = +mk.dataset.t, d = +mk.dataset.d, m = null;
+    selMoves().forEach(function (x) { if (x.t === t && x.d === d) m = x; });
+    return m;
+  }
+  function onMarker(mk) {
+    if (!playable() || !S.sel) return;
+    var m = findMove(mk);
+    clearPreview();
+    if (m) doMove(m);
+  }
+  function showPreview(mk) {
+    clearPreview();
+    if (!playable() || !S.sel || !mk.classList.contains('push')) return;
+    var m = findMove(mk);
+    if (!m) return;
+    var pv = E.preview(S.b, m);
+    pv.chain.forEach(function (idx, n) {
+      var el = S.els[idx]; if (!el) return;
+      el.classList.add(pv.falls && n === pv.chain.length - 1 ? 'pvf' : 'pvc');
+    });
+  }
+
+  /* ---------- ドラッグで複数選択 ---------- */
+  var DRAG = null, SUPP = false;
+  function ownSmall(i) { var c = S && S.b[i]; return !!c && E.side(c) === 0 && E.kind(c) !== 2; }
+  function cellAt(e) {
+    var bd = $('board'), rc = bd.getBoundingClientRect();
+    if (rc.width > 0) {
+      var step = rc.width / (NN + 0.1), pad = step * 0.55;
+      var c = Math.round((e.clientX - rc.left - pad) / step), r = Math.round((e.clientY - rc.top - pad) / step);
+      return { r: Math.max(0, Math.min(NN - 1, r)), c: Math.max(0, Math.min(NN - 1, c)) };
+    }
+    var pc = e.target && e.target.closest ? e.target.closest('.pc') : null;
+    if (pc) { var i = +pc.dataset.i; return { r: (i / NN) | 0, c: i % NN }; }
+    return null;
+  }
+  function dragLine(start, t) {
+    var r0 = (start / NN) | 0, c0 = start % NN, dr = t.r - r0, dc = t.c - c0, out = [start];
+    if (dr === 0 && dc === 0) return out;
+    var vert = Math.abs(dr) >= Math.abs(dc), st = vert ? (dr > 0 ? 1 : -1) : (dc > 0 ? 1 : -1), len = Math.abs(vert ? dr : dc);
+    for (var k = 1; k <= len; k++) {
+      var i = vert ? (r0 + st * k) * NN + c0 : r0 * NN + c0 + st * k;
+      if (!ownSmall(i)) break;
+      out.push(i);
+    }
+    return out;
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (e.button !== undefined && e.button > 0) return;
+    var pc = e.target.closest ? e.target.closest('.pc') : null;
+    if (!pc || !playable()) return;
+    var i = +pc.dataset.i; if (!ownSmall(i)) return;
+    DRAG = { start: i, moved: false, key: '' };
+    try { if (pc.releasePointerCapture && e.pointerId !== undefined) pc.releasePointerCapture(e.pointerId); } catch (x) {}
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (!DRAG || !playable()) return;
+    var t = cellAt(e); if (!t) return;
+    var line = dragLine(DRAG.start, t), key = line.join(',');
+    if (line.length > 1) DRAG.moved = true;
+    if (!DRAG.moved || key === DRAG.key) return;
+    DRAG.key = key; S.sel = line; S.msg = '';
+    if (line.length > 1) sfx('select', { kind: 0 });
+    render();
+  });
+  function endDrag() {
+    if (DRAG && DRAG.moved) { SUPP = true; setTimeout(function () { SUPP = false; }, 60); }
+    DRAG = null;
+  }
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', function () { DRAG = null; });
+
+
+  function tmrText() {
+    if (!S || !S.online || S.over) return '';
+    var r = Math.max(0, Math.ceil(TURN_SEC - (Date.now() - S.turnStart) / 1000));
+    return (S.turn === 0 ? 'あなた' : '相手') + 'の持ち時間 ' + ((r / 60) | 0) + ':' + ('0' + (r % 60)).slice(-2);
+  }
+  setInterval(function () {
+    if (!S || !S.online || S.over || S.tut) return;
+    var el = $('tmr'), el2 = el; if (el) { el.textContent = tmrText(); el.classList.toggle('warn', TURN_SEC - (Date.now() - S.turnStart) / 1000 <= 15); }
+    var rem = TURN_SEC - (Date.now() - S.turnStart) / 1000;
+    if (rem <= 0 && S.turn === 0) { netSend({ t: 'timeout' }); finishGame(1, 'あなたの持ち時間（2分）が切れました'); render(); }
+    else if (rem <= -15 && S.turn === 1) { finishGame(0, '相手の持ち時間（2分）が切れました'); render(); }
+  }, 500);
+  /* ---------- オンライン対戦（PeerJS・ホスト＝部屋を作った人が先手後手と外周の順番を決める） ---------- */
+  // 両者とも「自分が下側（側0）」の視点で動く。相手に送る手は、受け取った側で180度回して使う（盤は点対称）
+  function rotM(m) { return { f: SZ - 1 - m.f, n: m.n, d: m.d ^ 1, t: SZ - 1 - m.t, push: m.push }; }
+  function loadPeer() {
+    if (window.Peer) return Promise.resolve();
+    return new Promise(function (res, rej) { var el = document.createElement('script'); el.src = P2P.src; el.onload = function () { window.Peer ? res() : rej(new Error('load')); }; el.onerror = function () { rej(new Error('load')); }; document.head.appendChild(el); });
+  }
+  function openPeer(id) {
+    return new Promise(function (res, rej) {
+      var opened = false, p = id ? new window.Peer(id, P2P.opts) : new window.Peer(P2P.opts);
+      p.on('open', function () { opened = true; res(p); });
+      p.on('error', function (e) { if (!opened) { try { p.destroy(); } catch (x) {} rej(e); } });
+    });
+  }
+  function netSend(d) { try { if (NET.conn && NET.conn.open) NET.conn.send(d); } catch (e) {} }
+  function netReset() {
+    var p = NET.peer, c = NET.conn;
+    try { if (c && c.open) c.send({ t: 'bye' }); } catch (e) {}
+    NET.peer = null; NET.conn = null; NET.role = ''; NET.code = ''; NET.status = ''; NET.oppName = ''; NET.myRe = NET.oppRe = false; NET.gone = false;
+    setTimeout(function () { try { if (c) c.close(); } catch (e) {} try { if (p) p.destroy(); } catch (e) {} }, 200);
+  }
+  function netLeave() {
+    if (S) S.gen = ++GEN; S = null; $('result').hidden = true;
+    netReset(); NET.err = ''; SET.mode = 'cpu'; show('top'); renderTop();
+  }
+  function netFail(msg) { NET.status = 'error'; NET.err = msg; if (VIEW === 'lobby') renderLobby(); else if (VIEW === 'top') renderTop(); }
+  function errText(e) {
+    var t = e && e.type;
+    if (t === 'peer-unavailable') return '部屋が見つかりません。部屋IDを確認してください';
+    if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return '通信サーバーに接続できません。しばらくしてからもう一度お試しください';
+    return '接続できませんでした。もう一度お試しください';
+  }
+  function enterLobby(role) { SET.mode = 'online'; NET.role = role; NET.err = ''; NET.status = 'connecting'; NET.myRe = NET.oppRe = false; NET.gone = false; NET.oppName = ''; show('lobby'); renderLobby(); }
+  async function netHost() {
+    netReset(); enterLobby('host');
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', peer = null, code = '';
+    try {
+      await loadPeer();
+      for (var k = 0; !peer; k++) {
+        code = ''; for (var i = 0; i < 5; i++) code += chars.charAt((Math.random() * chars.length) | 0);
+        try { peer = await openPeer(P2P.prefix + code); } catch (e) { if (!(e && e.type === 'unavailable-id') || k >= 5) throw e; }
+      }
+    } catch (e) { netFail(errText(e)); return; }
+    if (NET.role !== 'host') { peer.destroy(); return; }
+    NET.peer = peer; NET.code = code; NET.status = 'waiting';
+    peer.on('connection', function (conn) {
+      if (NET.conn && NET.conn.open) { conn.on('open', function () { try { conn.send({ t: 'full' }); } catch (x) {} setTimeout(function () { conn.close(); }, 200); }); return; }
+      setupConn(conn);
+    });
+    peer.on('disconnected', function () { if (NET.peer === peer && !peer.destroyed) try { peer.reconnect(); } catch (x) {} });
+    peer.on('error', function () {});
+    renderLobby();
+  }
+  async function netJoin(code) {
+    code = String(code || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{3,6}$/.test(code)) { NET.err = '部屋IDを入力してください'; NET.joinCode = ''; renderTop(); return; }
+    netReset(); enterLobby('guest'); NET.code = code;
+    var peer;
+    try { await loadPeer(); peer = await openPeer(null); } catch (e) { netFail(errText(e)); return; }
+    if (NET.role !== 'guest' || NET.code !== code) { peer.destroy(); return; }
+    NET.peer = peer;
+    peer.on('error', function (e) { if (NET.peer === peer && NET.status !== 'connected') netFail(errText(e)); });
+    peer.on('disconnected', function () { if (NET.peer === peer && !peer.destroyed) try { peer.reconnect(); } catch (x) {} });
+    var conn = peer.connect(P2P.prefix + code, { reliable: true, serialization: 'json' });
+    setupConn(conn);
+    setTimeout(function () { if (NET.peer === peer && NET.status === 'connecting') netFail('部屋に接続できませんでした。もう一度お試しください'); }, 15000);
+  }
+  function setupConn(conn) {
+    NET.conn = conn;
+    conn.on('open', function () { if (NET.conn !== conn) return; NET.status = 'connected'; NET.gone = false; conn.send({ t: 'hello', name: pname() }); if (VIEW === 'lobby') renderLobby(); });
+    conn.on('data', function (d) { if (NET.conn === conn) onNet(d); });
+    conn.on('close', function () { if (NET.conn === conn) onGone(); });
+    conn.on('error', function () { if (NET.conn === conn) onGone(); });
+  }
+  function onGone() {
+    NET.conn = null; NET.oppName = ''; NET.gone = true;
+    if (S && S.online && !S.over) { finishGame(0, '相手との接続が切れました（あなたの勝ちとして扱います）'); render(); return; }
+    if (S && S.online) { render(); return; }
+    if (NET.role === 'host') { NET.status = 'waiting'; NET.gone = false; if (VIEW === 'lobby') renderLobby(); }
+    else netFail('ホストとの接続が切れました');
+  }
+  function hostStart(firstTime) {
+    if (NET.role !== 'host' || !NET.conn || !NET.conn.open) return;
+    if (!firstTime) NET.hostFirst = !NET.hostFirst; else NET.hostFirst = SET.playerFirst;
+    var pairs = E.dropPairs();
+    NET.myRe = NET.oppRe = false;
+    netSend({ t: 'start', pairs: pairs, guestFirst: !NET.hostFirst });
+    $('result').hidden = true; show('game'); newGame({ online: true, first: NET.hostFirst ? 0 : 1, pairs: pairs });
+  }
+  function onNet(d) {
+    if (!d || typeof d !== 'object') return;
+    if (d.t === 'hello') { NET.oppName = String(d.name || '').slice(0, 12) || '相手'; if (VIEW === 'lobby') renderLobby(); else if (S && S.online) render(); }
+    else if (d.t === 'full') { netFail('この部屋はすでに埋まっています'); }
+    else if (d.t === 'bye') { onGone(); }
+    else if (d.t === 'start' && NET.role === 'guest' && Array.isArray(d.pairs)) {
+      var pairs = d.pairs.map(function (p) { return [SZ - 1 - p[0], SZ - 1 - p[1]]; });
+      NET.myRe = NET.oppRe = false;
+      $('result').hidden = true; show('game'); newGame({ online: true, first: d.guestFirst ? 0 : 1, pairs: pairs });
+    }
+    else if (d.t === 'timeout' && S && S.online && !S.over && S.turn === 1) { finishGame(0, '相手の持ち時間（2分）が切れました'); render(); }
+    else if (d.t === 'rematch') { NET.oppRe = true; if (NET.role === 'host' && NET.myRe) hostStart(false); else if (S && S.online) render(); }
+    else if (d.t === 'move' && S && S.online && !S.over && S.turn === 1 && d.m) {
+      var r = rotM(d.m);
+      var m = E.gen(S.b, 1).filter(function (x) { return x.f === r.f && x.n === r.n && x.d === r.d && x.t === r.t && x.push === r.push; })[0];
+      if (!m) { S.msg = '相手の手を正しく受け取れませんでした（同期のずれ）。退室して、部屋を作り直してください'; render(); return; }
+      doMove(m);
+    }
+  }
+  document.addEventListener('input', function (e) {
+    var id = e.target && e.target.id;
+    if (id === 'in-name') SET.name = e.target.value.trim().slice(0, 12);
+    else if (id === 'in-color') { var hx = normHex(e.target.value); if (hx) { SET.color = hx; $('in-hex').value = hx; saveColorPrefs(); colorNote(); } }
+    else if (id === 'in-ccolor') { var cx = normHex(e.target.value); if (cx) { SET.ccolor = cx; $('in-chex').value = cx; saveColorPrefs(); colorNote(); } }
+    else if (id === 'in-chex') { var c2 = normHex(e.target.value); if (c2) { SET.ccolor = c2; $('in-ccolor').value = c2; saveColorPrefs(); colorNote(); } else { var nt2 = $('ccnote'); if (nt2) nt2.textContent = 'カラーコードは、#f2623f のような6桁（または3桁）で入れてください。'; } }
+    else if (id === 'in-hex') { var h2 = normHex(e.target.value); if (h2) { SET.color = h2; $('in-color').value = h2; saveColorPrefs(); colorNote(); } else { var nt = $('cnote'); if (nt) nt.textContent = 'カラーコードは、#2457f5 のような6桁（または3桁）で入れてください。'; } }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeOverlays(); });
+  document.addEventListener('mouseover', function (e) { var mk = e.target.closest && e.target.closest('.mk'); if (mk) showPreview(mk); });
+  document.addEventListener('mouseout', function (e) { var mk = e.target.closest && e.target.closest('.mk'); if (mk) clearPreview(); });
+  document.addEventListener('focusin', function (e) { var mk = e.target.closest && e.target.closest('.mk'); if (mk) showPreview(mk); });
+  document.addEventListener('focusout', function (e) { var mk = e.target.closest && e.target.closest('.mk'); if (mk) clearPreview(); });
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.id === 'rules') { closeOverlays(); return; }
+    var mk = t.closest ? t.closest('.mk') : null; if (mk) { onMarker(mk); return; }
+    var pc = t.closest ? t.closest('.pc') : null; if (pc) { if (SUPP) { SUPP = false; return; } onPiece(pc); return; }
+    var rp = t.closest ? t.closest('[data-rp]') : null;
+    if (rp) { RP = +rp.getAttribute('data-rp'); renderRules(); return; }
+    var sb = t.closest ? t.closest('[data-set]') : null;
+    if (sb) {
+      var k = sb.getAttribute('data-set'), v = sb.getAttribute('data-val');
+      if (k === 'level') SET.level = v; if (k === 'first') SET.playerFirst = v === '1';
+      if (k === 'wlevel') SET.wLevel = v; if (k === 'nlevel') SET.nLevel = v; if (k === 'speed') SET.speed = v;
+      renderLobby(); return;
+    }
+    var ab = t.closest ? t.closest('[data-act]') : null;
+    if (!ab || ab.disabled) return;
+    switch (ab.getAttribute('data-act')) {
+      case 'tutorial': startTutorial(); break;
+      case 'tut-prev': if (S.tut && S.tut.i > 0) tutLoad(S.tut.i - 1); break;
+      case 'tut-next': if (S.tut && S.tut.i < TUT.length - 1) tutLoad(S.tut.i + 1); break;
+      case 'tut-retry': if (S.tut) tutLoad(S.tut.i === TUT.length - 1 ? 0 : S.tut.i); break;
+      case 'tut-drop': if (S.tut && !S.tut.done) { doDrop(0); S.tut.done = true; S.animMs = 380; render(); } break;
+      case 'tut-play': SET.mode = 'cpu'; show('game'); newGame(); break;
+      case 'tut-quit': if (S) S.gen = ++GEN; S = null; SET.mode = 'cpu'; show('top'); renderTop(); break;
+      case 'create': netHost(); break;
+      case 'join': netJoin(($('in-code').value || '').trim().toUpperCase()); break;
+      case 'copy': try { navigator.clipboard.writeText($('invite-url').value); ab.textContent = 'コピーしました'; } catch (e6) { $('invite-url').select(); } break;
+      case 'net-start': if (NET.role === 'host' && NET.status === 'connected') hostStart(true); break;
+      case 'leave': netLeave(); break;
+      case 'leave-game': netLeave(); break;
+      case 'cpu': SET.mode = 'cpu'; show('lobby'); renderLobby(); break;
+      case 'watch': SET.mode = 'watch'; show('lobby'); renderLobby(); break;
+      case 'back': SET.mode = 'cpu'; show('top'); renderTop(); break;
+      case 'start': show('game'); newGame(); break;
+      case 'new': if (S && S.online) { if (S.over && !NET.myRe && !NET.gone) { NET.myRe = true; netSend({ t: 'rematch' }); if (NET.role === 'host' && NET.oppRe) hostStart(false); else render(); } break; } $('result').hidden = true; newGame(); break;
+      case 'lobby': if (S && S.online) { netLeave(); break; } if (S) S.gen = ++GEN; $('result').hidden = true; show('lobby'); renderLobby(); break;
+      case 'view': S.viewing = true; render(); break;
+      case 'undo': S.sel = null; S.msg = ''; render(); break;
+      case 'pause': S.paused = !S.paused; render(); break;
+      case 'speed': SET.speed = ab.getAttribute('data-val'); render(); break;
+      case 'rules': RP = 0; renderRules(); break;
+      case 'close-rules': closeOverlays(); break;
+      case 'rp-prev': RP--; renderRules(); break;
+      case 'rp-next': RP++; renderRules(); break;
+      case 'save-color': if (SET.color && PALETTE.indexOf(SET.color) < 0) { PALETTE.push(SET.color); if (PALETTE.length > 8) PALETTE.shift(); } saveColorPrefs(); renderLobby(); break;
+      case 'save-ccolor': if (SET.ccolor && PALETTE.indexOf(SET.ccolor) < 0) { PALETTE.push(SET.ccolor); if (PALETTE.length > 8) PALETTE.shift(); } saveColorPrefs(); renderLobby(); break;
+      case 'reset-ccolor': SET.ccolor = ''; saveColorPrefs(); renderLobby(); break;
+      case 'pick-ccolor': SET.ccolor = ab.getAttribute('data-hex'); saveColorPrefs(); renderLobby(); break;
+      case 'reset-color': SET.color = ''; saveColorPrefs(); renderLobby(); break;
+      case 'pick-color': SET.color = ab.getAttribute('data-hex'); saveColorPrefs(); renderLobby(); break;
+      case 'del-color': PALETTE = PALETTE.filter(function (x) { return x !== ab.getAttribute('data-hex'); }); saveColorPrefs(); renderLobby(); break;
+      case 'snd': MUTED = !MUTED; try { localStorage.setItem('oshi-mute', MUTED ? '1' : '0'); } catch (e3) {} applySnd(); if (!MUTED) sfx('select'); break;
+      case 'theme': var nt = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; applyTheme(nt); try { localStorage.setItem('oshi-theme', nt); } catch (e2) {} break;
+    }
+  });
+  function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); $('theme').textContent = t === 'dark' ? '☀ ライトモード' : '🌙 ダークモード'; applyColor(); colorNote(); }
+  var th = ''; try { th = localStorage.getItem('oshi-theme') || ''; } catch (e) { th = ''; }
+  if (th !== 'dark' && th !== 'light') th = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  try { var sc = normHex(localStorage.getItem('oshi-color')); SET.color = sc || ''; SET.ccolor = normHex(localStorage.getItem('oshi-ccolor')) || ''; PALETTE = JSON.parse(localStorage.getItem('oshi-palette') || '[]').map(normHex).filter(Boolean).slice(0, 8); } catch (e5) { PALETTE = []; }
+  window.addEventListener('pagehide', function () { try { if (NET.conn && NET.conn.open) NET.conn.send({ t: 'bye' }); } catch (e) {} });
+  applyTheme(th); applySnd();
+  show('top'); renderTop();
+  window.__oshi = { NET: NET, tut: startTutorial, get S() { return S; }, SET: SET, newGame: newGame, show: show, buildBoard: buildBoard, render: render };
+})();
+</script>
+</body>
+</html>
