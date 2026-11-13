@@ -2,10 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert');
 const E = require('../shared/engine');
 const CPU = require('../shared/cpu');
-const { Room } = require('../shared/room');
+const { Room, Delta } = require('../shared/room');
 
 // タイマーと時計は手で進める
-function makeRoom(seed) {
+function makeRoom(seed, o) {
   const inbox = {};
   const timers = [];
   const clock = { t: 1000 };
@@ -18,6 +18,7 @@ function makeRoom(seed) {
     now: () => clock.t,
     rng: () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; },
   });
+  if (!(o && o.simul)) room.settings.simul = false;       // 既存のテストは、順番に動く設定で書いてある（同時に動く設定は別のテストで確かめる）
   const last = id => [...inbox[id]].reverse().find(m => m.type === 'state');
   // タイマーを1つ進める（時計も進める）
   const step = () => { const t = timers.shift(); if (!t) return false; clock.t += t.ms; t.fn(); return true; };
@@ -110,7 +111,7 @@ test('CPUだけの対戦が最後まで進む（3〜5人）', () => {
       const g = playAll(seed * 11 + n, n);
       assert.notStrictEqual(g.phase, 'play', `n=${n} seed=${seed} が終わらない`);
       assert.ok(g.players.every(p => p.temp >= 0 && p.temp <= 10 && p.food >= 0 && p.food <= 10));
-      assert.ok(E.total(g) <= E.cap(g) + 10 * 0);
+      assert.ok(E.total(g) <= E.cap(g) || g.stats.team.destroyed > 0);   // 倉庫が壊れて上限が下がったときは、超えたままになることがある
       results.push(g.phase + ':' + g.round);
     }
   }
@@ -118,7 +119,7 @@ test('CPUだけの対戦が最後まで進む（3〜5人）', () => {
 });
 
 test('CPU：食べる・復帰中は温まる/食べるだけ・捨てる投票', () => {
-  const st = E.createGame({ seed: 3, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+  const st = E.createGame({ seed: 3, simul: false, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
   const p = E.cur(st);
   p.food = 3; st.items.meat = 2;
   assert.deepStrictEqual(CPU.decide(st, p.id, {}), { type: 'eat', k: 'meat' });
@@ -133,16 +134,19 @@ test('CPU：食べる・復帰中は温まる/食べるだけ・捨てる投票'
   assert.deepStrictEqual(CPU.voteIntent(st, 'p2'), { type: 'voteCast', val: 1 });
 });
 
-test('駒の形と色：選べる・ほかの人と同じ色は不可・ゲーム中は変えられない', () => {
+test('駒の形と色：選べる・ほかの人と、形と色の組み合わせが同じなのは不可（色だけ同じならよい）・ゲーム中は変えられない', () => {
   const { room, inbox, last } = makeRoom();
   const h = room.join('t1', 'A').id;
   const g = room.join('t2', 'B').id;
   room.handle(g, { type: 'style', shape: 'hex', color: 'black' });
   assert.deepStrictEqual([last(h).room.players[1].shape, last(h).room.players[1].color], ['hex', 'black']);
-  room.handle(h, { type: 'style', color: 'black' });
-  assert.match(inbox[h].at(-1).text, /使っている/);
+  room.handle(h, { type: 'style', color: 'black' });                       // 形が違うので、同じ色でもよい
+  assert.deepStrictEqual([last(g).room.players[0].shape, last(g).room.players[0].color], ['circle', 'black']);
+  room.handle(h, { type: 'style', shape: 'hex' });                         // 形も色も同じになるので不可
+  assert.match(inbox[h].at(-1).text, /形も色も同じ/);
+  assert.strictEqual(last(g).room.players[0].shape, 'circle');
   room.handle(h, { type: 'style', shape: 'nope', color: 'zzz' });
-  assert.strictEqual(last(g).room.players[0].color, 'blue');
+  assert.strictEqual(last(g).room.players[0].color, 'black');
   room.handle(h, { type: 'addCpu' });
   room.handle(h, { type: 'start' });
   room.handle(g, { type: 'style', shape: 'up' });
@@ -150,10 +154,20 @@ test('駒の形と色：選べる・ほかの人と同じ色は不可・ゲー�
   assert.strictEqual(last(g).game.players[1].color, 'black');
 });
 
+test('16人までの部屋：形と色の組み合わせが、全員ちがう', () => {
+  const { room, last } = makeRoom();
+  const h = room.join('t1', 'A').id;
+  for (let i = 1; i < 16; i++) room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'addCpu' });                                       // 17人目は入れない
+  const ps = last(h).room.players;
+  assert.strictEqual(ps.length, 16);
+  assert.strictEqual(new Set(ps.map(p => p.color + '/' + p.shape)).size, 16);
+});
+
 test('CPUだけでもクリアできる（3人・20通りのマップのうち、複数回）', () => {
   let wins = 0;
   for (let seed = 1; seed <= 20; seed++) {
-    const st = E.createGame({ seed, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+    const st = E.createGame({ seed, simul: false, players: [1, 2, 3].map(i => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
     const mem = {};
     for (let n = 0; st.phase === 'play' && n < 30000; n++) {
       const p = E.cur(st);
@@ -169,7 +183,7 @@ test('CPUだけでもクリアできる（3人・20通りのマップのうち�
 test('CPUは、同じ場所を行ったり来たりしない（1手番に、仕事をはさまない移動を3回続けない）', () => {
   for (const n of [3, 5]) {
     for (let seed = 1; seed <= 8; seed++) {
-      const st = E.createGame({ seed, players: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
+      const st = E.createGame({ seed, simul: false, players: Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true })) });
       const mem = {};
       let key = '', run = 0;
       for (let k = 0; st.phase === 'play' && k < 30000; k++) {
@@ -248,4 +262,95 @@ test('バージョン：違うバージョンの人は部屋に入れない', ()
   assert.match(room.join('t3', 'C', '0').error, /古い版/);
   assert.ok(room.join('t4', 'D', E.VERSION).id);
   assert.strictEqual(room.players.length, 2);
+});
+
+test('同時に動く：ロビーで設定できる（ホストだけ）。ラウンドの制限時間が切れると、全員のラウンドが終わる', () => {
+  const { room, last, timers, step, clock } = makeRoom(5, { simul: true });
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  assert.strictEqual(last(h).room.settings.simul, true);
+  room.handle(g, { type: 'settings', simul: false });                      // ホスト以外は変えられない
+  assert.strictEqual(room.settings.simul, true);
+  room.handle(h, { type: 'start' });
+  const game = room.game;
+  assert.strictEqual(E.simul(game), true);
+  assert.strictEqual(last(h).room.turnLeft, E.RULES.roundLimitMs);        // ラウンドごとの制限時間
+  const t = timers.find(x => x.ms === E.RULES.roundLimitMs);
+  assert.ok(t);
+  // 人間が2人とも行動していなくても、時間切れでラウンドが進む（CPU は、その間に動く）
+  clock.t += E.RULES.roundLimitMs;
+  timers.splice(timers.indexOf(t), 1);
+  t.fn();
+  assert.strictEqual(game.round, 2);
+  assert.ok(game.players.every(p => !p.done));
+  void step;
+});
+
+test('同時に動く：CPUだけの対戦が、最後まで進む（3人・8人・16人）', () => {
+  for (const n of [3, 8, 16]) {
+    const { room, step } = makeRoom(n * 3, { simul: true });
+    const h = room.join('t1', 'A').id;
+    for (let i = 1; i < n; i++) room.handle(h, { type: 'addCpu' });
+    room.players[0].cpu = true;
+    room.handle(h, { type: 'start' });
+    let guard = 0;
+    while (room.game.phase === 'play' && guard++ < 100000 && step());
+    assert.notStrictEqual(room.game.phase, 'play', `n=${n} が終わらない`);
+    assert.ok(room.game.players.every(p => p.temp >= 0 && p.temp <= 10 && p.food >= 0 && p.food <= 10));
+    // 持ち物の上限は「新しく得る」ときの制限。倉庫が壊れて上限が下がった場合は、上限を超えたままになることがある
+    assert.ok(E.total(room.game) <= E.cap(room.game) || room.game.stats.team.destroyed > 0);
+  }
+});
+
+test('同時に動く：切断中の人は、すぐに行動を終える', () => {
+  const { room, step } = makeRoom(2, { simul: true });
+  const h = room.join('t1', 'A').id;
+  const g = room.join('t2', 'B').id;
+  room.handle(h, { type: 'addCpu' });
+  room.handle(h, { type: 'start' });
+  room.disconnect(h); room.disconnect(g);
+  for (let i = 0; i < 20 && step(); i++);
+  assert.ok(room.game.round > 1);
+});
+
+test('状態の差分：差分を重ねていくと、いつも、全体と同じになる（CPUだけの16人の対戦で、最後まで確かめる）', () => {
+  const players = Array.from({ length: 16 }, (_, i) => ({ id: 'p' + i, name: 'P' + i, color: 'blue', cpu: true }));
+  const st = E.createGame({ seed: 5, players });
+  const mem = {};
+  let sent = null, mirror = null, patches = 0, fulls = 0, bytesFull = 0, bytesPatch = 0;
+  for (let k = 0; k < 400 && st.phase === 'play'; k++) {
+    for (const p of st.players.slice()) {
+      if (st.phase !== 'play' || p.done) continue;
+      const a = CPU.decide(st, p.id, mem[p.id] || (mem[p.id] = {}));
+      if (!E.act(st, p.id, a).ok) E.act(st, p.id, { type: 'end' });
+    }
+    const d = Delta.make(sent, st);
+    sent = d.parts;
+    const whole = JSON.stringify(st);
+    if (d.full) { mirror = JSON.parse(whole); fulls++; bytesFull += whole.length; }
+    else {                                                       // 通信では undefined が null になる（PeerJS と同じ）
+      mirror = Delta.apply(mirror, JSON.parse(JSON.stringify(d.patch, (k, v) => (v === undefined ? null : v))));
+      patches++; bytesPatch += JSON.stringify(d.patch).length;
+    }
+    assert.deepStrictEqual(mirror, JSON.parse(whole), `${k}回目の差分が、全体と合わない`);
+  }
+  assert.ok(patches > 20 && fulls === 1);
+  assert.ok(bytesPatch / patches < (bytesFull / fulls) * 0.6, '差分は、全体より十分に小さい');
+  // 別のゲーム（シードが違う）になったら、全体を送り直す
+  assert.strictEqual(Delta.make(sent, E.createGame({ seed: 6, players })).full, true);
+});
+
+test('通信量：同時に動くとき、CPUの行動は1回の配信にまとめる（人間の数ぶんだけ配信される）', () => {
+  const { room, inbox, timers, clock } = makeRoom(9, { simul: true });
+  const h = room.join('t1', 'A').id;
+  room.join('t2', 'B');
+  for (let i = 0; i < 12; i++) room.handle(h, { type: 'addCpu' });             // 人間2人 + CPU12人
+  room.handle(h, { type: 'start' });
+  const count = () => Object.values(inbox).reduce((n, a) => n + a.filter(m => m.type === 'state').length, 0);
+  const idx = timers.findIndex(t => t.ms < 2000);
+  assert.ok(idx >= 0);
+  const before = count();
+  const t = timers.splice(idx, 1)[0]; clock.t += t.ms; t.fn();                 // CPUが動く1回ぶん
+  assert.strictEqual(count() - before, 2);                                     // 12人のCPUが動いても、人間2人に1回ずつ
 });

@@ -92,7 +92,7 @@
       chip: { ok: ['#dcf0e4', '#1d5a3a'], lost: ['#fbe0dd', '#8f261e'], fire: ['#ffe0c8', '#8a3a0e'] },
       fireOn: '#e9722f', fireOff: '#f3d9c6',
       res: { tree: ['#e3f1e8', '#3c8f66', '#2c6e4c'], stone: ['#e9edf1', '#7d8b97', '#55626d'], veg: ['#fdeccf', '#d98a2b', '#8a520f'], animal: ['#f6e4da', '#b4694a', '#7c4128'], fish: ['#dcecf8', '#3b86c6', '#1f5f99'], plant: ['#eef7e4', '#7aa84a', '#4a7a22'], plantTree: ['#e1f3e6', '#2f8f5a', '#1f6b43'], plantVeg: ['#fff3d6', '#c9a227', '#8a6a0a'] },
-      item: { fur: ['#efe6e0', '#7a5a48'], steak: ['#f8dcd4', '#a3392b'], grilled: ['#fbe3cc', '#b5651d'], soup: ['#fdf0d0', '#b07a10'], wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
+      item: { fish: ['#dcecf8', '#3b86c6'], fur: ['#efe6e0', '#7a5a48'], steak: ['#f8dcd4', '#a3392b'], grilled: ['#fbe3cc', '#b5651d'], soup: ['#fdf0d0', '#b07a10'], wood: ['#f3e8dc', '#8a5a2b'], firewood: ['#f6e6d2', '#b3651f'], stone: ['#e9edf1', '#55626d'], veg: ['#fdeccf', '#8a520f'], meat: ['#f8e1dc', '#9b3a2e'], snow: ['#e1eefa', '#2f6fb5'], sapling: ['#e3f1e8', '#2c6e4c'] },
       tint: { clear: 'rgba(255,236,190,0.10)', snow: 'rgba(120,150,185,0.10)', blizzard: 'rgba(120,150,185,0.22)', rain: 'rgba(70,105,150,0.18)', storm: 'rgba(55,85,130,0.34)' },
       flake: '#7fa3c2', rain: '#4b79a8',
     },
@@ -104,7 +104,7 @@
       chip: { ok: ['#1c3d2e', '#8fe0b3'], lost: ['#4a2224', '#ffab9f'], fire: ['#4a2f1a', '#ffc9a0'] },
       fireOn: '#f08a4b', fireOff: '#4a3526',
       res: { tree: ['#1a3326', '#4fb27f', '#8fe0b3'], stone: ['#252e37', '#8696a5', '#c2cfda'], veg: ['#3a2b14', '#e0a040', '#ffd08a'], animal: ['#3a2619', '#d08a66', '#f1c0a6'], fish: ['#14293d', '#4a9ae0', '#9cd0f5'], plant: ['#24331a', '#8cc25a', '#c4e89a'], plantTree: ['#16301f', '#3fbf7a', '#9be8bd'], plantVeg: ['#3a3314', '#e0c040', '#fff0a0'] },
-      item: { fur: ['#3a2f2a', '#d8b8a0'], steak: ['#4a2420', '#ff9a88'], grilled: ['#4a2f1a', '#f0a868'], soup: ['#40361a', '#f5d070'], wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
+      item: { fish: ['#14293d', '#7fc0f0'], fur: ['#3a2f2a', '#d8b8a0'], steak: ['#4a2420', '#ff9a88'], grilled: ['#4a2f1a', '#f0a868'], soup: ['#40361a', '#f5d070'], wood: ['#3a2c1e', '#e0b27a'], firewood: ['#40281a', '#f0a05a'], stone: ['#2a323b', '#b7c4cf'], veg: ['#3a2b14', '#ffd08a'], meat: ['#3d2220', '#f2a89c'], snow: ['#1a2e44', '#8ec3f5'], sapling: ['#1a3326', '#8fe0b3'] },
       tint: { clear: 'rgba(0,0,0,0)', snow: 'rgba(150,185,225,0.07)', blizzard: 'rgba(170,200,235,0.16)', rain: 'rgba(40,80,140,0.22)', storm: 'rgba(190,215,245,0.26)' },
       flake: '#b8d4ee', rain: '#6f9fd0',
     },
@@ -158,6 +158,7 @@
   function create(o) {
     const cv = o.canvas, ctx = cv.getContext('2d');
     const s = {
+      pawnPos: {}, anims: {}, parts: [], lastT: 0, seed: null,   // 駒の滑らかな移動・パーティクル
       cam: { x: 0, y: 0, z: 1 }, W: 0, H: 0, dpr: 1, hover: null, press: null, drag: null, preview: null,
       mode: 'play', tool: 'pen', color: 'a', live: [], cur: null, lastErase: 0, raf: 0, mm: null, mmKey: '',
     };
@@ -335,11 +336,67 @@
       return out;
     }
 
+    // ---------- 駒の移動アニメーション・パーティクル ----------
+    const easeOut = t => 1 - Math.pow(1 - t, 3);
+    const animAt = (a, now) => {
+      const t = Math.min(1, (now - a.t0) / a.dur), e = easeOut(t);
+      return { x: a.fx + (a.tx - a.fx) * e, y: a.fy + (a.ty - a.fy) * e, t };
+    };
+    // 粒子の見本。x, y はマス座標（中心）。scale は大きさ・数の倍率
+    const PRESETS = {
+      tree:   { colors: ['#5cb37a', '#3c8f66', '#a8d9b4', '#8a5a2b'], n: 11, speed: 2.4, life: 0.65, size: 4.5, grav: 4.5, shape: 'leaf' },
+      stone:  { colors: ['#9aa6b0', '#7d8b97', '#c3ccd4', '#55626d'], n: 11, speed: 2.8, life: 0.6, size: 4, grav: 6, shape: 'chip' },
+      veg:    { colors: ['#e0a040', '#d98a2b', '#f3c97a', '#8cc25a'], n: 11, speed: 2.4, life: 0.65, size: 4.5, grav: 4.5, shape: 'dot' },
+      hit:    { colors: ['#ffd27a', '#ffffff', '#ff9a55'], n: 7, speed: 3.2, life: 0.35, size: 3, grav: 0, shape: 'spark' },
+      kill:   { colors: ['#d98a66', '#b4694a', '#f1c0a6', '#ffd27a'], n: 18, speed: 3.4, life: 0.8, size: 5, grav: 5, shape: 'dot' },
+      splash: { colors: ['#bcd9ee', '#7fb8e0', '#ffffff', '#4a9ae0'], n: 14, speed: 2.6, life: 0.7, size: 4, grav: 6, shape: 'dot' },
+      build:  { colors: ['#e8d8bd', '#c9b48a', '#ffffff', '#ffd27a'], n: 22, speed: 3.0, life: 0.8, size: 5, grav: 2.5, shape: 'dot', ring: '#f0d9a8' },
+      crumble:{ colors: ['#8a7a68', '#6b5d4e', '#b8a890'], n: 24, speed: 3.4, life: 0.9, size: 5, grav: 7, shape: 'chip' },
+      repair: { colors: ['#7ee0a8', '#ffe27a', '#ffffff'], n: 14, speed: 2.0, life: 0.8, size: 3.5, grav: -2.5, shape: 'spark', ring: '#7ee0a8' },
+      stoke:  { colors: ['#ff9a3c', '#ffd27a', '#ff6b2b', '#ffe9b0'], n: 14, speed: 2.2, life: 0.9, size: 3.5, grav: -4, shape: 'spark' },
+      plant:  { colors: ['#8cc25a', '#5cb37a', '#c4e89a'], n: 9, speed: 1.6, life: 0.7, size: 4, grav: -1.5, shape: 'leaf' },
+      eat:    { colors: ['#ffd27a', '#fff3c4', '#ffb35a'], n: 8, speed: 1.6, life: 0.8, size: 3.5, grav: -3, shape: 'spark' },
+      warm:   { colors: ['#ffb35a', '#ff8a3c', '#ffe0a0'], n: 8, speed: 1.2, life: 0.9, size: 4, grav: -3.5, shape: 'dot' },
+    };
+    board.fx = function (kind, x, y, scale, spread) {
+      const pr = PRESETS[kind];
+      if (!pr || s.parts.length > 600) return;
+      const sc = scale || 1, n = Math.max(3, Math.round(pr.n * sc));
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, v = pr.speed * (0.35 + Math.random() * 0.8) * Math.sqrt(sc);
+        const sp = spread || 0.18 * sc;
+        s.parts.push({
+          x: x + (Math.random() - 0.5) * sp * 2, y: y + (Math.random() - 0.5) * sp * 2,
+          vx: Math.cos(a) * v, vy: Math.sin(a) * v - (pr.grav > 0 ? pr.speed * 0.45 : 0),
+          life: pr.life * (0.7 + Math.random() * 0.6), age: 0, size: pr.size * (0.7 + Math.random() * 0.7), grav: pr.grav,
+          color: pr.colors[(Math.random() * pr.colors.length) | 0], shape: pr.shape, rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 8,
+        });
+      }
+      if (pr.ring) s.parts.push({ x, y, vx: 0, vy: 0, life: 0.45, age: 0, size: 10 * Math.sqrt(sc), grav: 0, color: pr.ring, shape: 'ring', rot: 0, vr: 0 });
+      board.request();
+    };
+    board.fxActive = () => s.parts.length > 0 || Object.keys(s.anims).length > 0;
+
     board.draw = function () {
       const g = o.game();
       if (!g || !s.W) return;
       const th = THEMES[o.theme()];
       const me = o.me();
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (s.seed !== g.seed) { s.seed = g.seed; s.pawnPos = {}; s.anims = {}; s.parts = []; }
+      // 駒が動いたら、いまの見た目の位置から、新しい位置へ滑らかに動かす
+      for (const p of g.players) {
+        const last = s.pawnPos[p.id];
+        if (last && (last.x !== p.x || last.y !== p.y)) {
+          const a0 = s.anims[p.id], cur = a0 ? animAt(a0, now) : { x: last.x, y: last.y };
+          const d = Math.max(Math.abs(p.x - cur.x), Math.abs(p.y - cur.y));
+          if (d <= 24) s.anims[p.id] = { fx: cur.x, fy: cur.y, tx: p.x, ty: p.y, t0: now, dur: Math.max(140, Math.min(560, 90 + 75 * d)) };
+          else delete s.anims[p.id];
+        }
+        s.pawnPos[p.id] = { x: p.x, y: p.y };
+      }
+      const moving = new Map();
+      for (const id of Object.keys(s.anims)) { const a = animAt(s.anims[id], now); if (a.t >= 1) delete s.anims[id]; else moving.set(id, a); }
       const z = s.cam.z, S = T * z, cx = s.cam.x, cy = s.cam.y;
       ctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
       ctx.fillStyle = th.bg; ctx.fillRect(0, 0, s.W, s.H);
@@ -409,7 +466,7 @@
       // 建物
       for (const b of g.b) {
         if (E.isPath(b.t) || !(b.x <= vx1 && b.x + b.w >= vx0 && b.y <= vy1 && b.y + b.h >= vy0)) continue;
-        const isFire = b.t === 'fire', warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b), lost = warm && !ins;
+        const isFire = b.t === 'fire', warm = b.t === 'igloo' || b.t === 'storage', ins = b.t === 'igloo' ? E.iglooOk(b) : E.insul(b), lost = warm && !ins;
         const col = th.card[lost ? 'off' : b.t];
         const x = X(b.x) + 3 * z, y = Y(b.y) + 3 * z, w = b.w * S - 6 * z, h = b.h * S - 6 * z;
         ctx.fillStyle = col[0]; rr(ctx, x, y, w, h, 10 * z); ctx.fill();
@@ -421,7 +478,7 @@
         text(({ fire: '焚き火', igloo: 'かまくら', storage: '倉庫', tower: '見張り台', workshop: '作業場' })[b.t], px + 24 * z, py, 13 * z, col[2], 700);
         py += 16 * z;
         let chip = null, label = '';
-        if (isFire) { chip = th.chip.fire; label = `火力 ${g.fire} / ${E.RULES.fireMax}`; }
+        if (isFire) { chip = th.chip.fire; label = `火力 ${b.fire} / ${b.fmax}`; }
         else if (warm) { chip = ins ? th.chip.ok : th.chip.lost; label = ins ? '防寒 有効' : '防寒 消失'; }
         if (chip && h > 50 * z) {
           ctx.font = `700 ${12 * z}px ${FONT}`;
@@ -431,8 +488,8 @@
           py += 17 * z;
         }
         if (isFire) {
-          const sw = (w - 16 * z - 3 * z * (E.RULES.fireMax - 1)) / E.RULES.fireMax;
-          for (let i = 0; i < E.RULES.fireMax; i++) { ctx.fillStyle = i < g.fire ? th.fireOn : th.fireOff; ctx.fillRect(px + i * (sw + 3 * z), py - 4 * z, sw, 8 * z); }
+          const sw = (w - 16 * z - 3 * z * (b.fmax - 1)) / b.fmax;
+          for (let i = 0; i < b.fmax; i++) { ctx.fillStyle = i < b.fire ? th.fireOn : th.fireOff; ctx.fillRect(px + i * (sw + 3 * z), py - 4 * z, sw, 8 * z); }
           py += 14 * z;
         } else {
           const bw = w - 16 * z - 60 * z;
@@ -454,7 +511,7 @@
       for (const p of g.plants) put(p.x, p.y, { kind: p.t === 'veg' ? 'plantVeg' : 'plantTree', hp: p.left, max: E.RULES.growMax });
       for (const a of g.animals) put(a.x, a.y, { kind: 'animal', hp: a.hp, max: a.max || E.RULES.animalHpMax });
       for (const f of g.fish || []) put(f.x, f.y, { kind: 'fish', hp: f.hp, max: f.max || E.RULES.fishHpMax });
-      g.players.forEach(p => put(p.x, p.y, { kind: 'pawn', p }));
+      g.players.forEach(p => { if (!moving.has(p.id)) put(p.x, p.y, { kind: 'pawn', p }); });
       for (const [k, list] of tiles) {
         const [tx, ty] = E.parseKey(k), n = list.length;
         let entIdx = 0;
@@ -474,6 +531,45 @@
         }
       }
 
+      // 動いている最中の駒（少しはねながら）
+      for (const p of g.players) {
+        const a = moving.get(p.id);
+        if (!a) continue;
+        const hop = Math.sin(a.t * Math.PI) * 3 * z;
+        pawn(X(a.x) + 13 * z, Y(a.y) + 13 * z - hop, 26 * z, p, me && p.id === me.id, th, p.down > 0);
+      }
+      // パーティクル
+      if (s.parts.length) {
+        const dt = Math.min(0.05, Math.max(0, (now - (s.lastT || now)) / 1000));
+        const keep = [];
+        for (const q of s.parts) {
+          q.age += dt;
+          if (q.age >= q.life) continue;
+          q.vy += q.grav * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += q.vr * dt;
+          const t = q.age / q.life;
+          keep.push(q);
+          if (!vis(Math.floor(q.x), Math.floor(q.y))) continue;
+          const px = X(q.x), py = Y(q.y), sz = q.size * z;
+          ctx.globalAlpha = Math.max(0, 1 - t * t);
+          if (q.shape === 'ring') {
+            ctx.strokeStyle = q.color; ctx.lineWidth = Math.max(1, 2.5 * z * (1 - t));
+            ctx.beginPath(); ctx.arc(px, py, sz * (0.4 + 1.8 * easeOut(t)), 0, 7); ctx.stroke();
+          } else if (q.shape === 'spark') {
+            ctx.strokeStyle = q.color; ctx.lineWidth = Math.max(1, sz * 0.5); ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(px - q.vx * 0.04 * z * 6, py - q.vy * 0.04 * z * 6); ctx.lineTo(px, py); ctx.stroke();
+          } else if (q.shape === 'leaf' || q.shape === 'chip') {
+            ctx.save(); ctx.translate(px, py); ctx.rotate(q.rot); ctx.fillStyle = q.color;
+            if (q.shape === 'leaf') { ctx.beginPath(); ctx.ellipse(0, 0, sz * 0.9, sz * 0.45, 0, 0, 7); ctx.fill(); } else ctx.fillRect(-sz * 0.5, -sz * 0.5, sz, sz * 0.8);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(px, py, sz * 0.5 * (1 - t * 0.4), 0, 7); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+        s.parts = keep;
+      }
+      s.lastT = now;
+
       // 建設の置き場所・移動先の目印
       const pv = s.preview;
       if (pv) {
@@ -491,6 +587,7 @@
           ctx.globalAlpha = 1;
         }
       }
+      if (board.fxActive()) board.request();                     // 動いている間は、描き続ける
     };
 
     // 駒：プレイヤーが選んだ形と色。うすく透けて、後ろの文字が読める。枠は塗りと同系色。自分の駒は外側にリング

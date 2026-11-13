@@ -106,7 +106,19 @@
     }
     deliver(pid, msg) {
       if (pid === this.id) { setTimeout(() => onMessage(msg), 0); return; }
-      for (const [conn, info] of this.conns) if (info.id === pid) safeSend(conn, msg);
+      for (const [conn, info] of this.conns) {
+        if (info.id !== pid) continue;
+        if (msg.type === 'state') {
+          // ゲームの状態は、前に送った内容との差分だけを送る（人数が多いほど、通信量が大きくなるため）
+          if (!msg.game || msg.resync) info.sent = null;
+          else {
+            const d = window.SnowRoom.Delta.make(info.sent, msg.game);
+            info.sent = d.parts;
+            if (!d.full) msg = { type: 'state', you: msg.you, room: msg.room, gamePatch: d.patch };
+          }
+        }
+        safeSend(conn, msg);
+      }
     }
     onConnection(conn) {
       conn.on('data', msg => {
@@ -263,7 +275,9 @@
   const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
   const TH = () => B.THEMES[theme()];
   const myP = () => (app.game ? E.pl(app.game, app.me) : null);
-  const myTurn = () => !!app.game && app.game.phase === 'play' && E.cur(app.game).id === app.me;
+  const myTurn = () => !!app.game && E.isTurn(app.game, app.me);
+  const tkey = g => (E.simul(g) ? 'r' + g.round : g.round + ':' + g.turn);   // 手番（同時ならラウンド）が変わったか見分けるキー
+  const simulOf = g => !!g && E.simul(g);
   const pcol = c => B.PLAYER_COLORS[c] || '#888';
   const pawnIco = (p, size) => B.shapeSvg(p.shape, p.color, size || 22);
   const send = msg => { if (app.conn) app.conn.send(msg); };
@@ -312,6 +326,10 @@
     if (!app.conn || !app.conn.isHost && !app.conn.isLocal) {
       if (msg.room.version !== E.VERSION) { leaveRoom(`この部屋は v${msg.room.version || '不明（古い版）'} です（あなたは v${E.VERSION}）。ページを再読み込みして、最新版にしてください`); return; }
     }
+    if (msg.gamePatch) {                                  // 差分：手元の状態に重ねる（手元の状態がなければ、全体を求める）
+      if (!app.game) { send({ type: 'resync' }); return; }
+      msg.game = window.SnowRoom.Delta.apply(app.game, msg.gamePatch);
+    }
     app.me = msg.you;
     app.room = msg.room;
     app.roomAt = Date.now();
@@ -342,8 +360,58 @@
     if (app.menu && !myP()) app.menu = false;
     toastNewLog(g);
     announce(g);
+    fxFromChanges(g);
     renderGame();
     guide.onState();
+  }
+
+  // 前の状態との違いから、パーティクルを出す（自分も、ほかの人の行動も、同じように見える）
+  function snapOf(g) {
+    const sn = { seed: g.seed, round: g.round, res: {}, an: {}, fish: {}, b: {}, plants: {}, pl: {} };
+    for (const k of Object.keys(g.res)) sn.res[k] = { t: g.res[k].t, hp: g.res[k].hp };
+    for (const a of g.animals) sn.an[a.id] = { x: a.x, y: a.y, hp: a.hp };
+    for (const f of g.fish || []) sn.fish[f.id] = { x: f.x, y: f.y, hp: f.hp };
+    for (const b of g.b) sn.b[b.id] = { t: b.t, x: b.x, y: b.y, w: b.w, h: b.h, hp: b.hp, fire: b.fire };
+    for (const p of g.plants) sn.plants[p.x + ',' + p.y] = 1;
+    for (const p of g.players) sn.pl[p.id] = { x: p.x, y: p.y, food: p.food, temp: p.temp, ap: p.ap };
+    return sn;
+  }
+  function fxFromChanges(g) {
+    const cur = snapOf(g), pv = app.fxSnap;
+    app.fxSnap = cur;
+    if (!board || !pv || pv.seed !== cur.seed) return;
+    const ctr = b => [b.x + b.w / 2, b.y + b.h / 2];
+    const sc = b => Math.max(1, Math.min(3, b.w / 1.5));
+    for (const k of Object.keys(pv.res)) {
+      const a = pv.res[k], b = cur.res[k];
+      if (b && b.hp >= a.hp) continue;
+      const [x, y] = E.parseKey(k);
+      board.fx(a.t === 'tree' ? 'tree' : a.t === 'stone' ? 'stone' : 'veg', x + 0.5, y + 0.5, b ? 0.7 : 1.4);
+    }
+    for (const id of Object.keys(pv.an)) {
+      const a = pv.an[id], b = cur.an[id];
+      if (!b) board.fx('kill', a.x + 0.5, a.y + 0.5, 1.3);
+      else if (b.hp < a.hp) board.fx('hit', b.x + 0.5, b.y + 0.5, 1);
+    }
+    for (const id of Object.keys(pv.fish)) {
+      const a = pv.fish[id], b = cur.fish[id];
+      if (!b) board.fx('splash', a.x + 0.5, a.y + 0.5, 1.3);
+      else if (b.hp < a.hp) board.fx('splash', b.x + 0.5, b.y + 0.5, 0.7);
+    }
+    for (const id of Object.keys(cur.b)) {
+      const b = cur.b[id], a = pv.b[id];
+      if (!a) { if (b.t !== 'fire') board.fx('build', ...ctr(b), sc(b), b.w * 0.35); continue; }
+      if (b.t === 'fire' && b.fire > a.fire) board.fx('stoke', ...ctr(b).map((v, i) => v + (i ? 0 : 0)), 1 + (b.fire - a.fire) * 0.3, Math.min(1.5, b.w / 3));
+      else if (b.hp != null && a.hp != null && b.hp > a.hp) board.fx('repair', ...ctr(b), sc(b), b.w * 0.3);
+    }
+    for (const id of Object.keys(pv.b)) if (!cur.b[id] && cur.round === pv.round) board.fx('crumble', ...ctr(pv.b[id]), sc(pv.b[id]), pv.b[id].w * 0.35);
+    for (const k of Object.keys(cur.plants)) if (!pv.plants[k]) { const [x, y] = k.split(',').map(Number); board.fx('plant', x + 0.5, y + 0.5, 1); }
+    for (const id of Object.keys(cur.pl)) {
+      const a = pv.pl[id], b = cur.pl[id];
+      if (!a || cur.round !== pv.round) continue;
+      if (b.food > a.food) board.fx('eat', b.x + 0.5, b.y + 0.2, 1);
+      else if (b.temp > a.temp) board.fx('warm', b.x + 0.5, b.y + 0.2, 1);
+    }
   }
 
   function toastNewLog(g) {
@@ -382,16 +450,16 @@
       if (app.over !== g.phase) { app.over = g.phase; SnowSound.play(g.phase === 'won' ? 'win' : 'lose'); }
       return;
     }
-    const key = g.round + ':' + g.turn;
+    const key = tkey(g);
     if (app.turnKey === key) return;
     const roundChanged = app.annRound !== g.round;
     app.turnKey = key; app.annRound = g.round;
     if (roundChanged) {
-      const fin = g.round > R.prepRounds, storm = g.weather === 'storm';
-      banner(fin ? `最終猛吹雪 ${g.round - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${g.round}`,
-        `${fin ? '' : `準備期間 ${g.round} / ${R.prepRounds}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
+      const fin = g.round > g.prep, storm = g.weather === 'storm';
+      banner(fin ? `最終猛吹雪 ${g.round - g.prep} / ${g.fin}` : `ラウンド ${g.round}`,
+        `${fin ? '' : `準備期間 ${g.round} / ${g.prep}　`}天候：${E.WEATHER_NAMES[g.weather]}（${FX[g.weather]}）`, storm ? 'storm' : 'round', storm ? ['round', 'storm'] : ['round']);
     }
-    if (E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
+    if (!E.simul(g) && E.cur(g).id === app.me) banner('あなたの手番です', `行動力 ${R.maxAp}`, 'turn', ['turn']);
   }
 
   // 持ち物のアイコンをクリックして出る、操作のボタン（食べる・着ける・捨てる投票）
@@ -432,9 +500,9 @@
     const place = { fire: '焚き火の上', warm: '防寒の中', out: '屋外' }[e.place];
     const wn = E.WEATHER_NAMES[g.weather];
     const cls = (v, lim) => (v <= lim ? 'bad' : '');
-    el.innerHTML = `<b class="t">このまま手番を終えると</b>
+    el.innerHTML = `<b class="t">このまま${E.simul(g) ? '行動を終える' : '手番を終える'}と</b>
       <div class="ep-row"><span class="k">満腹度</span><span class="v ${cls(e.food, 0)}">${e.food0} → ${e.food}</span><span class="n">−${e.hunger}</span></div>
-      <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}）</span></div>
+      <div class="ep-row"><span class="k">体温</span><span class="v ${cls(e.temp, 2)}">${e.temp0} → ${e.temp}</span><span class="n">−${e.loss}（${place}・${wn}${e.cold ? (e.covered ? '・夜の寒さはかまくらで防ぐ' : '・夜の寒さ −' + e.cold) : ''}）</span></div>
       <div class="ep-row"><span class="k">火力</span><span class="v">${e.fire0} → ${e.fire}</span><span class="n">−${e.fireLoss}</span></div>
       ${e.fireOutNext ? `<div class="${e.fireLose ? 'warnbox' : 'ep-row bad'}">${e.fireLose ? '焚き火が消えたまま手番を終えると、敗北します！ 先に焚べましょう' : `焚き火が消えたままです（終えると ${e.fireOutNext} / ${R.fireOutLimit}）`}</div>` : ''}
       ${e.collapse ? `<div class="warnbox">${e.temp <= 0 && e.food <= 0 ? '体温と満腹度が0になり' : e.temp <= 0 ? '体温が0になり' : '満腹度が0になり'}、行動不能になります！</div>` : ''}`;
@@ -451,19 +519,17 @@
     chip.classList.toggle('timer', secs != null);
     chip.classList.toggle('low', secs != null && secs <= 10);
     chip.textContent = secs == null ? base : `${base}　残り ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    if (secs != null && secs <= 10 && myTurn() && app.warnedKey !== g.round + ':' + g.turn) { app.warnedKey = g.round + ':' + g.turn; SnowSound.play('warn'); }
+    if (secs != null && secs <= 10 && myTurn() && app.warnedKey !== tkey(g)) { app.warnedKey = tkey(g); SnowSound.play('warn'); }
   }
 
   // 上限を超えたアイテム：既存の物を捨てて持つか、新しい物をあきらめるかを選ぶ
   function renderOverflow(g, th) {
-    const el = $('#overflow'), pd = g.pending && g.pending[0];
+    const el = $('#overflow'), note = $('#ovr-note');
+    const pd = (g.pending || []).find(q => q.pid === app.me);        // 選ぶ必要があるのは、持ち主だけ（ほかの人は、そのまま行動できる）
+    const others = (g.pending || []).filter(q => q.pid !== app.me).map(q => (g.players.find(p => p.id === q.pid) || {}).name).filter((n, i, arr) => n && arr.indexOf(n) === i);
+    note.hidden = !others.length || !!pd;
+    if (others.length) note.textContent = `${others.length > 2 ? others.slice(0, 2).join('・') + `ほか${others.length - 2}人` : others.join('・')}が、持ち物の入れ替えを選んでいます`;
     if (!pd) { el.hidden = true; app.ovrKey = null; return; }
-    const who = g.players.find(p => p.id === pd.pid);
-    if (pd.pid !== app.me) {
-      el.hidden = false;
-      el.innerHTML = `<div class="card ovr-card"><b>${esc(who ? who.name : '')}が、持ち物の入れ替えを選んでいます…</b></div>`;
-      return;
-    }
     const key = pd.k + ':' + pd.n + ':' + g.pending.length;
     if (app.ovrKey !== key) { app.ovrKey = key; app.ovrDrop = {}; }
     const drop = app.ovrDrop, total = Object.values(drop).reduce((a, b) => a + b, 0);
@@ -491,7 +557,7 @@
     if (g.phase !== 'play') { el.hidden = true; return; }
     el.hidden = false;
     const meats = Math.ceil(f.short / R.eat.meat);
-    const what = f.final ? `残り${f.turns}回の手番の終わりごとに−${R.hunger}。いまの満腹度を引いた分` : `${g.players.length}人 × ${R.finalRounds}ラウンド × −${R.hunger}`;
+    const what = f.final ? `残り${f.turns}回の手番の終わりごとに−${R.hunger}。いまの満腹度を引いた分` : `${g.players.length}人 × ${g.fin}ラウンド × −${R.hunger}`;
     el.innerHTML = `<b>最終猛吹雪を生き延びるのに必要な食料</b><div><b>${f.need}</b>（満腹度ぶん。${what}）</div>
       <div>持ち物の食料：<b>${f.have}</b>　${f.short > 0 ? `<span style="color:var(--redFg);font-weight:700">不足 ${f.short}（肉なら約${meats}個）</span>` : '<span style="color:var(--ok);font-weight:700">足りています</span>'}</div>`;
   }
@@ -499,7 +565,7 @@
   // 行動力がなくなったら、手番を終えるよう促す
   function renderEndPop(g) {
     const el = $('#endpop'), me = myP();
-    const key = g.round + ':' + g.turn;
+    const key = tkey(g);
     const show = !!(myTurn() && me && me.ap === 0 && app.endPopDismiss !== key && !app.card);
     if (show === !el.hidden) return;
     el.hidden = !show;
@@ -573,17 +639,20 @@
       app.styleSent = true;
       const sh = store.get('shape'), co = store.get('color');
       if (sh && sh !== mine.shape) send({ type: 'style', shape: sh });
-      if (co && co !== mine.color && !r.players.some(p => p !== mine && p.color === co) && B.PLAYER_COLORS[co]) send({ type: 'style', color: co });
+      if (co && co !== mine.color && !r.players.some(p => p !== mine && p.color === co && p.shape === (sh || mine.shape)) && B.PLAYER_COLORS[co]) send({ type: 'style', color: co });
     }
     $('#style-box').hidden = !mine;
     if (mine) {
-      $('#style-shapes').innerHTML = Object.keys(B.SHAPE_NAMES).map(k => `<button class="sty ${mine.shape === k ? 'on' : ''}" data-shape="${k}" title="${B.SHAPE_NAMES[k]}" aria-label="${B.SHAPE_NAMES[k]}">${B.shapeSvg(k, mine.color, 26)}</button>`).join('');
+      $('#style-shapes').innerHTML = Object.keys(B.SHAPE_NAMES).map(k => `<button class="sty ${mine.shape === k ? 'on' : ''}" data-shape="${k}" ${r.players.some(p => p !== mine && p.color === mine.color && p.shape === k) ? 'disabled' : ''} title="${B.SHAPE_NAMES[k]}" aria-label="${B.SHAPE_NAMES[k]}">${B.shapeSvg(k, mine.color, 26)}</button>`).join('');
       $('#style-colors').innerHTML = Object.keys(B.PLAYER_COLORS).map(k => {
-        const taken = r.players.some(p => p !== mine && p.color === k);
-        return `<button class="sw ${mine.color === k ? 'on' : ''}" data-color="${k}" ${taken ? 'disabled' : ''} title="${B.COLOR_NAMES[k]}${taken ? '（使用中）' : ''}" aria-label="${B.COLOR_NAMES[k]}" style="background:${B.PLAYER_COLORS[k]}"></button>`;
+        const taken = r.players.some(p => p !== mine && p.color === k && p.shape === mine.shape);
+        return `<button class="sw ${mine.color === k ? 'on' : ''}" data-color="${k}" ${taken ? 'disabled' : ''} title="${B.COLOR_NAMES[k]}${taken ? '（この形では使用中）' : ''}" aria-label="${B.COLOR_NAMES[k]}" style="background:${B.PLAYER_COLORS[k]}"></button>`;
       }).join('');
     }
     $('#btn-add-cpu').hidden = !host || r.players.length >= r.max;
+    const sim = !r.settings || r.settings.simul !== false;
+    $('#opt-simul').checked = sim; $('#opt-simul').disabled = !host;
+    $('#lobby-opt span').textContent = host ? '全員が同時に動く（オフなら、1人ずつ順番に動く）' : (sim ? '全員が同時に動きます' : '1人ずつ順番に動きます');
     $('#btn-start').hidden = !host;
     $('#btn-start').disabled = r.players.length < r.min;
     $('#lobby-hint').textContent = r.players.length < r.min
@@ -597,12 +666,12 @@
   const FX = { clear: '補正なし', snow: '体温低下 +1', blizzard: '体温低下 +2', rain: '焚き火の火力低下 +1', storm: '体温低下 +4・建物HP減少' };
   const DESC = {
     fire: { name: '焚き火', tip: '上で温まると火力ぶん回復。薪を焚べると火力+1。', desc: '唯一の本格的な暖房。上に立って「温まる」と、火力の値だけ体温が回復する。',
-      eff: ['焚き火の上の体温低下は 0＋天候補正（軽減なし）', `温まる：行動力${R.ap.warm}、火力の値だけ体温回復`, `焚べる：行動力${R.ap.stoke}＋木材1 → 火力+1（最大${R.fireMax}）`], build: '最初からある', repair: '壊れない' },
+      eff: ['焚き火の上の体温低下は 0＋天候補正（軽減なし）', `温まる：行動力${R.ap.warm}、火力の値だけ体温回復`, `焚べる：行動力${R.ap.stoke}＋木材1 → 火力+1（最大は、その焚き火で始まる人数。最低${R.fireMaxMin}）`], build: '最初からある', repair: '壊れない' },
     bridge: { name: '橋', tip: '川にだけ建てられる。木材1。道と同じように歩ける。', desc: '川の上にかける橋。道と同じ扱い（建物の仲間・体温が減らない・壊れない）。橋の上には、ほかの建物を建てて上書きできる。',
       eff: ['川にだけ建てられる', '建物の仲間として扱われ、橋から1マス以内に移動できる', '橋の上には、ほかの建物を建てられる（上書き）'], build: null, repair: '壊れない' },
     road: { name: '道', tip: '雪1個で作れる最小の建物。移動できる範囲が広がる。', desc: '雪1個で作れる最小の建物。建物の仲間として扱われ、道から1マス以内に移動できる。',
       eff: ['道・建物の上に入るときは体温が減らない', '隣り合う道は一つにつながって表示される'], build: null, repair: '壊れない' },
-    igloo: { name: 'かまくら', tip: '防寒施設。中では体温低下が軽くなる。', desc: '雪で作る防寒施設。',
+    igloo: { name: 'かまくら', tip: '1個で2人ぶんの夜の寒さ（体温-1）を、どこにいても防ぐ。', desc: '雪で作る防寒施設。ラウンドの終わりの「夜の寒さ」（体温-1）を、1個で2人ぶん、どこにいても防ぎます（体温が低い人から）。HPが半分以下になると防げなくなります。',
       eff: ['体温低下 -1＋天候補正（補正は最大2まで軽減）', '温まる回復量 +1', 'HPが半分以下になると防寒が消える'], build: null, repair: null },
     storage: { name: '倉庫', tip: '防寒施設。共有アイテムの上限が+10される。', desc: '大きな防寒施設。',
       eff: ['共有アイテムの上限 +10', '防寒効果はかまくらと同じ'], build: null, repair: null },
@@ -651,21 +720,24 @@
   }
 
   function renderBar(g) {
-    const r = g.round, fin = r > R.prepRounds;
-    $('#chip-round').textContent = fin ? `最終猛吹雪 ${r - R.prepRounds} / ${R.finalRounds}` : `ラウンド ${r} / ${R.prepRounds}（準備）`;
-    $('#chip-final').textContent = fin ? `あと${E.TOTAL_ROUNDS - r + 1}ラウンドで クリア` : `猛吹雪まで あと${R.prepRounds - r + 1}ラウンド`;
+    const r = g.round, fin = r > g.prep;
+    $('#chip-round').textContent = fin ? `最終猛吹雪 ${r - g.prep} / ${g.fin}` : `ラウンド ${r} / ${g.prep}（準備）`;
+    $('#chip-final').textContent = fin ? `あと${g.total - r + 1}ラウンドで クリア` : `猛吹雪まで あと${g.prep - r + 1}ラウンド`;
     const fore = $('#chip-fore');
     fore.hidden = !E.hasTower(g);
     fore.textContent = g.next ? `予報：次は${E.WEATHER_NAMES[g.next]}` : '予報：最後のラウンド';
     const fc = $('#chip-fire');
-    fc.hidden = !(g.phase === 'play' && (g.fireOut > 0 || g.fire <= 0));
-    fc.textContent = `焚き火が消えています ${g.fireOut} / ${R.fireOutLimit}`;
-    fc.title = `火力0のまま手番が終わるのが${R.fireOutLimit}回続くと敗北です。薪を焚べて火を点けましょう`;
-    const c = E.cur(g);
-    $('#chip-turn').dataset.base = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー');
+    const nf = E.fires(g).length, out = E.fires(g).filter(b => b.fire <= 0).length;
+    fc.hidden = !(g.phase === 'play' && (g.fireOut > 0 || out > 0));
+    fc.textContent = nf > 1 && !E.allFiresOut(g) ? `焚き火が消えています ${out} / ${nf}` : `焚き火が消えています ${g.fireOut} / ${R.fireOutLimit}`;
+    fc.title = `すべての焚き火が火力0のままラウンドが終わるのが${R.fireOutLimit}回続くと敗北です。薪を焚べて火を点けましょう`;
+    const doneN = g.players.filter(q => q.done).length;
+    if (g.phase === 'play' && E.simul(g)) $('#chip-turn').dataset.base = `全員が行動中（終了 ${doneN} / ${g.players.length}）`;
+    else { const c = E.cur(g); $('#chip-turn').dataset.base = g.phase === 'play' ? `手番：${c.name}${c.id === app.me ? '（あなた）' : ''}` : (g.phase === 'won' ? 'クリア' : 'ゲームオーバー'); }
+    if (g.phase !== 'play') $('#chip-turn').dataset.base = g.phase === 'won' ? 'クリア' : 'ゲームオーバー';
     $('#weather').innerHTML = `現在の天候：<b>${E.WEATHER_NAMES[g.weather]}</b>（${FX[g.weather]}）`;
     $('#btn-endturn').disabled = !myTurn();
-    $('#btn-endturn').textContent = myTurn() ? '手番を終える' : '手番を待っています';
+    $('#btn-endturn').textContent = E.simul(g) ? (myTurn() ? '行動を終える' : '他の人を待っています') : (myTurn() ? '手番を終える' : '手番を待っています');
     const logPop = $('#log-pop');
     if (!logPop.hidden) logPop.innerHTML = logHtml(g);
   }
@@ -677,21 +749,28 @@
     return `<div class="ms ${cls || ''}"><span class="k">${label}</span><span class="tr"><i style="width:${pct}%;background:${color}"></i></span><b style="color:${fg}">${v}</b></div>`;
   }
   function renderPlayers(g, th) {
+    const cov = E.covered(g);
     $('#players').innerHTML = g.players.map(p => {
-      const turn = g.phase === 'play' && E.cur(g).id === p.id;
+      const sim = E.simul(g);
+      const turn = g.phase === 'play' && (sim ? !p.done : E.cur(g).id === p.id);
       const me = p.id === app.me;
       const tags = [
+        g.phase === 'play' && E.coldOn(g) && cov.has(p.id) ? '<span class="badge" title="かまくらで、夜の寒さ（体温-1）を防げます">かまくら</span>' : '',
         p.cpu ? '<span class="badge gray">CPU</span>' : '',
         p.away ? '<span class="badge red">切断中</span>' : '',
         p.down === 1 ? '<span class="badge red">行動不能</span>' : p.down === 2 ? '<span class="badge red">復帰中</span>' : '',
-        turn ? '<span class="badge">手番中</span>' : '',
+        g.phase === 'play' && sim ? (p.done ? '<span class="badge gray">終了</span>' : '') : (turn ? '<span class="badge">手番中</span>' : ''),
       ].join('');
+      if (g.players.length > 6 && !me) {          // 大人数：ほかの人は1行に詰める
+        return `<div class="pcard compact">${pawnIco(p, 16)}<span class="pn">${esc(p.name)}</span>${wornIcons(p)}<span class="grow"></span>${tags}
+          <span class="cmp ${p.temp <= 3 ? 'low' : ''}" title="体温">体${p.temp}</span><span class="cmp ${p.food <= 3 ? 'low' : ''}" title="満腹度">満${p.food}</span></div>`;
+      }
       return `<div class="pcard ${me ? 'me' : ''}">
         <div class="phead">${pawnIco(p, 20)}<span class="pn">${esc(p.name)}${me ? '（あなた）' : ''}</span>${wornIcons(p)}<span class="grow"></span>${tags}</div>
         <div class="pstats">
           ${mini('体温', p.temp, p.temp * 10, p.temp <= 3 ? th.tempLow : th.temp, p.temp <= 3 ? th.redFg : 'var(--text)')}
           ${mini('満腹', p.food, p.food * 10, p.food <= 3 ? th.foodLow : th.food, p.food <= 3 ? th.redFg : 'var(--text)')}
-          ${turn ? mini('行動力', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)', 'ap') : ''}
+          ${turn && (!sim || me) ? mini('行動力', p.ap, Math.round(p.ap / R.maxAp * 100), 'var(--ap)', 'var(--text)', 'ap') : ''}
         </div>
       </div>`;
     }).join('');
@@ -730,7 +809,8 @@
       const can = p.id === app.me && !x;
       return `<div class="vr"><span class="n">${esc(p.name)}</span><b style="color:${col}">${st}</b>${can ? '<button data-vote="1">賛成</button><button data-vote="-1">反対</button>' : ''}</div>`;
     }).join('');
-    el.innerHTML = `<b style="font-size:13px">「${E.ITEM_NAMES[v.k]}」を1個捨てる投票</b>${rows}
+    const over = v.auto ? `<div class="small" style="color:var(--redFg);font-weight:700">持ち物が上限を超えています（あと${Math.max(0, E.total(g) - E.cap(g))}個）。超えた分を捨てる投票です</div>` : '';
+    el.innerHTML = `<b style="font-size:13px">「${E.ITEM_NAMES[v.k]}」を1個捨てる投票</b>${over}${rows}
       <div class="vr"><span class="n small muted">過半数の賛成で捨てます。反対が半数以上で否決。</span>${v.by === app.me ? '<button data-vote-cancel>取り下げ</button>' : ''}</div>`;
   }
 
@@ -743,10 +823,10 @@
       el.innerHTML = '<div class="small muted" style="font-weight:700">建物の詳細（建物をクリック）</div><div class="muted" style="line-height:1.6">建物をクリックすると、説明・効果・建設と修理のコストがここに表示されます。</div>';
       return;
     }
-    const d = DESC[b.t], bd = E.BUILD[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
+    const d = DESC[b.t], bd = E.BUILD[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = b.t === 'igloo' ? E.iglooOk(b) : E.insul(b);
     const meta = [['サイズ', `${b.w}×${b.h}`]];
     let status = '', chip = null;
-    if (b.t === 'fire') { meta.push(['火力', `${g.fire} / ${R.fireMax}`]); status = '壊れない'; chip = th.chip.fire; }
+    if (b.t === 'fire') { meta.push(['火力', `${b.fire} / ${b.fmax}`]); status = '壊れない'; chip = th.chip.fire; }
     else if (E.isPath(b.t)) { status = '壊れない'; chip = ['var(--chip)', 'var(--muted2)']; }
     else {
       meta.push(['HP', `${b.hp} / ${b.max}`]);
@@ -842,7 +922,7 @@
       head = '';
     };
     const w = E.where(g, me);
-    add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${g.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
+    add('温まる', `行動力${R.ap.warm}・` + (w.kind === 'fire' ? `火力${w.b.fire}ぶん回復` : w.kind === 'warm' ? '回復 +1' : 'ここでは回復0'), { type: 'warm' });
     if (E.nearFire(g, me)) add('焚べる', `行動力${R.ap.stoke}・薪（なければ木材）1`, { type: 'stoke' });
     if (res) add('集める', `行動力${R.ap.collect}`, { type: 'collect' });
     if (me.tool && me.tool.k === 'rod') {
@@ -912,14 +992,14 @@
     if (g.phase === 'play' || app.resultHidden) { el.hidden = true; return; }
     const won = g.phase === 'won';
     $('#result-title').textContent = won ? 'クリア！ 最終猛吹雪を生き延びた' : 'ゲームオーバー';
-    $('#result-sub').textContent = won ? 'みんなで協力して、準備期間と最終猛吹雪の13ラウンドを乗り越えました。' : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
+    $('#result-sub').textContent = won ? `みんなで協力して、準備期間と最終猛吹雪の${g.total}ラウンドを乗り越えました。` : (g.over.reason === 'fire' ? `ラウンド${g.over.round}で、焚き火が消えたまま${R.fireOutLimit}手番が過ぎました。` : `ラウンド${g.over.round}で、全員が同時に行動不能になりました。`);
     const S = g.stats, cols = [['ap', '行動力', '使った行動力'], ['collect', '集めた', '集めた回数'], ['kills', '狩り', '倒した動物'], ['built', '建てた', '建てた建物'], ['crafted', '作った', '作った回数'], ['stoked', '焚べた', '焚べた回数'], ['planted', '植えた', '植えた苗'], ['repaired', '直した', '直した回数'], ['eaten', '食べた', '食べて増えた満腹度'], ['warmed', '温まり', '温まって増えた体温'], ['downs', '行動不能', '行動不能になった回数']];
     const top = {};
     cols.forEach(([k]) => { const m = Math.max(...g.players.map(p => S.players[p.id][k])); top[k] = k === 'downs' ? -1 : m; });
     const rows = g.players.map(p => `<tr><td style="white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:4px">${pawnIco(p, 18)}${esc(p.name)}</span></td>${cols.map(([k]) => { const v = S.players[p.id][k]; return `<td class="${v > 0 && v === top[k] ? 'top' : ''}">${v}</td>`; }).join('')}</tr>`).join('');
     const gained = S.team.gained, gtxt = E.ITEMS.filter(k => gained[k]).map(k => `${E.ITEM_NAMES[k]}${gained[k]}`).join('　') || 'なし';
     $('#result-players').innerHTML = `<div class="team-stats">
-        <div>生き延びたラウンド<b>${g.over.round} / ${E.TOTAL_ROUNDS}</b></div><div>建てた建物<b>${S.team.built}</b></div><div>壊れた建物<b>${S.team.destroyed}</b></div><div>捨てた物<b>${S.team.discarded}</b></div></div>
+        <div>生き延びたラウンド<b>${g.over.round} / ${g.total}</b></div><div>建てた建物<b>${S.team.built}</b></div><div>壊れた建物<b>${S.team.destroyed}</b></div><div>捨てた物<b>${S.team.discarded}</b></div></div>
       <div class="small muted">手に入れた物：${gtxt}</div>
       <div style="overflow:auto"><table class="stat-table"><thead><tr><th>プレイヤー</th>${cols.map(c => `<th title="${c[2]}">${c[1]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
       <div class="small muted">濃い色は、その項目でいちばん多い人（行動不能は数えません）</div>`;
@@ -943,8 +1023,8 @@
         let html = '';
         const b = info.b;
         if (b) {
-          const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = E.insul(b);
-          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${g.fire} / ${R.fireMax}` : '';
+          const d = DESC[b.t], warm = b.t === 'igloo' || b.t === 'storage', ins = b.t === 'igloo' ? E.iglooOk(b) : E.insul(b);
+          const status = warm ? (ins ? '防寒 有効' : '防寒 消失') : b.t === 'fire' ? `火力 ${b.fire} / ${b.fmax}` : '';
           html += `<div class="tn">${esc(d.name)}<span class="grow"></span><span style="font-size:12px;color:${warm ? (ins ? th.chip.ok[1] : th.chip.lost[1]) : th.chip.fire[1]}">${status}</span></div><div class="tt">${esc(d.tip)}</div>${b.hp === null ? '' : `<div class="th">HP ${b.hp} / ${b.max}</div>`}`;
         }
         if (info.res) {
@@ -1074,6 +1154,7 @@
     });
     $('#btn-start').onclick = () => send({ type: 'start' });
     $('#btn-leave').onclick = () => leaveRoom('');
+    $('#opt-simul').addEventListener('change', e => send({ type: 'settings', simul: e.target.checked }));
     $('#lobby-players').addEventListener('click', e => { const b = e.target.closest('[data-rm-cpu]'); if (b) send({ type: 'removeCpu', id: b.dataset.rmCpu }); });
 
     $$('[data-open]').forEach(b => { b.onclick = () => { if (b.dataset.open === 'rules') guide.openRules(); else if (b.dataset.open === 'changelog') openChangelog(); else $('#' + b.dataset.open).hidden = false; }; });
@@ -1098,7 +1179,7 @@
     });
     $('#endpop').addEventListener('click', e => {
       if (e.target.closest('[data-endpop-end]')) { app.menu = false; act({ type: 'end' }); }
-      else if (e.target.closest('[data-endpop-close]')) { app.endPopDismiss = app.game.round + ':' + app.game.turn; $('#endpop').hidden = true; }
+      else if (e.target.closest('[data-endpop-close]')) { app.endPopDismiss = tkey(app.game); $('#endpop').hidden = true; }
     });
 
     $('#btn-endturn').onclick = () => { app.menu = false; act({ type: 'end' }); renderMenu(app.game, TH()); };
