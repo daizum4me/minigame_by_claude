@@ -156,8 +156,9 @@ button.x{width:30px;height:30px;padding:0;border-radius:50%;font-size:14px}
 .rtitle.win{color:#16a34a}.rtitle.lose{color:#bf5a55}
 .result-players{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .result-players li{display:flex;align-items:center;gap:8px;font-size:13px}.result-players .nm{flex:1;font-weight:700}
-#dock{position:fixed;right:12px;bottom:12px;z-index:40;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-#dock button{box-shadow:var(--shadow2);background:var(--panel)}
+#dock,#dockl{position:fixed;bottom:12px;z-index:40;display:flex;flex-direction:column;gap:8px}
+#dock{right:12px;align-items:flex-end}#dockl{left:12px;align-items:flex-start}
+#dock button,#dockl button{box-shadow:var(--shadow2);background:var(--panel)}
 .cl h4{margin:14px 0 4px;font-size:14px}.cl .ver{font-weight:400;color:var(--mute);font-size:12px}
 @media (max-width:1100px){
  :root{--step:clamp(34px,calc((100vw - 90px)/6.4),84px)}
@@ -185,7 +186,8 @@ button.x{width:30px;height:30px;padding:0;border-radius:50%;font-size:14px}
 <div class="overlay" id="rules" role="dialog" aria-modal="true" aria-label="ルール" hidden></div>
 <div class="overlay" id="result" role="dialog" aria-modal="true" aria-label="結果" hidden></div>
 <div class="overlay" id="changelog" role="dialog" aria-modal="true" aria-label="更新履歴" hidden></div>
-<div id="dock"><button type="button" id="snd" data-act="snd"></button><button type="button" id="theme" data-act="theme"></button><button type="button" data-act="rules">ルール</button><button type="button" data-act="changelog">更新履歴</button></div>
+<div id="dock"><button type="button" id="snd" data-act="snd"></button><button type="button" id="theme" data-act="theme"></button></div>
+<div id="dockl"><button type="button" data-act="rules">ルール</button><button type="button" data-act="changelog">更新履歴</button></div>
 <script>
 const Engine = (function () {
   const N = 6, SZ = 36, WIN = 100000;
@@ -490,7 +492,7 @@ if (typeof module !== 'undefined') module.exports = Engine;
   var MAXPLY = 300, DROP_START = 15, DROP_EVERY = 5;
   var S = null, VIEW = 'top', RP = 0, GEN = 0;
   var NET = { peer: null, conn: null, role: '', code: '', status: '', err: '', oppName: '', myRe: false, oppRe: false, hostFirst: true, gone: false };
-  var TURN_SEC = 120, VERSION = 'v1.1';
+  var TURN_SEC = 120, VERSION = 'v1.2';
   var P2P = { src: 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js', prefix: 'cororo-', opts: {} };
 
   function $(id) { return document.getElementById(id); }
@@ -643,11 +645,11 @@ if (typeof module !== 'undefined') module.exports = Engine;
       '<p class="lead">駒を取らずに、押して盤の外へ落とす2人対戦ゲーム。相手の「玉」を盤の外へ押し出せば勝ちです。</p>' +
       '<label class="field"><span>なまえ（12文字まで）</span><input id="in-name" type="text" maxlength="12" autocomplete="nickname" placeholder="ゲスト"></label>' +
       '<button type="button" class="big" data-act="tutorial">はじめての方へ：チュートリアル</button>' +
+      '<button type="button" class="big" data-act="cpu">CPUと対戦（ひとりで・通信なし）</button>' +
       '<button type="button" class="primary big" data-act="create">部屋を作ってオンライン対戦</button>' +
       '<div class="row"><input id="in-code" type="text" class="grow" maxlength="6" placeholder="部屋ID" autocapitalize="characters" autocomplete="off" spellcheck="false" style="text-transform:uppercase"><button type="button" data-act="join">参加する</button></div>' +
       (NET.err ? '<div class="small" style="color:#bf5a55">' + esc(NET.err) + '</div>' : '') +
-      '<button type="button" class="big" data-act="cpu">CPUと遊ぶ（ひとりで・通信なし）</button>' +
-      '<button type="button" class="big" data-act="watch">CPU同士の対戦を観る</button></div>';
+      '</div>';
     $('in-name').value = SET.name;
     var q = ''; try { q = new URLSearchParams(location.search).get('room') || ''; } catch (e) {}
     if (NET.joinCode || q) $('in-code').value = (NET.joinCode || q).toUpperCase();
@@ -768,6 +770,7 @@ if (typeof module !== 'undefined') module.exports = Engine;
     $('rules').hidden = false;
   }
   var CHANGELOG = [
+    { v: 'v1.2', d: ['メインメニューを、チュートリアル → CPU対戦 → オンライン対戦 → 部屋ID の順に変更', 'ルールと更新履歴のボタンを左下へ移動（右下は効果音とライトモード）', 'CPU同士の対戦を眺めるモードを廃止'] },
     { v: 'v1.1', d: ['メインメニューを整理し、ルールと更新履歴を右下のボタンへ移動', 'バージョン表示をタイトルの右へ移動', '更新履歴をゲーム内で見られるように'] },
     { v: 'v1.0', d: ['2人用オンライン対戦を追加（部屋ID／招待URL・再戦で先手後手を交代・切断時は残った側の勝ち）', '1手あたり2分の持ち時間を追加（切れた側の負け）'] }
   ];
@@ -1383,7 +1386,6 @@ if (typeof module !== 'undefined') module.exports = Engine;
       case 'leave': netLeave(); break;
       case 'leave-game': netLeave(); break;
       case 'cpu': SET.mode = 'cpu'; show('lobby'); renderLobby(); break;
-      case 'watch': SET.mode = 'watch'; show('lobby'); renderLobby(); break;
       case 'back': SET.mode = 'cpu'; show('top'); renderTop(); break;
       case 'start': show('game'); newGame(); break;
       case 'new': if (S && S.online) { if (S.over && !NET.myRe && !NET.gone) { NET.myRe = true; netSend({ t: 'rematch' }); if (NET.role === 'host' && NET.oppRe) hostStart(false); else render(); } break; } $('result').hidden = true; newGame(); break;
